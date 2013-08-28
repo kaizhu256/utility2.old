@@ -5,9 +5,9 @@ common, shared utilities for both browser and nodejs
 https://git.corp.yahoo.com/gist/2230
 
 todo:
-add browser test report
+revert to phantomjs server for efficiency
+add password protection for admin module
 migrate argv processing to commander
-migrate to express
 */
 
 
