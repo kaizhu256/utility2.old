@@ -1,0 +1,21 @@
+{
+  "contributors": [{
+    "name": "kai zhu",
+    "email": "kaizhu@yahoo-inc.com"
+  }],
+  "dependencies": {
+    "commander": "*",
+    "express": "*",
+    "jslint": "*",
+    "istanbul": "*",
+    "mime": "*",
+    "uglify-js": "*"
+  },
+  "description": "common, shared nodejs utilities",
+  "main": "utility2.js",
+  "name": "utility2",
+  "scripts": {
+    "test": "istanbul test --dir ./tmp/coverage ./utility2.js -- --test"
+  },
+  "version": "0.0.1",
+}
