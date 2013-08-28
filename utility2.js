@@ -1204,6 +1204,12 @@ migrate to express
       required.jslint_reporter = required.jslint_reporter || require('jslint/lib/reporter');
       required.mime = required.mime || require('mime');
       required.uglifyjs = required.uglifyjs || require('uglify-js');
+      try {
+        required.sqlite3 = required.sqlite3 || require('sqlite3');
+        required.sqlite3_db = new required.sqlite3.cached.Database(':memory:');
+      } catch (errorSqlite3) {
+        console.log('module not loaded - sqlite3');
+      }
       /* exports */
       EXPORTS.serverReady = EXPORTS.serverReady || EXPORTS.createDeferred();
       global.atob = function (text) {
@@ -1562,6 +1568,8 @@ migrate to express
             .replace((/\n\(function module\w*Nodejs\([\S\s]*/), '').trim();
       }, 'eval'], name: exports.file });
     },
+
+    _serverPort: 6710,
 
     shell: function (command, mode) {
       /*
@@ -1944,6 +1952,21 @@ migrate to express
       case 'print':
         script = 'console.log(String(' + bb + '))';
         break;
+      case 'sql':
+        if (!required.sqlite3_db) {
+          break;
+        }
+        if (bb === '_') {
+          console.log(required.sqlite3_dbResult);
+        } else {
+          required.sqlite3_db.all(bb, function (error, rows) {
+            if (rows) {
+              required.sqlite3_dbResult = rows;
+            }
+            console.log(error || rows);
+          });
+        }
+        return;
       /* execute /bin/sh commands in console */
       case '$':
         EXPORTS.shell(bb, 'silent');
@@ -2151,11 +2174,13 @@ migrate to express
         EXPORTS.request = request;
         EXPORTS.response = response;
         /* security - validate path */
-        if (EXPORTS.isError(path = request.urlPathNormalized
-            = EXPORTS.urlPathNormalizeOrError(request.url))) {
+        if (EXPORTS.isError(path = request.urlPathNormalized = request.urlPathNormalized
+            || EXPORTS.urlPathNormalizeOrError(request.url))) {
           next(path);
           return;
         }
+        /* parse url search params */
+        request.urlParsed = request.urlParsed || EXPORTS.urlSearchParse(request.url);
         /* dyanamic path handler */
         for (path = request.urlPathNormalized; path.length > 1; path = EXPORTS.fsDirname(path)) {
           if (routesDict.hasOwnProperty(path)) {
@@ -2343,6 +2368,120 @@ migrate to express
         return '<script src="' + url + '"></script>\n';
       }).join('')
       + '</body></html>\n',
+
+  };
+  local._init();
+}(global));
+
+
+
+(function moduleAdminNodejs(global) {
+  /*
+    this admin module exports admin api
+  */
+  'use strict';
+  var EXPORTS = global.EXPORTS = global.EXPORTS || {},
+    required = EXPORTS.required = EXPORTS.required || {},
+    local;
+  local = {
+
+    _name: 'utility2.moduleAdminNodejs',
+
+    _init: function () {
+      if (!EXPORTS.isNodejs) {
+        return;
+      }
+      /* init module */
+      EXPORTS.moduleInit(module, local);
+    },
+
+    _initOnce: function () {
+      EXPORTS.adminMiddleware = EXPORTS.createMiddleware({
+        '/admin/admin.html': local._serverRespondAdminHtml,
+        '/admin/debug': local._serverRespondAdminDebug,
+        '/admin/shell': local._serverRespondAdminShell
+      });
+    },
+
+    _adminHtml: EXPORTS.jsLint('admin.html', '<!DOCTYPE html><html><body>\n'
+      + '<script src="/assets.rollup2.js"></script>\n'
+      + '<script src="/assets/utility2.js"></script>\n'
+      + '<script>\n'
+      + '/*jslint browser: true, indent: 2*/\n'
+      + '"use strict";\n'
+      + 'window.EXPORTS.ajaxAdminDebug = function (script, onEventError) {\n'
+      + '  window.EXPORTS.ajaxLocal({ data: script, url: "/admin/debug" }, onEventError);\n'
+      + '};\n'
+      + 'window.EXPORTS.ajaxAdminShell = function (script, onEventError) {\n'
+      + '  window.EXPORTS.ajaxLocal({ data: script, url: "/admin/shell" }, onEventError);\n'
+      + '};\n'
+      + '</script>\n'
+      + '</body></html>'
+      ),
+
+    _ajaxAdminDebug: function (script, onEventError) {
+      EXPORTS.ajaxLocal({ data: script, url: '/admin/debug' }, onEventError);
+    },
+
+    _ajaxAdminShell: function (script, onEventError) {
+      EXPORTS.ajaxLocal({ data: script, url: '/admin/shell' }, onEventError);
+    },
+
+    _serverRespondAdminDebug: function (request, response, next) {
+      var _onEventError = function (error, data) {
+        if (error) {
+          next(error);
+          return;
+        }
+        if (EXPORTS.isError(data = EXPORTS.jsonStringifyOrError(data))) {
+          _onEventError(data);
+          return;
+        }
+        response.end(data);
+      };
+      EXPORTS.cacheWriteStream(request, {}, function (error, tmp) {
+        if (error) {
+          _onEventError(error);
+          return;
+        }
+        required.fs.readFile(tmp, function (error, data) {
+          if (error) {
+            _onEventError(error);
+            return;
+          }
+          EXPORTS.jsEvalOnEventError(data, tmp, _onEventError);
+        });
+      });
+    },
+
+    _serverRespondAdminHtml: function (request, response) {
+      EXPORTS.serverRespondDefault(response, 200, 'text/html', local._adminHtml);
+    },
+
+    _serverRespondAdminShell: function (request, response, next) {
+      var _onEventError = function (error) {
+        if (EXPORTS.isError(error)) {
+          next(error);
+          return;
+        }
+        response.end('error code: ' + error);
+      };
+      EXPORTS.cacheWriteStream(request, {}, function (error, tmp) {
+        if (error) {
+          _onEventError(error);
+          return;
+        }
+        var _onEventData, proc;
+        _onEventData = function (chunk) {
+          process.stdout.write(chunk);
+          response.write(chunk);
+        };
+        proc = required.child_process.spawn('/bin/sh', [tmp])
+          .on('close', _onEventError).on('error', _onEventError);
+        proc.stderr.on('data', _onEventData);
+        proc.stdout.on('data', _onEventData);
+      });
+    },
 
   };
   local._init();
