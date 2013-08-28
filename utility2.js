@@ -1,11 +1,10 @@
-#!/usr/bin/env node
+// #!/usr/bin/env node
 /*
 utility2.js
 common, shared utilities for both browser and nodejs
 https://git.corp.yahoo.com/gist/2230
 
 todo:
-revert to phantomjs server for efficiency
 add password protection for admin module
 migrate argv processing to commander
 */
@@ -50,6 +49,7 @@ migrate argv processing to commander
       /* phantomjs */
       if (global.phantom) {
         EXPORTS.isPhantomjs = true;
+        EXPORTS.serverPort = require('system').args[1];
       }
     }
   };
@@ -126,17 +126,17 @@ migrate argv processing to commander
       /* browser */
       if (EXPORTS.isBrowser) {
         EXPORTS.ajaxProgressOnEventError(options, onEventError);
-      /* nodejs */
-      } else {
-        EXPORTS.serverReady.onEventReady(function () {
-          options.url = 'http://localhost:' + EXPORTS.serverPort + options.url;
-          EXPORTS.ajaxNodejs(options, onEventError);
-        });
+        return;
       }
+      /* nodejs */
+      EXPORTS.serverReady.onEventReady(function () {
+        options.url = 'http://localhost:' + EXPORTS.serverPort + options.url;
+        EXPORTS.ajaxNodejs(options, onEventError);
+      });
     },
 
     _test_ajaxLocal: function (onEventError) {
-      EXPORTS.ajaxLocal({ url: '/test.echo' }, onEventError);
+      EXPORTS.ajaxLocal({ url: '/test/echo' }, onEventError);
     },
 
     base64Decode: function (text) {
@@ -276,7 +276,7 @@ migrate argv processing to commander
       var data;
       try {
         /*jslint evil: true*/
-        data = EXPORTS.isBrowser ? eval(script) : required.vm.runInThisContext(script, file);
+        data = EXPORTS.isNodejs ? required.vm.runInThisContext(script, file) : eval(script);
       } catch (error) {
         /* debug */
         EXPORTS.error = error;
@@ -315,7 +315,7 @@ migrate argv processing to commander
       var name = local2._name.split('.'),
         exports = EXPORTS.required[name[0]] = EXPORTS.required[name[0]] || {};
       /* nodejs middleware routes */
-      if (!EXPORTS.isBrowser) {
+      if (EXPORTS.isNodejs) {
         local2._routesDict = required.utility2_routesDict = required.utility2_routesDict || {};
       }
       Object.keys(local2).forEach(function (key) {
@@ -435,7 +435,7 @@ migrate argv processing to commander
 
     testLocal: function (module, local2) {
       /* browser-side testing */
-      if (EXPORTS.isBrowser && !EXPORTS.isBrowserTest) {
+      if (EXPORTS.isPhantomjs || (EXPORTS.isBrowser && !EXPORTS.isBrowserTest)) {
         return;
       }
       var environment, _onEventTest, remaining = 0, testSuite;
@@ -550,7 +550,7 @@ migrate argv processing to commander
             coverage: global.__coverage__,
             testSuites: required.utility2_testSuites
           }),
-          url: '/test.report.upload'
+          url: '/test/report/upload'
         });
         /* reset code coverage */
         if (global.__coverage__) {
@@ -921,7 +921,7 @@ migrate argv processing to commander
       /* reload page if server code is modified */
       if (EXPORTS.isBrowserTest === 'watch') {
         setInterval(function () {
-          $.ajax({ url: '/test.timestamp' }).done(function (timestamp) {
+          $.ajax({ url: '/test/timestamp' }).done(function (timestamp) {
             /* if timestamp is greater than current saved timestamp, then reload */
             if (timestamp > (local._timestamp = local._timestamp || timestamp)) {
               location.reload();
@@ -1220,7 +1220,8 @@ migrate argv processing to commander
       };
       /* argv */
       // debug
-      required.utility2_testPhantomjsFlag = true;
+      required.utility2_phantomjsPort
+        = parseInt('f' + Math.random().toString(16).slice(-3), 16);
       process.argv.forEach(function (arg, ii) {
         switch (arg) {
         case '--server-port':
@@ -1234,8 +1235,6 @@ migrate argv processing to commander
           EXPORTS.serverPort = parseInt('f' + Math.random().toString(16).slice(-3), 16);
           /* set test timeout */
           setTimeout(process.exit, Number(process.argv[ii + 1]) || EXPORTS.timeoutDefault);
-          /* enable phantomjs testing */
-          required.utility2_testPhantomjsFlag = true;
           break;
         }
       });
@@ -1285,25 +1284,37 @@ migrate argv processing to commander
         if (options.onEventResponse && options.onEventResponse(response)) {
           return;
         }
-        /* http redirect */
-        switch (response.statusCode) {
-        case 300:
-        case 301:
-        case 302:
-        case 303:
-        case 307:
-          options.redirected = options.redirected || 0;
-          options.redirected += 1;
-          if (options.redirected >= 8) {
-            onEventError(new Error('too many http redirects - '
-              + response.headers.location));
+        EXPORTS.streamReadOnEventError(response, function (error, data) {
+          if (error) {
+            onEventError(error);
             return;
           }
-          options.url = response.headers.location;
-          EXPORTS.ajaxNodejs(options, onEventError);
-          return;
-        }
-        EXPORTS.streamReadOnEventError(response, function (error, data) {
+          /* http redirect */
+          switch (response.statusCode) {
+          case 300:
+          case 301:
+          case 302:
+          case 303:
+          case 307:
+          case 308:
+            options.redirected = options.redirected || 0;
+            options.redirected += 1;
+            if (options.redirected >= 8) {
+              onEventError(new Error('too many http redirects - '
+                + response.headers.location));
+              return;
+            }
+            options.url = response.headers.location;
+            if (response.statusCode === 303) {
+              options.data = null;
+              options.method = 'GET';
+            }
+            EXPORTS.ajaxNodejs(options, onEventError);
+            return;
+          case 500:
+            onEventError(new Error(data.toString() || response.statusCode));
+            return;
+          }
           switch (options.dataType) {
           /* try to JSON.parse the response */
           case 'binary':
@@ -1538,18 +1549,6 @@ migrate argv processing to commander
       /* main module */
       if (require.main !== module) {
         return;
-      }
-      /* start server */
-      if (local2._serverPort) {
-        EXPORTS.serverPort = EXPORTS.serverPort || local2._serverPort;
-        EXPORTS.server = EXPORTS.server || required.http.createServer(function (request,
-          response) {
-          required.utility2_middleware(request, response,
-            EXPORTS.middlewareOnEventErrorDefault);
-        }).on('error', EXPORTS.onEventErrorDefault).listen(EXPORTS.serverPort, function () {
-          console.log('server started on port ' + EXPORTS.serverPort);
-          EXPORTS.serverReady.ready();
-        });
       }
     },
 
@@ -2194,42 +2193,53 @@ migrate argv processing to commander
     },
 
     middlewareOnEventErrorDefault: function (error, request, response) {
-      EXPORTS.serverRespondDefault0(request, response, error ? 500 : 404, error);
+      EXPORTS.serverRespondDefault(response, error ? 500 : 404, 'text/plain', error);
     },
 
-    '_routesDict_/assets.rollup2.css': function (request, response, next) {
-      local._serverRespondAssets(request, response, next);
+    '_routesDict_/assets/rollup.css': function (request, response, next) {
+      EXPORTS.serverRespondFile(response, next,
+        required.utility2.dir + '/assets.rollup.css');
     },
 
-    '_routesDict_/assets.rollup2.js': function (request, response, next) {
-      local._serverRespondAssets(request, response, next);
-    },
-
-    '_routesDict_/assets.test.utility2.html': function (request, response) {
-      response.setHeader('content-type', 'text/html');
-      response.end(local._serverTestHtml);
+    '_routesDict_/assets/rollup.js': function (request, response, next) {
+      EXPORTS.serverRespondFile(response, next,
+        required.utility2.dir + '/assets.rollup.js');
     },
 
     '_routesDict_/assets/utility2.js': function (request, response) {
-      response.setHeader('content-type', 'application/javascript');
-      response.end(required.utility2._fileContentBrowser);
+      EXPORTS.serverRespondDefault(response, 200, 'application/javascript',
+        required.utility2._fileContentBrowser);
     },
 
-    '_routesDict_/test.report.upload': function (request, response, next) {
+    '_routesDict_/test/echo': function (request, response) {
+      /*
+        this convenience function echoes the request back to the response
+      */
+      var headers, name;
+      response.writeHead(200, { 'content-type': 'text/plain' });
+      response.write(request.method + ' ' + request.url + ' http/' + request.httpVersion
+        + '\n');
+      headers = request.headers;
+      for (name in headers) {
+        if (headers.hasOwnProperty(name)) {
+          response.write(name + ': ' + JSON.stringify(headers[name]) + '\n');
+        }
+      }
+      response.write('\n');
+      /* optimization - stream data */
+      request.pipe(response);
+    },
+
+    '_routesDict_/test/test.html': function (request, response) {
+      EXPORTS.serverRespondDefault(response, 200, 'text/html', local._testHtml);
+    },
+
+    '_routesDict_/test/report/upload': function (request, response, next) {
       local._serverRespondTestReportUpload(request, response, next);
     },
 
-    '_routesDict_/test.echo': function (request, response) {
-      EXPORTS.serverRespondEcho(request, response);
-    },
-
-    '_routesDict_/test.timestamp': function (request, response) {
+    '_routesDict_/test/timestamp': function (request, response) {
       response.end(EXPORTS.timestamp);
-    },
-
-    _serverRespondAssets: function (request, response, next) {
-      required.fs.createReadStream(required.utility2.dir + request.urlPathNormalized)
-        .on('error', next).pipe(response);
     },
 
     coverageReport: function (coverage) {
@@ -2284,24 +2294,6 @@ migrate argv processing to commander
       });
     },
 
-    serverRespondDefault0: function (request, response, statusCode, message) {
-      /*
-        this convenience function give an appropriate response for a given status code
-      */
-      if (!response._header) {
-        response.writeHead(statusCode, { 'content-type': 'text/plain' });
-      }
-      message = message || statusCode + ' '
-        + (required.http.STATUS_CODES[statusCode] || 'Unknown Status Code');
-      switch (String(statusCode)) {
-      /* error */
-      case '500':
-        console.error(message = message.stack || message);
-        break;
-      }
-      response.end(String(message));
-    },
-
     serverRespondDefault: function (response, statusCode, contentType, data) {
       /*
         this convenience function give an appropriate response for a given status code
@@ -2311,7 +2303,7 @@ migrate argv processing to commander
       }
       data = data || statusCode + ' '
         + (required.http.STATUS_CODES[statusCode] || 'Unknown Status Code');
-      switch (String(statusCode)) {
+      switch (statusCode.toString()) {
       /* error */
       case '500':
         console.error(data = data.stack || data);
@@ -2320,23 +2312,11 @@ migrate argv processing to commander
       response.end(data);
     },
 
-    serverRespondEcho: function (request, response) {
-      /*
-        this convenience function echoes the request back to the response
-      */
-      var headers, name;
-      response.writeHead(200, { 'content-type': 'text/plain' });
-      response.write(request.method + ' ' + request.url + ' http/' + request.httpVersion
-        + '\n');
-      headers = request.headers;
-      for (name in headers) {
-        if (headers.hasOwnProperty(name)) {
-          response.write(name + ': ' + JSON.stringify(headers[name]) + '\n');
-        }
-      }
-      response.write('\n');
-      /* optimization - stream data */
-      request.pipe(response);
+    serverRespondFile: function (response, next, file) {
+      response.setHeader('content-type', required.mime.lookup(file));
+      required.fs.createReadStream(file).on('error', function () {
+        next();
+      }).pipe(response);
     },
 
     serverRespondOnEventProgress: function (response) {
@@ -2351,9 +2331,24 @@ migrate argv processing to commander
 
     _serverRespondOnEventProgressPadding: new Array(1024).join(' '),
 
-    _serverTestHtml: '<!DOCTYPE html><html><head>\n'
+    serverStart: function () {
+      if (!EXPORTS.serverPort) {
+        return;
+      }
+      EXPORTS.server = EXPORTS.server || required.express()
+        .use(required.express.logger('dev'))
+        .use(EXPORTS.adminMiddleware)
+        .use(required.utility2_middleware)
+        .on('error', EXPORTS.onEventErrorDefault)
+        .listen(EXPORTS.serverPort, function () {
+          console.log('server started on port ' + EXPORTS.serverPort);
+          EXPORTS.serverReady.ready();
+        });
+    },
+
+    _testHtml: '<!DOCTYPE html><html><head>\n'
       + [
-        '/assets.rollup2.css'
+        '/assets/rollup.css'
       ].map(function (url) {
         return '<link href="' + url + '" rel="stylesheet" />\n';
       }).join('')
@@ -2362,7 +2357,7 @@ migrate argv processing to commander
       + '</style></head><body>\n'
 
       + [
-        '/assets.rollup2.js',
+        '/assets/rollup.js',
         '/assets/utility2.js',
       ].map(function (url) {
         return '<script src="' + url + '"></script>\n';
@@ -2393,6 +2388,8 @@ migrate argv processing to commander
       }
       /* init module */
       EXPORTS.moduleInit(module, local);
+      /* jslint */
+      EXPORTS.jsLint('admin.html', local._adminHtml);
     },
 
     _initOnce: function () {
@@ -2403,8 +2400,8 @@ migrate argv processing to commander
       });
     },
 
-    _adminHtml: EXPORTS.jsLint('admin.html', '<!DOCTYPE html><html><body>\n'
-      + '<script src="/assets.rollup2.js"></script>\n'
+    _adminHtml: '<!DOCTYPE html><html><body>\n'
+      + '<script src="/assets/rollup.js"></script>\n'
       + '<script src="/assets/utility2.js"></script>\n'
       + '<script>\n'
       + '/*jslint browser: true, indent: 2*/\n'
@@ -2416,8 +2413,7 @@ migrate argv processing to commander
       + '  window.EXPORTS.ajaxLocal({ data: script, url: "/admin/shell" }, onEventError);\n'
       + '};\n'
       + '</script>\n'
-      + '</body></html>'
-      ),
+      + '</body></html>',
 
     _ajaxAdminDebug: function (script, onEventError) {
       EXPORTS.ajaxLocal({ data: script, url: '/admin/debug' }, onEventError);
@@ -2502,7 +2498,7 @@ migrate argv processing to commander
     _name: 'utility2.modulePhantomjsShared',
 
     _init: function () {
-      if (!EXPORTS.isNodejs || !EXPORTS.isPhantomjs) {
+      if (!(EXPORTS.isNodejs || EXPORTS.isPhantomjs)) {
         return;
       }
       /* init module */
@@ -2510,48 +2506,63 @@ migrate argv processing to commander
     },
 
     _initOnce: function () {
-      /* phantomjs */
-      if (!EXPORTS.isPhantomjs) {
-        return;
+      /* nodejs */
+      if (EXPORTS.isNodejs) {
+        EXPORTS.serverReady.onEventReady(function () {
+          /* spawn phantomjs process */
+          if (required.utility2_phantomjsPort) {
+            EXPORTS.shell('phantomjs ' + required.utility2.file + ' '
+              + EXPORTS.serverPort + ' ' + required.utility2_phantomjsPort);
+          }
+        });
+       /* phantomjs */
+      } else if (EXPORTS.isPhantomjs) {
+        /* require */
+        required.webpage = require('webpage');
+        required.webserver = require('webserver');
+        required.system = require('system');
+        /* phantomjs server */
+        required.webserver.create().listen(required.system.args[2], function (request,
+          response) {
+          response.write('200');
+          response.close();
+          try {
+            var page = required.webpage.create(), url = request.post;
+            page.onConsoleMessage = console.log;
+            page.open(url, function (status) {
+              console.log('phantomjs open -', status, '-', url);
+            });
+            /* page timeout */
+            setTimeout(function () {
+              page.close();
+            }, EXPORTS.timeoutDefault);
+          } catch (error) {
+            EXPORTS.onEventErrorDefault(error);
+          }
+        });
+        console.log('phantomjs server started on port ' + required.system.args[1]);
       }
-      /* set timeout */
-      setTimeout(global.phantom.exit, EXPORTS.timeoutDefault);
-      /* require */
-      required.webpage = require('webpage');
-      required.system = require('system');
-      var page = required.webpage.create(), url = required.system.args[1];
-      page.onConsoleMessage = console.log;
-      page.open(url, function (status) {
-        console.log('phantomjs open -', status, '-', url);
-      });
     },
 
     phantomjsTest: function (url, onEventError) {
-      if (!required.utility2_testPhantomjsFlag) {
-        onEventError();
-        return;
+      if (url.slice(0, 4) !== 'http') {
+        url = 'http://localhost:' + EXPORTS.serverPort + url;
       }
-      EXPORTS.serverReady.onEventReady(function () {
-        try {
-          if (url.slice(0, 4) !== 'http') {
-            url = 'http://localhost:' + (EXPORTS.serverPort || 80) + url;
-          }
-          url = JSON.stringify(EXPORTS.urlSearchSetItem(url, 'testOnce', '1', '#'));
-          /* spawn phantomjs process */
-          EXPORTS.shell('phantomjs ' + required.utility2.file + ' ' + url);
-          onEventError();
-        } catch (error) {
-          onEventError(error);
-        }
-      });
+      url = EXPORTS.urlSearchSetItem(url, 'testOnce', '1', '#');
+      EXPORTS.ajaxNodejs({
+        data: url,
+        headers: { 'Content-Length': Buffer.byteLength(url) },
+        method: 'POST',
+        url: 'http://localhost:' + required.utility2_phantomjsPort
+      }, onEventError);
     },
 
     _test_phantomjsTest: function (onEventError) {
-      if (!required.utility2_testPhantomjsFlag) {
+      if (!required.utility2_phantomjsPort) {
         onEventError('skip');
         return;
       }
-      EXPORTS.phantomjsTest("/assets.test.utility2.html", onEventError);
+      EXPORTS.phantomjsTest("/test/test.html", onEventError);
     },
 
   };
