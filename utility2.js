@@ -7,6 +7,13 @@ https://git.corp.yahoo.com/gist/2230
 todo:
 add password protection for admin module
 migrate argv processing to commander
+db add webui
+db auto-heal incorrectly indexed b-trees
+db limit record to 256 fields
+add db tableGet
+add db tableScanAndGet
+create db http interface
+add db indexing
 */
 
 
@@ -2527,6 +2534,1015 @@ migrate argv processing to commander
 
 
 
+(function moduleDbShared() {
+  /*
+    this shared module exports key / value data store
+  */
+  'use strict';
+  var EXPORTS = global.EXPORTS = global.EXPORTS || {},
+    local;
+  local = {
+
+    _name: 'utility2.moduleDbShared',
+
+    _init: function () {
+      /* init module */
+      EXPORTS.moduleInit(module, local);
+    },
+
+    _Db: function () {
+    },
+
+    _Db_prototype_ajax: function (options, onEventError) {
+      var data = options.data;
+      options.data = null;
+      options.table = this.name;
+      EXPORTS.ajaxLocal({ data: data, params: options, url: '/db.ajax' }, onEventError);
+    },
+
+    _Db_prototype_fieldDelete: function (record, field, onEventError) {
+      this.ajax({ action: 'fieldDelete', field: field, record: record }, onEventError);
+    },
+
+    _Db_prototype_fieldGet: function (record, field, onEventError) {
+      this.ajax({ action: 'fieldGet', field: field, record: record }, onEventError);
+    },
+
+    _Db_prototype_fileDownload: function (file, onEventError) {
+      this.ajax({ action: 'fileDownload', record: file }, onEventError);
+    },
+
+    _Db_prototype_fileUpload: function (file, data, onEventError) {
+      this.ajax({ action: 'fileUpload', data: data, record: file }, onEventError);
+    },
+
+    _Db_prototype_recordDelete: function (record, onEventError) {
+      this.ajax({ action: 'recordDelete', record: record }, onEventError);
+    },
+
+    _Db_prototype_recordDeleteAndUpdate: function (record, data, onEventError) {
+      this.ajax({ action: 'recordDeleteAndUpdate', data: data, record: record },
+        onEventError);
+    },
+
+    _Db_prototype_recordGet: function (record, onEventError) {
+      this.ajax({ action: 'recordGet', record: record }, onEventError);
+    },
+
+    _Db_prototype_recordUpdate: function (record, data, onEventError) {
+      this.ajax({ action: 'recordUpdate', data: data, record: record }, onEventError);
+    },
+
+    _Db_prototype_recordsDelete: function (records, onEventError) {
+      this.ajax({ action: 'recordsDelete', data: records }, onEventError);
+    },
+
+    _Db_prototype_recordsDeleteAndUpdate: function (records, onEventError) {
+      this.ajax({ action: 'recordsDeleteAndUpdate', data: records }, onEventError);
+    },
+
+    _Db_prototype_recordsGet: function (records, onEventError) {
+      this.ajax({ action: 'recordsGet', data: records }, onEventError);
+    },
+
+    _Db_prototype_recordsUpdate: function (data, onEventError) {
+      this.ajax({ action: 'recordsUpdate', data: data }, onEventError);
+    },
+
+    _Db_prototype_tableDelete: function (onEventError) {
+      this.ajax({ action: 'tableDelete' }, onEventError);
+    },
+
+    _Db_prototype_tableDeleteAndUpdate: function (data, onEventError) {
+      this.ajax({ action: 'tableDeleteAndUpdate', data: data }, onEventError);
+    },
+
+    _Db_prototype_tableGet: function (onEventError) {
+      this.ajax({ action: 'tableGet' }, onEventError);
+    },
+
+    _Db_prototype_tableScanBackward: function (record, limit, onEventError) {
+      this.ajax({ action: 'tableScanBackward', record: record, limit: limit },
+        onEventError);
+    },
+
+    _Db_prototype_tableScanForward: function (record, limit, onEventError) {
+      this.ajax({ action: 'tableScanForward', record: record, limit: limit },
+        onEventError);
+    },
+
+    _Db_prototype_tableUpdate: function (data, onEventError) {
+      this.ajax({ action: 'tableUpdate', data: data }, onEventError);
+    },
+
+    _Db_prototype_tableUpdateOptions: function (options, onEventError) {
+      this.ajax({ action: 'tableUpdateOptions', data: JSON.stringify(options) },
+        onEventError);
+    },
+
+    _Db_prototype_tableUpdateRandom: function (limit, onEventError) {
+      var data = {}, ii, jj, record;
+      for (ii = 0; ii < limit; ii += 1) {
+        data['record:' + Math.random().toString(36).slice(2)] = record = {};
+        for (jj = 0; jj < 2; jj += 1) {
+          record['field:' + Math.random().toString(36).slice(2)] = Math.random();
+        }
+      }
+      this.tableUpdate(JSON.stringify(data), onEventError);
+    },
+
+    dbCreate: function (name) {
+      var self = new local._Db();
+      self.name = name;
+      if (EXPORTS.dbTable) {
+        self.table = EXPORTS.dbTable(name);
+      }
+      return self;
+    },
+
+  };
+  local._init();
+}(global));
+
+
+
+(function moduleDbNodejs() {
+  /*
+    this nodejs module implements an asynchronous, b-tree, records / fields data store
+  */
+  'use strict';
+  var EXPORTS = global.EXPORTS = global.EXPORTS || {},
+    required = EXPORTS.required = EXPORTS.required || {},
+    local;
+  local = {
+
+    _name: 'utility2.moduleDbNodejs',
+
+    _init: function () {
+      if (EXPORTS.isBrowser) {
+        return;
+      }
+      /* init module */
+      EXPORTS.moduleInit(module, local);
+      /* exports */
+      EXPORTS.dbDir = EXPORTS.dbDir || EXPORTS.tmpDir + '/db/tables';
+      EXPORTS.dbTables = EXPORTS.dbTables || {};
+      /* read all current databases */
+      required.fs.readdir(EXPORTS.dbDir, function (error, files) {
+        (files || []).forEach(EXPORTS.dbTable);
+      });
+      local._dirMaxDepth = 4;
+
+
+
+      /* test */
+      /* debug */
+      if (!EXPORTS.nop()) {
+        return;
+      }
+      EXPORTS.debug = 0;
+      global.local = local;
+      /* debug */
+      EXPORTS.dbTableTest = EXPORTS.dbCreate('test');
+      EXPORTS.dbTableTest.table.dirMaxFiles = 4;
+      var dbTableTest = global.dbTableTest = EXPORTS.dbTableTest;
+      if (EXPORTS.nop()) {
+        return;
+      }
+      setTimeout(function () {
+        EXPORTS.ioChain([
+          function (data, onEventError) {
+            dbTableTest.tableDelete(onEventError);
+          },
+          function (data, onEventError) {
+            dbTableTest.tableUpdateRandom(8, onEventError);
+          },
+          function (data, onEventError) {
+            dbTableTest.tableScanForward('record:i', 0, onEventError);
+          },
+          function (data) {
+            console.log(data);
+            dbTableTest.tableScanBackward('record:i', 0);
+          },
+        ]);
+      }, 100);
+    },
+
+    dbTable: function (name) {
+      /*
+        this function creates a database with the given name
+      */
+      return (EXPORTS.dbTables[name] = EXPORTS.dbTables[name] || {
+        dir: EXPORTS.dbDir + '/' + encodeURIComponent(name),
+        /*
+          the default dirMaxFiles allows a table to reasonably handle one quadrillion records,
+          assuming adequate disk space
+        */
+        dirMaxFiles: 1024,
+        marked: {},
+        name: name,
+        actionLock: 0,
+        actionQueue: [],
+      });
+    },
+
+    _dbAction: function (self, options, onEventError) {
+      /* validate action */
+      if (!local._dbActionDict[options.action]) {
+        onEventError(new Error('unknown action ' + [options.action]));
+        return;
+      }
+      switch ((/[a-z]+/).exec(options.action)[0]) {
+      /* validate field */
+      case 'field':
+        if (!options.field) {
+          onEventError(new Error('invalid field'));
+          return;
+        }
+        break;
+      /* validate record */
+      case 'record':
+        if (!options.record) {
+          onEventError(new Error('invalid record'));
+          return;
+        }
+        break;
+      }
+      /* empty options.json */
+      switch (options.action) {
+      case 'recordUpdate':
+      case 'recordsDelete':
+      case 'tableUpdate':
+      case 'tableUpdateOptions':
+        if (EXPORTS.dictIsEmpty(options.json)) {
+          onEventError();
+          return;
+        }
+        break;
+      case 'recordsGet':
+        if (EXPORTS.dictIsEmpty(options.json)) {
+          options.onEventData('{}');
+          onEventError();
+          return;
+        }
+        break;
+      }
+      /* perform io */
+      options.parents = [{ dir: self.dir }];
+      self.actionLock += 1;
+      var mode, _onEventError = function (error) {
+        if (self.actionLock > 0) {
+          self.actionLock -= 1;
+        }
+        onEventError(error);
+      };
+      switch (options.action) {
+      case 'recordsGet':
+      case 'tableDelete':
+      case 'tableScanBackward':
+      case 'tableScanBackwardAndGet':
+      case 'tableUpdate':
+      case 'tableUpdateOptions':
+        local._dbActionDict[options.action](self, options, _onEventError);
+        return;
+      case 'tableScanForward':
+      case 'tableScanForwardAndGet':
+        if (options.mode === 'backward' && !options.record) {
+          mode = 'backward';
+        }
+        break;
+      }
+      /* optimization - cached directory */
+      if (options.dir) {
+        local._dbActionDict[options.action](self, options, _onEventError);
+        return;
+      }
+      local._dirWithRecord(self, options, mode, function (error) {
+        if (error) {
+          _onEventError(error);
+          return;
+        }
+        options.dir = options.parents[0].dir + '/' + encodeURIComponent(options.record);
+        local._dbActionDict[options.action](self, options, _onEventError);
+      });
+
+    },
+
+    _dbActionDict: {},
+
+    _dbActionDict_fieldDelete: function (self, options, onEventError) {
+      EXPORTS.fsRmrAtomic(options.dir + '/' + encodeURIComponent(options.field), onEventError);
+    },
+
+    _dbActionDict_fieldGet: function (self, options, onEventError) {
+      var file = options.dir + '/' + encodeURIComponent(options.field);
+      required.fs.readFile(file, function (error, data) {
+        if (error) {
+          if (error.code === 'ENOENT') {
+            onEventError();
+            return;
+          }
+          onEventError(error);
+          return;
+        }
+        if (EXPORTS.isError(EXPORTS.jsonParseOrError(data))) {
+          local._onEventErrorCorruptFile(file, onEventError);
+          return;
+        }
+        options.onEventData(data);
+        onEventError(null);
+      });
+    },
+
+    _dbActionDict_fileDownload: function (self, options, onEventError) {
+      required.fs.createReadStream(options.dir + '/file').on('data', options.onEventData)
+        .on('end', onEventError).on('error', onEventError);
+    },
+
+    _dbActionDict_fileUpload: function (self, options, onEventError) {
+      EXPORTS.fsRename(options.tmp, options.dir + '/file', onEventError);
+    },
+
+    _dbActionDict_recordDelete: function (self, options, onEventError) {
+      EXPORTS.fsRmrAtomic(options.dir, local._dbOnEventError2(self, options, onEventError));
+    },
+
+    _dbActionDict_recordDeleteAndUpdate: function (self, options, onEventError) {
+      options.action = 'recordDelete';
+      options.action2 = 'recordUpdate';
+      local._dbAction(self, options, onEventError);
+    },
+
+    _dbActionDict_recordGet: function (self, options, onEventError) {
+      required.fs.readdir(options.dir, function (error, files) {
+        if (error) {
+          if (error.code === 'ENOENT') {
+            options.onEventData('{}');
+            onEventError();
+            return;
+          }
+          onEventError(error);
+          return;
+        }
+        /* empty record */
+        if (!files.length) {
+          onEventError();
+          return;
+        }
+        options.onEventData('{');
+        var remaining = 0;
+        files.forEach(function (file) {
+          var chunks = '', field = EXPORTS.urlDecodeOrError(file);
+          if (EXPORTS.isError(field)) {
+            local._onEventErrorCorruptFile(options.dir + '/' + file, onEventError);
+            return;
+          }
+          remaining += 1;
+          local._dbAction(self, {
+            action: 'fieldGet',
+            dir: options.dir,
+            field: field,
+            onEventData: function (chunk) {
+              chunks += chunk;
+            },
+            record: options.record,
+          }, function (error) {
+            if (remaining < 0) {
+              return;
+            }
+            if (error) {
+              remaining = -1;
+              onEventError(error);
+              return;
+            }
+            remaining -= 1;
+            var timestamp = 'null';
+            if (chunks) {
+              if (field === 'timestamp') {
+                timestamp = chunks;
+              } else {
+                options.onEventData(JSON.stringify(field) + ':' + chunks + ',');
+              }
+            }
+            if (!remaining) {
+              remaining = -1;
+              options.onEventData('"timestamp":' + timestamp + '}');
+              onEventError();
+            }
+          });
+        });
+      });
+    },
+
+    _dbActionDict_recordUpdate: function (self, options, onEventError) {
+      var _onEventError, remaining = 0;
+      _onEventError = function (error) {
+        if (remaining < 0) {
+          return;
+        }
+        if (error) {
+          remaining = -1;
+          onEventError(error);
+          return;
+        }
+        remaining -= 1;
+        if (!remaining) {
+          remaining = -1;
+          onEventError();
+        }
+      };
+      local._dirTimestamp(options.dir, function (error) {
+        if (error) {
+          onEventError(error);
+          return;
+        }
+        Object.keys(options.json).forEach(function (field) {
+          if (field === 'timestamp') {
+            return;
+          }
+          remaining += 1;
+          EXPORTS.fsWriteFileAtomic(options.dir + '/' + encodeURIComponent(field),
+            JSON.stringify(options.json[field]), {}, _onEventError);
+        });
+      });
+    },
+
+    _dbActionDict_recordsDelete: function (self, options, onEventError) {
+      var _onEventError, remaining = 0;
+      _onEventError = function (error) {
+        if (remaining < 0) {
+          return;
+        }
+        if (error) {
+          remaining = -1;
+          onEventError(error);
+          return;
+        }
+        remaining -= 1;
+        if (!remaining) {
+          remaining = -1;
+          onEventError();
+        }
+      };
+      Object.keys(options.json).forEach(function (record) {
+        remaining += 1;
+        local._dbAction(self, {
+          action: 'recordDelete',
+          action2: options.action2,
+          json: options.json[record],
+          record: record
+        }, _onEventError);
+      });
+    },
+
+    _dbActionDict_recordsDeleteAndUpdate: function (self, options, onEventError) {
+      options.action = 'recordsDelete';
+      options.action2 = 'recordsUpdate';
+      local._dbAction(self, options, onEventError);
+    },
+
+    _dbActionDict_recordsGet: function (self, options, onEventError) {
+      var remaining = 0;
+      options.onEventData('{');
+      Object.keys(options.json).forEach(function (record) {
+        remaining += 1;
+        var chunks = '';
+        local._dbAction(self, {
+          action: 'recordGet',
+          record: record,
+          onEventData: function (chunk) {
+            chunks += chunk;
+          }
+        }, function (error) {
+          if (remaining < 0) {
+            return;
+          }
+          if (error) {
+            remaining = -1;
+            onEventError(error);
+            return;
+          }
+          remaining -= 1;
+          options.onEventData(JSON.stringify(record) + ':' + chunks);
+          if (remaining > 0) {
+            options.onEventData(',');
+            return;
+          }
+          options.onEventData('}');
+          onEventError();
+        });
+      });
+    },
+
+    _dbActionDict_recordsUpdate: function (self, options, onEventError) {
+      options.action = 'recordsUpdate';
+      local._dbAction(self, options, onEventError);
+    },
+
+    _dbActionDict_tableDelete: function (self, options, onEventError) {
+      EXPORTS.fsRmrAtomic(self.dir, local._dbOnEventError2(self, options, onEventError));
+    },
+
+    _dbActionDict_tableDeleteAndUpdate: function (self, options, onEventError) {
+      options.action = 'tableDelete';
+      options.action2 = 'tableUpdate';
+      local._dbAction(self, options, onEventError);
+    },
+
+    _dbActionDict_tableScanBackward: function (self, options, onEventError) {
+      options.action = 'tableScanForward';
+      options.mode = 'backward';
+      local._dbAction(self, options, onEventError);
+    },
+
+    _dbActionDict_tableScanForward: function (self, options, onEventError) {
+      var _onEventError,
+        record = encodeURIComponent(options.record),
+        remaining = Math.min(Number(options.limit) || 256, 256),
+        written;
+      _onEventError = function (error) {
+        if (remaining < 0) {
+          return;
+        }
+        if (error) {
+          remaining = -1;
+          onEventError(error);
+          return;
+        }
+        if (!options.parents.length) {
+          remaining = -1;
+          options.onEventData('}');
+          onEventError();
+          return;
+        }
+        var parent = options.parents.shift(), ii = parent.ii, field, files = parent.files;
+        /* backward */
+        if (options.mode === 'backward') {
+          if (record && files[ii] > record) {
+            ii -= 1;
+          }
+          files = files.slice(0, ii + 1).reverse();
+        /* forward */
+        } else {
+          if (files[ii] < record) {
+            ii += 1;
+          }
+          files = files.slice(ii);
+        }
+        if (files.length > remaining) {
+          files = files.slice(0, remaining);
+          remaining = 0;
+        } else {
+          remaining -= files.length;
+        }
+        for (ii = 0; ii < files.length; ii += 1) {
+          field = EXPORTS.urlDecodeOrError(files[ii]);
+          if (EXPORTS.isError(field)) {
+            local._onEventErrorCorruptFile(options.dir + '/' + files[ii], onEventError);
+            return;
+          }
+          if (written) {
+            options.onEventData(',');
+          }
+          written = true;
+          options.onEventData(JSON.stringify(field) + ':null');
+        }
+        if (!remaining) {
+          remaining = -1;
+          options.onEventData('}');
+          onEventError();
+          return;
+        }
+        local._dirNext(self, options, options.mode, _onEventError);
+      };
+      options.onEventData('{');
+      _onEventError();
+    },
+
+    _dbActionDict_tableUpdate: function (self, options, onEventError) {
+      var _onEventError, remaining = 0;
+      _onEventError = function (error) {
+        if (remaining < 0) {
+          return;
+        }
+        if (error) {
+          remaining = -1;
+          onEventError(error);
+          return;
+        }
+        remaining -= 1;
+        if (!remaining) {
+          remaining = -1;
+          onEventError();
+        }
+      };
+      Object.keys(options.json).forEach(function (record) {
+        remaining += 1;
+        local._dbAction(self, {
+          action: 'recordUpdate',
+          json: options.json[record],
+          record: record
+        }, _onEventError);
+      });
+    },
+
+    _dbActionDict_tableUpdateOptions: function (self, options, onEventError) {
+      Object.keys(options.json).forEach(function (key) {
+        self[key] = options.json[key];
+      });
+      onEventError();
+    },
+
+    _dbActionQueue: function (self, options, onEventError) {
+      /*
+        this function pushes action to a queue, where it's deferred if db is re-balancing
+      */
+      self.actionQueue.push(function (error) {
+        if (error) {
+          onEventError(error);
+          return;
+        }
+        local._dbAction(self, options, onEventError);
+      });
+      /* execute queued actions if db is not re-balancing */
+      if (!self.rebalanceDepth) {
+        while (self.actionQueue.length) {
+          self.actionQueue.shift()();
+        }
+      }
+    },
+
+    _dbOnEventError2: function (self, options, onEventError) {
+      if (!options.action2) {
+        return onEventError;
+      }
+      return function (error) {
+        if (error) {
+          onEventError(error);
+          return;
+        }
+        options.action = options.action2;
+        options.action2 = null;
+        local._dbAction(self, options, onEventError);
+      };
+    },
+
+    _dirNext: function (self, options, mode, onEventError) {
+      var parent = options.parents[0];
+      if ((mode === 'backward' && (parent.ii -= 1) >= 0)
+          || (mode !== 'backward' && (parent.ii += 1) < parent.files.length)) {
+        options.parents.unshift({ dir: parent.dir + '/' + parent.files[parent.ii] });
+        local._dirWithRecord(self, options, mode, onEventError);
+        return;
+      }
+      options.parents.pop();
+      if (!options.parents.length) {
+        onEventError();
+        return;
+      }
+      /* recurse */
+      local._dirNext(self, options, mode, onEventError);
+    },
+
+    _dirWithRecord: function (self, options, mode, onEventError) {
+      /*
+        this function looks up the directory where the record would exist
+      */
+      var _onEventError,
+        parents = options.parents,
+        record = encodeURIComponent(options.record);
+      _onEventError = function (error, files) {
+        if (error) {
+          onEventError(error);
+          return;
+        }
+        var ii;
+        files.sort();
+        if (mode === 'backward') {
+          ii = files.length - 1;
+        } else {
+          for (ii = 0; ii < files.length; ii += 1) {
+            if (files[ii] > record) {
+              break;
+            }
+          }
+          if (ii > 0) {
+            ii -= 1;
+          }
+        }
+        parents[0].files = files;
+        parents[0].ii = ii;
+        if (parents.length > local._dirMaxDepth) {
+          onEventError();
+          return;
+        }
+        /* recurse */
+        parents.unshift({ dir: parents[0].dir + '/' + files[ii] });
+        local._dirRead(self, parents[0].dir, _onEventError);
+      };
+      local._dirRead(self, parents[0].dir, _onEventError);
+    },
+
+    _dirDepth: function (dir) {
+      /*
+        this function returns a database directory's depth
+      */
+      return dir.slice(EXPORTS.dbDir.length).split('/').length - 2;
+    },
+
+    _dirRead: function (self, dir, onEventError) {
+      /*
+        this function reads a directory and marks it if it's too big or too small
+      */
+      required.fs.readdir(dir, function (error, files) {
+        if (error) {
+          /* fallback - retry after creating missing directory */
+          if (error.code === 'ENOENT' && dir === self.dir) {
+            EXPORTS.fsMkdirp(dir + '/!/!/!/!', function (error) {
+              if (error) {
+                onEventError(error);
+                return;
+              }
+              /* retry */
+              local._dirRead(self, dir, onEventError);
+            });
+            return;
+          }
+          onEventError(error);
+          return;
+        }
+        if (dir === self.dir) {
+          onEventError(null, files);
+          return;
+        }
+        var dict = self.marked;
+        /* mark directory for splitting if too big */
+        if (files.length > self.dirMaxFiles) {
+          dict[dir] = self.rebalanceDepth = local._dirMaxDepth;
+        /* mark directory for merging if too small */
+        } else if (4 * files.length < self.dirMaxFiles && dir.slice(-2) !== '/!') {
+          dict[dir] = self.rebalanceDepth = local._dirMaxDepth;
+        /* unmark stale directory */
+        } else if (dict[dir]) {
+          dict[dir] = null;
+        }
+        onEventError(null, files);
+      });
+    },
+
+    _dirRebalance: function (self) {
+      /*
+        this function re-balances sub-directories to have a certain range of files
+      */
+      var remaining = 0, _onEventError = function (error) {
+        if (remaining < 0) {
+          return;
+        }
+        if (error || !self.rebalanceDepth) {
+          remaining = -1;
+          /* reset rebalance flag */
+          self.rebalanceDepth = 0;
+          self.marked = {};
+          /* unpause queued actions */
+          while (self.actionQueue.length) {
+            self.actionQueue.shift()(error);
+          }
+          return;
+        }
+        if (!self.rebalanceDepthRepeat) {
+          self.rebalanceDepth -= 1;
+        }
+        /* recurse */
+        local._dirRebalanceDepth(self, _onEventError);
+      };
+      local._dirRebalanceDepth(self, _onEventError);
+    },
+
+    _dirRebalanceDepth: function (self, onEventError) {
+      /* optimization - cached callback */
+      if (EXPORTS.debug) {
+        console.log([ 'db rebalance', self.rebalanceDepth, self.marked ]);
+      }
+      var marked = {}, _onEventError, remaining = 0;
+      _onEventError = function (error) {
+        if (remaining < 0) {
+          return;
+        }
+        remaining -= 1;
+        if (error || !remaining) {
+          remaining = -1;
+          onEventError(error);
+        }
+      };
+      self.rebalanceDepthRepeat = false;
+      Object.keys(self.marked).forEach(function (dir) {
+        if (!(self.marked[dir] && local._dirDepth(dir) === self.rebalanceDepth)) {
+          return;
+        }
+        remaining += 1;
+        marked[dir] = true;
+        self.rebalanceDepthRepeat = true;
+        local._dirRead(self, dir, function (error, files) {
+          var dir2, _join = function (error, dirs) {
+            if (remaining < 0) {
+              return;
+            }
+            if (error) {
+              _onEventError(error);
+              return;
+            }
+            /* remove current directory after merging */
+            if (!dirs) {
+              EXPORTS.fsRmrAtomic(dir, _onEventError);
+              return;
+            }
+            /* select previous directory */
+            dirs.sort();
+            var parent = EXPORTS.fsDirname(dir),
+              index = dirs.indexOf(dir.slice(parent.length + 1)) - 1,
+              dir2 = parent + '/' + dirs[index];
+            /* transfer contents from current directory to previous directory */
+            if (index >= 0 && !marked[dir2]) {
+              /* recurse */
+              self.marked[dir2] = true;
+              local._dirTransfer(dir, dir2, files, _join);
+              return;
+            }
+            /* default */
+            _onEventError();
+          };
+          if (remaining < 0) {
+            return;
+          }
+          if (error) {
+            _onEventError(error);
+            return;
+          }
+          /* split directory into two */
+          if (files.length > self.dirMaxFiles) {
+            if (EXPORTS.debug) {
+              console.log([ 'db rebalance split', self.rebalanceDepth, dir ]);
+            }
+            /*jslint bitwise: true*/
+            files = files.slice(files.length >> 1);
+            dir2 = EXPORTS.fsDirname(dir) + '/' + files[0];
+            /* recurse */
+            if (files.length > self.dirMaxFiles) {
+              self.marked[dir2] = true;
+            }
+            local._dirTransfer(dir, dir2, files, _onEventError);
+          /* join directory with previous directory */
+          } else if (4 * files.length < self.dirMaxFiles) {
+            if (EXPORTS.debug) {
+              console.log([ 'db rebalance join', self.rebalanceDepth, dir ]);
+            }
+            local._dirRead(self, EXPORTS.fsDirname(dir), _join);
+          } else {
+            _onEventError();
+          }
+        });
+      });
+      if (!remaining) {
+        remaining = -1;
+        onEventError();
+      }
+    },
+
+    _dirTimestamp: function (dir, onEventError) {
+      EXPORTS.fsWriteFileAtomic(dir + '/timestamp',
+        new Date().getTime().toString().slice(0, -3), {}, onEventError);
+    },
+
+    _dirTransfer: function (dir1, dir2, files, onEventError) {
+      /*
+        this function transfer files from one directory to another
+      */
+      var remaining = files.length, _onEventError = function (error) {
+        if (remaining < 0) {
+          return;
+        }
+        if (error && error.code !== 'ENOENT') {
+          remaining = -1;
+          onEventError(error);
+          return;
+        }
+        remaining -= 1;
+        if (!remaining) {
+          remaining = -1;
+          onEventError(error);
+        }
+      };
+      files.forEach(function (file) {
+        EXPORTS.fsRename(dir1 + '/' + file, dir2 + '/' + file, _onEventError);
+      });
+    },
+
+    _onEventCorruptFile: function (file, onEventError) {
+      onEventError(new Error('corrupt file ' + file));
+      /* delete corrupt file */
+      EXPORTS.fsRmrAtomic(file, EXPORTS.nop);
+    },
+
+    '_routesDict_/assets/db.html': function (request, response) {
+      response.setHeader('content-type', 'text/html');
+      response.end(local._dbHtml);
+    },
+
+    '_routesDict_/assets/db.js': function (request, response) {
+      response.setHeader('content-type', 'application/javascript');
+      response.end(required.utility2._fileContentBrowser);
+    },
+
+    '_routesDict_/db.ajax': function (request, response) {
+      local._serverRespondAjax(request, response);
+    },
+
+    _serverRespondAjax: function (request, response, next) {
+      var _onEventError, options = EXPORTS.urlSearchParse(request.url).params, self;
+      /* security - filter options */
+      options = {
+        action: options.action || '',
+        field: options.field || '',
+        limit: options.limit || '',
+        onEventData: function (chunk) {
+          response.write(chunk);
+        },
+        record: options.record || '',
+        table: options.table || ''
+      };
+      /* get table */
+      if (!options.table) {
+        next(new Error('invalid table'));
+        return;
+      }
+      self = EXPORTS.dbTable(options.table);
+      _onEventError = function (error) {
+        /* rebalance directories if there are no active actions */
+        if (self.rebalanceDepth && !self.actionLock) {
+          local._dirRebalance(self);
+        }
+        if (error) {
+          next(error);
+          return;
+        }
+        response.end();
+      };
+      /* file upload */
+      if (options.action === 'fileUpload') {
+        EXPORTS.cacheWriteStream(request, {}, function (error, tmp) {
+          if (error) {
+            _onEventError(error);
+            return;
+          }
+          options.tmp = tmp;
+          local._dbAction(self, options, _onEventError);
+        });
+        return;
+      }
+      /* get options.json */
+      if (request.method.toUpperCase() === 'POST') {
+        EXPORTS.streamReadOnEventError(request, function (error, data) {
+          if (error) {
+            _onEventError(error);
+            return;
+          }
+          if (EXPORTS.isError(options.json = EXPORTS.jsonParseOrError(data))) {
+            _onEventError(options.json);
+            return;
+          }
+          if (typeof options.json !== 'object') {
+            _onEventError(new Error('invalid data type ' + [typeof options.json]));
+            return;
+          }
+          local._dbActionQueue(self, options, _onEventError);
+        });
+        return;
+      }
+      local._dbActionQueue(self, options, _onEventError);
+    },
+
+    _dbHtml: '<!DOCTYPE html><html><head>\n'
+      + [
+        '/assets/rollup.css'
+      ].map(function (url) {
+        return '<link href="' + url + '" rel="stylesheet" />\n';
+      }).join('')
+
+      + '<style>\n'
+      + '</style></head><body>\n'
+
+      + [
+        '/assets/rollup.js',
+        '/assets/utility2.js',
+        '/assets/db.js'
+      ].map(function (url) {
+        return '<script src="' + url + '"></script>\n';
+      }).join('')
+      + '</body></html>\n',
+
+  };
+  local._init();
+}(global));
 (function modulePhantomjsShared(global) {
   /*
     this nodejs / phantomjs module runs a phantomjs server
