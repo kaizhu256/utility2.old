@@ -33,6 +33,7 @@ migrate argv processing to commander
         /* nodejs */
         if (process.versions.node) {
           EXPORTS.isNodejs = true;
+          EXPORTS.require = require;
         }
         /* node-webkit */
         if (process.versions['node-webkit']) {
@@ -1042,6 +1043,11 @@ migrate argv processing to commander
           url: '/upload/foo.txt'
         }, EXPORTS.onEventErrorDefault);
       */
+      /* binary file */
+      if (options.file && !options.data) {
+        local._ajaxProgressOnEventErrorFile(options, onEventError);
+        return;
+      }
       onEventError = onEventError || EXPORTS.onEventErrorDefault;
       EXPORTS.ajaxProgress(options).done(function (data) {
         onEventError(null, data);
@@ -1049,6 +1055,25 @@ migrate argv processing to commander
         onEventError(new Error(xhr.status + ' ' + textStatus + ' - ' + options.url + '\n'
           + (xhr.responseText || errorMessage)));
       });
+    },
+
+    _ajaxProgressOnEventErrorFile: function (options, onEventError) {
+      options.headers = options.headers || {};
+      options.headers['upload-filename'] = options.file.name;
+      options.processData = false;
+      var reader = new global.FileReader();
+      reader.onload = function (event) {
+        /*jslint bitwise: true*/
+        var data = event.target.result,
+          ii,
+          ui8a = new global.Uint8Array(data.length);
+        for (ii = 0; ii < data.length; ii += 1) {
+          ui8a[ii] = data.charCodeAt(ii) & 0xff;
+        }
+        options.data = ui8a;
+        EXPORTS.ajaxProgressOnEventError(options, onEventError);
+      };
+      reader.readAsBinaryString(options.file);
     },
 
     _onEventEnd: function (event) {
@@ -2396,22 +2421,28 @@ migrate argv processing to commander
       EXPORTS.adminMiddleware = EXPORTS.createMiddleware({
         '/admin/admin.html': local._serverRespondAdminHtml,
         '/admin/debug': local._serverRespondAdminDebug,
-        '/admin/shell': local._serverRespondAdminShell
+        '/admin/shell': local._serverRespondAdminShell,
+        '/admin/upload': local._serverRespondAdminUpload
       });
     },
 
     _adminHtml: '<!DOCTYPE html><html><body>\n'
+      + '<input id="inputAdminUpload" type="file"/>\n'
       + '<script src="/assets/rollup.js"></script>\n'
       + '<script src="/assets/utility2.js"></script>\n'
       + '<script>\n'
       + '/*jslint browser: true, indent: 2*/\n'
       + '"use strict";\n'
-      + 'window.EXPORTS.ajaxAdminDebug = function (script, onEventError) {\n'
-      + '  window.EXPORTS.ajaxLocal({ data: script, url: "/admin/debug" }, onEventError);\n'
+      + 'var EXPORTS = window.EXPORTS;\n'
+      + 'EXPORTS.ajaxAdminDebug = function (script, onEventError) {\n'
+      + '  EXPORTS.ajaxLocal({ data: script, url: "/admin/debug" }, onEventError);\n'
       + '};\n'
-      + 'window.EXPORTS.ajaxAdminShell = function (script, onEventError) {\n'
-      + '  window.EXPORTS.ajaxLocal({ data: script, url: "/admin/shell" }, onEventError);\n'
+      + 'EXPORTS.ajaxAdminShell = function (script, onEventError) {\n'
+      + '  EXPORTS.ajaxLocal({ data: script, url: "/admin/shell" }, onEventError);\n'
       + '};\n'
+      + 'EXPORTS.inputAdminUpload.on("change", function (event) {\n'
+      + '  EXPORTS.ajaxProgressOnEventError({ file: event.target.files[0], method: "POST", url: "/admin/upload" });\n'
+      + '});\n'
       + '</script>\n'
       + '</body></html>',
 
@@ -2424,28 +2455,27 @@ migrate argv processing to commander
     },
 
     _serverRespondAdminDebug: function (request, response, next) {
-      var _onEventError = function (error, data) {
+      EXPORTS.cacheWriteStream(request, {}, function (error, tmp) {
         if (error) {
           next(error);
           return;
         }
-        if (EXPORTS.isError(data = EXPORTS.jsonStringifyOrError(data))) {
-          _onEventError(data);
-          return;
-        }
-        response.end(data);
-      };
-      EXPORTS.cacheWriteStream(request, {}, function (error, tmp) {
-        if (error) {
-          _onEventError(error);
-          return;
-        }
         required.fs.readFile(tmp, function (error, data) {
           if (error) {
-            _onEventError(error);
+            next(error);
             return;
           }
-          EXPORTS.jsEvalOnEventError(data, tmp, _onEventError);
+          EXPORTS.jsEvalOnEventError(data, tmp, function (error, data) {
+            if (error) {
+              next(error);
+              return;
+            }
+            if (EXPORTS.isError(data = EXPORTS.jsonStringifyOrError(data))) {
+              next(data);
+              return;
+            }
+            response.end(data);
+          });
         });
       });
     },
@@ -2455,16 +2485,9 @@ migrate argv processing to commander
     },
 
     _serverRespondAdminShell: function (request, response, next) {
-      var _onEventError = function (error) {
-        if (EXPORTS.isError(error)) {
-          next(error);
-          return;
-        }
-        response.end('error code: ' + error);
-      };
       EXPORTS.cacheWriteStream(request, {}, function (error, tmp) {
         if (error) {
-          _onEventError(error);
+          next(error);
           return;
         }
         var _onEventData, proc;
@@ -2473,9 +2496,28 @@ migrate argv processing to commander
           response.write(chunk);
         };
         proc = required.child_process.spawn('/bin/sh', [tmp])
-          .on('close', _onEventError).on('error', _onEventError);
+          .on('close', function (error) {
+            response.end('error code: ' + error);
+          }).on('error', next);
         proc.stderr.on('data', _onEventData);
         proc.stdout.on('data', _onEventData);
+      });
+    },
+
+    _serverRespondAdminUpload: function (request, response, next) {
+      EXPORTS.cacheWriteStream(request, {}, function (error, tmp) {
+        if (error) {
+          next(error);
+          return;
+        }
+        EXPORTS.fsRename(tmp, EXPORTS.tmpDir + '/upload/' + request.headers['upload-filename']
+          || '', function (error) {
+            if (error) {
+              next(error);
+              return;
+            }
+            response.end();
+          });
       });
     },
 
@@ -2508,13 +2550,24 @@ migrate argv processing to commander
     _initOnce: function () {
       /* nodejs */
       if (EXPORTS.isNodejs) {
-        EXPORTS.serverReady.onEventReady(function () {
-          /* spawn phantomjs process */
-          if (required.utility2_phantomjsPort) {
+        if (required.utility2_phantomjsPort) {
+          required.utility2_phantomjsReady = required.utility2_phantomjsReady
+            || EXPORTS.createDeferred();
+          EXPORTS.serverReady.onEventReady(function () {
+            /* spawn phantomjs process */
             EXPORTS.shell('phantomjs ' + required.utility2.file + ' '
               + EXPORTS.serverPort + ' ' + required.utility2_phantomjsPort);
-          }
-        });
+            var interval = setInterval(function () {
+              local._phantomjsTest('/test/timeout', function (error) {
+                if (error) {
+                  return;
+                }
+                required.utility2_phantomjsReady.ready();
+                clearInterval(interval);
+              });
+            }, 1000);
+          });
+        }
        /* phantomjs */
       } else if (EXPORTS.isPhantomjs) {
         /* require */
@@ -2545,6 +2598,12 @@ migrate argv processing to commander
     },
 
     phantomjsTest: function (url, onEventError) {
+      required.utility2_phantomjsReady.onEventReady(function () {
+        local._phantomjsTest(url, onEventError);
+      });
+    },
+
+    _phantomjsTest: function (url, onEventError) {
       if (url.slice(0, 4) !== 'http') {
         url = 'http://localhost:' + EXPORTS.serverPort + url;
       }
