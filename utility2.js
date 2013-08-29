@@ -1,4 +1,4 @@
-// #!/usr/bin/env node
+#!/usr/bin/env node
 /*
 utility2.js
 common, shared utilities for both browser and nodejs
@@ -144,7 +144,7 @@ add db indexing
     },
 
     _test_ajaxLocal: function (onEventError) {
-      EXPORTS.ajaxLocal({ url: '/test/echo' }, onEventError);
+      EXPORTS.ajaxLocal({ url: '/test/test.echo' }, onEventError);
     },
 
     base64Decode: function (text) {
@@ -558,7 +558,7 @@ add db indexing
             coverage: global.__coverage__,
             testSuites: required.utility2_testSuites
           }),
-          url: '/test/report/upload'
+          url: '/test/test.upload'
         });
         /* reset code coverage */
         if (global.__coverage__) {
@@ -731,8 +731,19 @@ add db indexing
 
     _initOnce: function () {
       /* event handling */
-      $(document.body)
-        .on('click', '.modal [data-dismiss="modal"]', local._onEventModalHide);
+      $(document.body).on('click', '.modal [data-dismiss="modal"]', local._onEventModalHide);
+      /* reload page if server code is modified */
+      if (EXPORTS.isBrowserTest === 'watch') {
+        setInterval(function () {
+          $.ajax({ url: '/test/test.timestamp' }).done(function (timestamp) {
+            /* if timestamp is greater than current saved timestamp, then reload */
+            if (timestamp > (local._timestamp = local._timestamp || timestamp)) {
+              location.reload();
+            }
+          });
+        /* 4000 ms poll */
+        }, 4000);
+      }
     },
 
   };
@@ -897,47 +908,6 @@ add db indexing
       btn.attr('data-value', value).html(target.html()).trigger('changed').trigger('click');
       /* redraw button */
       local._onEventDivSplitBtnDropdownBtnRedraw(btn);
-    },
-
-  };
-  local._init();
-}(global));
-
-
-
-(function moduleTestBrowser(global) {
-  /*
-    this browser module exports test api
-  */
-  'use strict';
-  var EXPORTS = global.EXPORTS = global.EXPORTS || {},
-    $ = global.jQuery,
-    local;
-  local = {
-
-    _name: 'utility2.moduleTestBrowser',
-
-    _init: function () {
-      if (!EXPORTS.isBrowser) {
-        return;
-      }
-      /* init module */
-      EXPORTS.moduleInit(module, local);
-    },
-
-    _initOnce: function () {
-      /* reload page if server code is modified */
-      if (EXPORTS.isBrowserTest === 'watch') {
-        setInterval(function () {
-          $.ajax({ url: '/test/timestamp' }).done(function (timestamp) {
-            /* if timestamp is greater than current saved timestamp, then reload */
-            if (timestamp > (local._timestamp = local._timestamp || timestamp)) {
-              location.reload();
-            }
-          });
-        /* 4000 ms poll */
-        }, 4000);
-      }
     },
 
   };
@@ -1190,6 +1160,182 @@ add db indexing
 
 
 
+(function moduleAdminBrowser() {
+  /*
+    this browser module exports key / value data store
+  */
+  'use strict';
+  var EXPORTS = global.EXPORTS = global.EXPORTS || {},
+    local;
+  local = {
+
+    _name: 'utility2.moduleAdminBrowser',
+
+    _init: function () {
+      if (!(EXPORTS.isBrowser && location.pathname === '/admin/admin.html')) {
+        return;
+      }
+      /* init module */
+      EXPORTS.moduleInit(module, local);
+    },
+
+    _initOnce: function () {
+      /* event handling */
+      EXPORTS.inputAdminUpload.on("change", function (event) {
+        EXPORTS.ajaxProgressOnEventError({
+          file: event.target.files[0],
+          method: "POST",
+          url: "/admin/admin.upload"
+        });
+      });
+    },
+
+    ajaxAdminDebug: function (script, onEventError) {
+      EXPORTS.ajaxLocal({ data: script, url: "/admin/admin.debug" }, onEventError);
+    },
+
+    ajaxAdminShell: function (script, onEventError) {
+      EXPORTS.ajaxLocal({ data: script, url: "/admin/shell" }, onEventError);
+    },
+
+  };
+  local._init();
+}(global));
+
+
+
+(function moduleDbShared() {
+  /*
+    this shared module exports key / value data store
+  */
+  'use strict';
+  var EXPORTS = global.EXPORTS = global.EXPORTS || {},
+    local;
+  local = {
+
+    _name: 'utility2.moduleDbShared',
+
+    _init: function () {
+      /* init module */
+      EXPORTS.moduleInit(module, local);
+    },
+
+    _Db: function () {
+    },
+
+    _Db_prototype_ajax: function (options, onEventError) {
+      var data = options.data;
+      options.data = null;
+      options.table = this.name;
+      EXPORTS.ajaxLocal({ data: data, params: options, url: '/db/db.ajax' }, onEventError);
+    },
+
+    _Db_prototype_fieldDelete: function (record, field, onEventError) {
+      this.ajax({ action: 'fieldDelete', field: field, record: record }, onEventError);
+    },
+
+    _Db_prototype_fieldGet: function (record, field, onEventError) {
+      this.ajax({ action: 'fieldGet', field: field, record: record }, onEventError);
+    },
+
+    _Db_prototype_fileDownload: function (file, onEventError) {
+      this.ajax({ action: 'fileDownload', record: file }, onEventError);
+    },
+
+    _Db_prototype_fileUpload: function (file, data, onEventError) {
+      this.ajax({ action: 'fileUpload', data: data, record: file }, onEventError);
+    },
+
+    _Db_prototype_recordDelete: function (record, onEventError) {
+      this.ajax({ action: 'recordDelete', record: record }, onEventError);
+    },
+
+    _Db_prototype_recordDeleteAndUpdate: function (record, data, onEventError) {
+      this.ajax({ action: 'recordDeleteAndUpdate', data: data, record: record },
+        onEventError);
+    },
+
+    _Db_prototype_recordGet: function (record, onEventError) {
+      this.ajax({ action: 'recordGet', record: record }, onEventError);
+    },
+
+    _Db_prototype_recordUpdate: function (record, data, onEventError) {
+      this.ajax({ action: 'recordUpdate', data: data, record: record }, onEventError);
+    },
+
+    _Db_prototype_recordsDelete: function (records, onEventError) {
+      this.ajax({ action: 'recordsDelete', data: records }, onEventError);
+    },
+
+    _Db_prototype_recordsDeleteAndUpdate: function (records, onEventError) {
+      this.ajax({ action: 'recordsDeleteAndUpdate', data: records }, onEventError);
+    },
+
+    _Db_prototype_recordsGet: function (records, onEventError) {
+      this.ajax({ action: 'recordsGet', data: records }, onEventError);
+    },
+
+    _Db_prototype_recordsUpdate: function (data, onEventError) {
+      this.ajax({ action: 'recordsUpdate', data: data }, onEventError);
+    },
+
+    _Db_prototype_tableDelete: function (onEventError) {
+      this.ajax({ action: 'tableDelete' }, onEventError);
+    },
+
+    _Db_prototype_tableDeleteAndUpdate: function (data, onEventError) {
+      this.ajax({ action: 'tableDeleteAndUpdate', data: data }, onEventError);
+    },
+
+    _Db_prototype_tableGet: function (onEventError) {
+      this.ajax({ action: 'tableGet' }, onEventError);
+    },
+
+    _Db_prototype_tableScanBackward: function (record, limit, onEventError) {
+      this.ajax({ action: 'tableScanBackward', record: record, limit: limit.toString() },
+        onEventError);
+    },
+
+    _Db_prototype_tableScanForward: function (record, limit, onEventError) {
+      this.ajax({ action: 'tableScanForward', record: record, limit: limit.toString() },
+        onEventError);
+    },
+
+    _Db_prototype_tableUpdate: function (data, onEventError) {
+      this.ajax({ action: 'tableUpdate', data: data }, onEventError);
+    },
+
+    _Db_prototype_tableUpdateOptions: function (options, onEventError) {
+      this.ajax({ action: 'tableUpdateOptions', data: JSON.stringify(options) },
+        onEventError);
+    },
+
+    _Db_prototype_tableUpdateRandom: function (limit, onEventError) {
+      var data = {}, ii, jj, record;
+      for (ii = 0; ii < limit; ii += 1) {
+        data['record:' + Math.random().toString(36).slice(2)] = record = {};
+        for (jj = 0; jj < 2; jj += 1) {
+          record['field:' + Math.random().toString(36).slice(2)] = Math.random();
+        }
+      }
+      this.tableUpdate(JSON.stringify(data), onEventError);
+    },
+
+    createDb: function (name) {
+      var self = new local._Db();
+      self.name = name;
+      if (EXPORTS.dbTable) {
+        self.table = EXPORTS.dbTable(name);
+      }
+      return self;
+    },
+
+  };
+  local._init();
+}(global));
+
+
+
 (function moduleCommonNodejs(global) {
   /*
     this nodejs module exports common, nodejs utilities
@@ -1218,9 +1364,11 @@ add db indexing
       required.utility2_initOnce = true;
       /* require */
       required.child_process = required.child_process || require('child_process');
-      required.fs = required.fs || require('fs');
+      required.fs = required.fs || require('graceful-fs');
       required.http = required.http || require('http');
+      required.http.globalAgent.maxSockets = 256;
       required.https = required.https || require('https');
+      required.https.globalAgent.maxSockets = 256;
       required.net = required.net || require('net');
       required.path = required.path || require('path');
       required.repl = required.repl || require('repl');
@@ -1251,9 +1399,6 @@ add db indexing
         return new Buffer(text).toString('base64');
       };
       /* argv */
-      // debug
-      required.utility2_phantomjsPort
-        = parseInt('f' + Math.random().toString(16).slice(-3), 16);
       process.argv.forEach(function (arg, ii) {
         switch (arg) {
         case '--server-port':
@@ -1291,8 +1436,6 @@ add db indexing
       }
       var onEventProgress = options.onEventProgress || EXPORTS.nop,
         urlParsed = required.url.parse(options.proxy || options.url);
-      /* optimization - disable socket pooling */
-      options.agent = false;
       options.hostname = urlParsed.hostname;
       options.path = options.proxy ? options.url : urlParsed.path;
       options.rejectUnauthorized = false;
@@ -1453,6 +1596,8 @@ add db indexing
           options.createConnection = null;
           return socket;
         };
+        /* disable socket pooling */
+        options.agent = false;
         EXPORTS.ajaxNodejs(options, onEventError);
       });
     },
@@ -2224,10 +2369,6 @@ add db indexing
       };
     },
 
-    middlewareOnEventErrorDefault: function (error, request, response) {
-      EXPORTS.serverRespondDefault(response, error ? 500 : 404, 'text/plain', error);
-    },
-
     '_routesDict_/assets/rollup.css': function (request, response, next) {
       EXPORTS.serverRespondFile(response, next,
         required.utility2.dir + '/assets.rollup.css');
@@ -2243,7 +2384,7 @@ add db indexing
         required.utility2._fileContentBrowser);
     },
 
-    '_routesDict_/test/echo': function (request, response) {
+    '_routesDict_/test/test.echo': function (request, response) {
       /*
         this convenience function echoes the request back to the response
       */
@@ -2266,34 +2407,7 @@ add db indexing
       EXPORTS.serverRespondDefault(response, 200, 'text/html', local._testHtml);
     },
 
-    '_routesDict_/test/report/upload': function (request, response, next) {
-      local._serverRespondTestReportUpload(request, response, next);
-    },
-
-    '_routesDict_/test/timestamp': function (request, response) {
-      response.end(EXPORTS.timestamp);
-    },
-
-    coverageReport: function (coverage) {
-      if (!(global.__coverage__ && required.istanbul && required.utility2_coverageDir)
-          || required.utility2_coverageReportLock) {
-        return;
-      }
-      required.utility2_coverageReportLock = setTimeout(function () {
-        console.log('writing coverage report to ' + required.utility2_coverageDir);
-        required.utility2_coverageReportLock = null;
-        required.istanbul_Collector.add(global.__coverage__);
-        if (coverage) {
-          required.istanbul_Collector.add(coverage);
-        }
-        ['json', 'lcov'].forEach(function (reportType) {
-          required.istanbul.Report.create(reportType, { dir: required.utility2_coverageDir })
-            .writeReport(required.istanbul_Collector);
-        });
-      }, 1000);
-    },
-
-    _serverRespondTestReportUpload: function (request, response, next) {
+    '_routesDict_/test/test.upload': function (request, response, next) {
       EXPORTS.streamReadOnEventError(request, function (error, data) {
         if (error || EXPORTS.isError(error = EXPORTS.jsonParseOrError(data))) {
           next(error);
@@ -2324,6 +2438,29 @@ add db indexing
           }
         });
       });
+    },
+
+    '_routesDict_/test/test.timestamp': function (request, response) {
+      response.end(EXPORTS.timestamp);
+    },
+
+    coverageReport: function (coverage) {
+      if (!(global.__coverage__ && required.istanbul && required.utility2_coverageDir)
+          || required.utility2_coverageReportLock) {
+        return;
+      }
+      required.utility2_coverageReportLock = setTimeout(function () {
+        console.log('writing coverage report to ' + required.utility2_coverageDir);
+        required.utility2_coverageReportLock = null;
+        required.istanbul_Collector.add(global.__coverage__);
+        if (coverage) {
+          required.istanbul_Collector.add(coverage);
+        }
+        ['json', 'lcov'].forEach(function (reportType) {
+          required.istanbul.Report.create(reportType, { dir: required.utility2_coverageDir })
+            .writeReport(required.istanbul_Collector);
+        });
+      }, 1000);
     },
 
     serverRespondDefault: function (response, statusCode, contentType, data) {
@@ -2369,7 +2506,6 @@ add db indexing
       }
       EXPORTS.server = EXPORTS.server || required.express()
         .use(required.express.logger('dev'))
-        .use(EXPORTS.adminMiddleware)
         .use(required.utility2_middleware)
         .on('error', EXPORTS.onEventErrorDefault)
         .listen(EXPORTS.serverPort, function () {
@@ -2424,44 +2560,27 @@ add db indexing
       EXPORTS.jsLint('admin.html', local._adminHtml);
     },
 
-    _initOnce: function () {
-      EXPORTS.adminMiddleware = EXPORTS.createMiddleware({
-        '/admin/admin.html': local._serverRespondAdminHtml,
-        '/admin/debug': local._serverRespondAdminDebug,
-        '/admin/shell': local._serverRespondAdminShell,
-        '/admin/upload': local._serverRespondAdminUpload
-      });
-    },
-
-    _adminHtml: '<!DOCTYPE html><html><body>\n'
+    _adminHtml: '<!DOCTYPE html><html><head>\n'
+      + '<link href="/assets/rollup.css" rel="stylesheet"/>\n'
+      + '<style>\n'
+      + '</style></head><body>\n'
       + '<input id="inputAdminUpload" type="file"/>\n'
       + '<script src="/assets/rollup.js"></script>\n'
       + '<script src="/assets/utility2.js"></script>\n'
       + '<script>\n'
       + '/*jslint browser: true, indent: 2*/\n'
-      + '"use strict";\n'
-      + 'var EXPORTS = window.EXPORTS;\n'
-      + 'EXPORTS.ajaxAdminDebug = function (script, onEventError) {\n'
-      + '  EXPORTS.ajaxLocal({ data: script, url: "/admin/debug" }, onEventError);\n'
-      + '};\n'
-      + 'EXPORTS.ajaxAdminShell = function (script, onEventError) {\n'
-      + '  EXPORTS.ajaxLocal({ data: script, url: "/admin/shell" }, onEventError);\n'
-      + '};\n'
-      + 'EXPORTS.inputAdminUpload.on("change", function (event) {\n'
-      + '  EXPORTS.ajaxProgressOnEventError({ file: event.target.files[0], method: "POST", url: "/admin/upload" });\n'
-      + '});\n'
       + '</script>\n'
       + '</body></html>',
 
     _ajaxAdminDebug: function (script, onEventError) {
-      EXPORTS.ajaxLocal({ data: script, url: '/admin/debug' }, onEventError);
+      EXPORTS.ajaxLocal({ data: script, url: '/admin/admin.debug' }, onEventError);
     },
 
     _ajaxAdminShell: function (script, onEventError) {
-      EXPORTS.ajaxLocal({ data: script, url: '/admin/shell' }, onEventError);
+      EXPORTS.ajaxLocal({ data: script, url: '/admin/admin.shell' }, onEventError);
     },
 
-    _serverRespondAdminDebug: function (request, response, next) {
+    '_routesDict_/admin/admin.debug': function (request, response, next) {
       EXPORTS.cacheWriteStream(request, {}, function (error, tmp) {
         if (error) {
           next(error);
@@ -2487,11 +2606,11 @@ add db indexing
       });
     },
 
-    _serverRespondAdminHtml: function (request, response) {
+    '_routesDict_/admin/admin.html': function (request, response) {
       EXPORTS.serverRespondDefault(response, 200, 'text/html', local._adminHtml);
     },
 
-    _serverRespondAdminShell: function (request, response, next) {
+    '_routesDict_/admin/admin.shell': function (request, response, next) {
       EXPORTS.cacheWriteStream(request, {}, function (error, tmp) {
         if (error) {
           next(error);
@@ -2511,7 +2630,7 @@ add db indexing
       });
     },
 
-    _serverRespondAdminUpload: function (request, response, next) {
+    '_routesDict_/admin/admin.upload': function (request, response, next) {
       EXPORTS.cacheWriteStream(request, {}, function (error, tmp) {
         if (error) {
           next(error);
@@ -2526,138 +2645,6 @@ add db indexing
             response.end();
           });
       });
-    },
-
-  };
-  local._init();
-}(global));
-
-
-
-(function moduleDbShared() {
-  /*
-    this shared module exports key / value data store
-  */
-  'use strict';
-  var EXPORTS = global.EXPORTS = global.EXPORTS || {},
-    local;
-  local = {
-
-    _name: 'utility2.moduleDbShared',
-
-    _init: function () {
-      /* init module */
-      EXPORTS.moduleInit(module, local);
-    },
-
-    _Db: function () {
-    },
-
-    _Db_prototype_ajax: function (options, onEventError) {
-      var data = options.data;
-      options.data = null;
-      options.table = this.name;
-      EXPORTS.ajaxLocal({ data: data, params: options, url: '/db.ajax' }, onEventError);
-    },
-
-    _Db_prototype_fieldDelete: function (record, field, onEventError) {
-      this.ajax({ action: 'fieldDelete', field: field, record: record }, onEventError);
-    },
-
-    _Db_prototype_fieldGet: function (record, field, onEventError) {
-      this.ajax({ action: 'fieldGet', field: field, record: record }, onEventError);
-    },
-
-    _Db_prototype_fileDownload: function (file, onEventError) {
-      this.ajax({ action: 'fileDownload', record: file }, onEventError);
-    },
-
-    _Db_prototype_fileUpload: function (file, data, onEventError) {
-      this.ajax({ action: 'fileUpload', data: data, record: file }, onEventError);
-    },
-
-    _Db_prototype_recordDelete: function (record, onEventError) {
-      this.ajax({ action: 'recordDelete', record: record }, onEventError);
-    },
-
-    _Db_prototype_recordDeleteAndUpdate: function (record, data, onEventError) {
-      this.ajax({ action: 'recordDeleteAndUpdate', data: data, record: record },
-        onEventError);
-    },
-
-    _Db_prototype_recordGet: function (record, onEventError) {
-      this.ajax({ action: 'recordGet', record: record }, onEventError);
-    },
-
-    _Db_prototype_recordUpdate: function (record, data, onEventError) {
-      this.ajax({ action: 'recordUpdate', data: data, record: record }, onEventError);
-    },
-
-    _Db_prototype_recordsDelete: function (records, onEventError) {
-      this.ajax({ action: 'recordsDelete', data: records }, onEventError);
-    },
-
-    _Db_prototype_recordsDeleteAndUpdate: function (records, onEventError) {
-      this.ajax({ action: 'recordsDeleteAndUpdate', data: records }, onEventError);
-    },
-
-    _Db_prototype_recordsGet: function (records, onEventError) {
-      this.ajax({ action: 'recordsGet', data: records }, onEventError);
-    },
-
-    _Db_prototype_recordsUpdate: function (data, onEventError) {
-      this.ajax({ action: 'recordsUpdate', data: data }, onEventError);
-    },
-
-    _Db_prototype_tableDelete: function (onEventError) {
-      this.ajax({ action: 'tableDelete' }, onEventError);
-    },
-
-    _Db_prototype_tableDeleteAndUpdate: function (data, onEventError) {
-      this.ajax({ action: 'tableDeleteAndUpdate', data: data }, onEventError);
-    },
-
-    _Db_prototype_tableGet: function (onEventError) {
-      this.ajax({ action: 'tableGet' }, onEventError);
-    },
-
-    _Db_prototype_tableScanBackward: function (record, limit, onEventError) {
-      this.ajax({ action: 'tableScanBackward', record: record, limit: limit },
-        onEventError);
-    },
-
-    _Db_prototype_tableScanForward: function (record, limit, onEventError) {
-      this.ajax({ action: 'tableScanForward', record: record, limit: limit },
-        onEventError);
-    },
-
-    _Db_prototype_tableUpdate: function (data, onEventError) {
-      this.ajax({ action: 'tableUpdate', data: data }, onEventError);
-    },
-
-    _Db_prototype_tableUpdateOptions: function (options, onEventError) {
-      this.ajax({ action: 'tableUpdateOptions', data: JSON.stringify(options) },
-        onEventError);
-    },
-
-    _Db_prototype_tableUpdateRandom: function (limit, onEventError) {
-      var data = {}, ii, jj, record;
-      for (ii = 0; ii < limit; ii += 1) {
-        data['record:' + Math.random().toString(36).slice(2)] = record = {};
-        for (jj = 0; jj < 2; jj += 1) {
-          record['field:' + Math.random().toString(36).slice(2)] = Math.random();
-        }
-      }
-      this.tableUpdate(JSON.stringify(data), onEventError);
-    },
-
-    dbCreate: function (name) {
-      var self = new local._Db();
-      self.name = name;
-      if (EXPORTS.dbTable) {
-        self.table = EXPORTS.dbTable(name);
-      }
-      return self;
     },
 
   };
@@ -2697,16 +2684,15 @@ add db indexing
 
       /* test */
       /* debug */
-      if (!EXPORTS.nop()) {
+      if (EXPORTS.nop()) {
         return;
       }
       EXPORTS.debug = 0;
       global.local = local;
       /* debug */
-      EXPORTS.dbTableTest = EXPORTS.dbCreate('test');
-      EXPORTS.dbTableTest.table.dirMaxFiles = 4;
+      EXPORTS.dbTableTest = EXPORTS.createDb('test');
       var dbTableTest = global.dbTableTest = EXPORTS.dbTableTest;
-      if (EXPORTS.nop()) {
+      if (!EXPORTS.nop()) {
         return;
       }
       setTimeout(function () {
@@ -2728,19 +2714,21 @@ add db indexing
       }, 100);
     },
 
+    _test_db: function (onEventError) {
+      onEventError();
+      var self = EXPORTS.createDb(EXPORTS.uuid4());
+    },
+
     dbTable: function (name) {
       /*
         this function creates a database with the given name
       */
       return (EXPORTS.dbTables[name] = EXPORTS.dbTables[name] || {
         dir: EXPORTS.dbDir + '/' + encodeURIComponent(name),
-        /*
-          the default dirMaxFiles allows a table to reasonably handle one quadrillion records,
-          assuming adequate disk space
-        */
+        /* the default dirMaxFiles allows a table to reasonably handle one quadrillion records,
+           assuming adequate disk space */
         dirMaxFiles: 1024,
         marked: {},
-        name: name,
         actionLock: 0,
         actionQueue: [],
       });
@@ -3075,7 +3063,8 @@ add db indexing
           onEventError();
           return;
         }
-        var parent = options.parents.shift(), ii = parent.ii, field, files = parent.files;
+        var parent = options.parents.shift(), ii = parent.ii, files = parent.files, record;
+        printDebug('scan', remaining, files.length);
         /* backward */
         if (options.mode === 'backward') {
           if (record && files[ii] > record) {
@@ -3096,8 +3085,8 @@ add db indexing
           remaining -= files.length;
         }
         for (ii = 0; ii < files.length; ii += 1) {
-          field = EXPORTS.urlDecodeOrError(files[ii]);
-          if (EXPORTS.isError(field)) {
+          record = EXPORTS.urlDecodeOrError(files[ii]);
+          if (EXPORTS.isError(record)) {
             local._onEventErrorCorruptFile(options.dir + '/' + files[ii], onEventError);
             return;
           }
@@ -3105,7 +3094,7 @@ add db indexing
             options.onEventData(',');
           }
           written = true;
-          options.onEventData(JSON.stringify(field) + ':null');
+          options.onEventData(JSON.stringify(record) + ':null');
         }
         if (!remaining) {
           remaining = -1;
@@ -3443,21 +3432,12 @@ add db indexing
       EXPORTS.fsRmrAtomic(file, EXPORTS.nop);
     },
 
-    '_routesDict_/assets/db.html': function (request, response) {
+    '_routesDict_/db/db.html': function (request, response) {
       response.setHeader('content-type', 'text/html');
       response.end(local._dbHtml);
     },
 
-    '_routesDict_/assets/db.js': function (request, response) {
-      response.setHeader('content-type', 'application/javascript');
-      response.end(required.utility2._fileContentBrowser);
-    },
-
-    '_routesDict_/db.ajax': function (request, response) {
-      local._serverRespondAjax(request, response);
-    },
-
-    _serverRespondAjax: function (request, response, next) {
+    '_routesDict_/db/db.ajax': function (request, response, next) {
       var _onEventError, options = EXPORTS.urlSearchParse(request.url).params, self;
       /* security - filter options */
       options = {
@@ -3534,7 +3514,6 @@ add db indexing
       + [
         '/assets/rollup.js',
         '/assets/utility2.js',
-        '/assets/db.js'
       ].map(function (url) {
         return '<script src="' + url + '"></script>\n';
       }).join('')
@@ -3566,24 +3545,24 @@ add db indexing
     _initOnce: function () {
       /* nodejs */
       if (EXPORTS.isNodejs) {
-        if (required.utility2_phantomjsPort) {
-          required.utility2_phantomjsReady = required.utility2_phantomjsReady
-            || EXPORTS.createDeferred();
-          EXPORTS.serverReady.onEventReady(function () {
-            /* spawn phantomjs process */
-            EXPORTS.shell('phantomjs ' + required.utility2.file + ' '
-              + EXPORTS.serverPort + ' ' + required.utility2_phantomjsPort);
-            var interval = setInterval(function () {
-              local._phantomjsTest('/test/timeout', function (error) {
-                if (error) {
-                  return;
-                }
-                required.utility2_phantomjsReady.ready();
-                clearInterval(interval);
-              });
-            }, 1000);
-          });
-        }
+        required.utility2_phantomjsReady = required.utility2_phantomjsReady
+          || EXPORTS.createDeferred();
+        EXPORTS.serverReady.onEventReady(function () {
+          required.utility2_phantomjsPort
+            = parseInt('f' + Math.random().toString(16).slice(-3), 16);
+          /* spawn phantomjs process */
+          EXPORTS.shell('phantomjs ' + required.utility2.file + ' '
+            + EXPORTS.serverPort + ' ' + required.utility2_phantomjsPort);
+          var interval = setInterval(function () {
+            local._phantomjsTest('/test/timeout', function (error) {
+              if (error) {
+                return;
+              }
+              required.utility2_phantomjsReady.ready();
+              clearInterval(interval);
+            });
+          }, 1000);
+        });
        /* phantomjs */
       } else if (EXPORTS.isPhantomjs) {
         /* require */
