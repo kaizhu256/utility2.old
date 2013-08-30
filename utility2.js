@@ -86,6 +86,7 @@ add db indexing
           EXPORTS[key] = local[key];
         }
       });
+      EXPORTS.serverReady = EXPORTS.serverReady || EXPORTS.onEventReady();
       if (EXPORTS.isBrowser) {
         /* browser test flag */
         if ((EXPORTS.isBrowserTest = (/\btestWatch=(\d+)\b/).exec(location.hash)) !== null) {
@@ -98,6 +99,9 @@ add db indexing
         } else if (EXPORTS.isPhantomjs) {
           EXPORTS.isBrowserTest = 'phantomjs';
         }
+      }
+      if (!EXPORTS.isNodejs) {
+        EXPORTS.serverReady('ready');
       }
       /* exports */
       EXPORTS.moduleInit = local.moduleInit;
@@ -137,14 +141,23 @@ add db indexing
         return;
       }
       /* nodejs */
-      EXPORTS.serverReady.onEventReady(function () {
+      EXPORTS.serverReady(function (error) {
+        if (error) {
+          onEventError(error);
+        }
         options.url = 'http://localhost:' + EXPORTS.serverPort + options.url;
         EXPORTS.ajaxNodejs(options, onEventError);
       });
     },
 
     _test_ajaxLocal: function (onEventError) {
-      EXPORTS.ajaxLocal({ url: '/test/test.echo' }, onEventError);
+      EXPORTS.serverReady(function (error) {
+        if (error) {
+          onEventError('skip');
+          return;
+        }
+        EXPORTS.ajaxLocal({ url: '/test/test.echo' }, onEventError);
+      });
     },
 
     base64Decode: function (text) {
@@ -154,13 +167,6 @@ add db indexing
     base64Encode: function (text) {
       return global.btoa(text).replace((/\+/g), '-').replace((/\//g), '_')
         .replace((/\=+/g), '');
-    },
-
-    createDeferred: function () {
-      var self = new local._Deferred();
-      self._queue = [];
-      self._ready = false;
-      return self;
     },
 
     dateAndSalt: function () {
@@ -178,41 +184,6 @@ add db indexing
         + Math.random().toString().slice(2))
         /* bug - phantomjs can only parse dates less than 30 characters long */
         .slice(0, 29);
-    },
-
-    _Deferred: function () {
-    },
-
-    _Deferred_prototype_onEventReady: function (callback) {
-      if (this._ready) {
-        callback();
-        return;
-      }
-      this._queue.push(callback);
-    },
-
-    _Deferred_prototype_ready: function () {
-      this._ready = true;
-      this._queue.forEach(function (callback) {
-        callback();
-      });
-      this._queue.length = 0;
-    },
-
-    _test_Deferred: function (onEventError) {
-      var self = EXPORTS.createDeferred(), tmp = 0;
-      self.onEventReady(function () {
-        try {
-          console.assert(tmp === 1);
-          onEventError();
-        } catch (error) {
-          onEventError(error);
-        }
-      });
-      setTimeout(function () {
-        tmp += 1;
-        self.ready();
-      }, 1);
     },
 
     _test_dateAndSalt: function (onEventError) {
@@ -396,6 +367,62 @@ add db indexing
       console.log((global.Buffer && global.Buffer.isBuffer(data)) ? data.toString() : data);
     },
 
+    onEventReady: function () {
+      var _error, queue = [], remaining = 0;
+      return function (error) {
+        if (typeof error === 'function') {
+          if (remaining < 0) {
+            error(_error);
+          } else {
+            queue.push(error);
+          }
+          return;
+        }
+        if (remaining < 0) {
+          return;
+        }
+        remaining = -1;
+        if (EXPORTS.isError(error)) {
+          _error = error;
+        } else if (error !== 'ready') {
+          throw new Error('unknown error ' + [error]);
+        }
+        queue.forEach(function (onEventReady) {
+          onEventReady(_error);
+        });
+        queue = null;
+      };
+    },
+
+    _test_onEventReady: function (onEventError) {
+      var _onEventReady = EXPORTS.onEventReady(), tmp = 0;
+      _onEventReady(function () {
+        try {
+          console.assert(tmp === 1);
+          onEventError();
+        } catch (errorAssert) {
+          onEventError(errorAssert);
+        }
+      });
+      setTimeout(function () {
+        tmp += 1;
+        _onEventReady('ready');
+      }, 1);
+    },
+
+    _test_onEventReadyError: function (onEventError) {
+      var _onEventReady = EXPORTS.onEventReady(), tmp = new Error();
+      _onEventReady(function (error) {
+        try {
+          console.assert(error === tmp);
+          onEventError();
+        } catch (errorAssert) {
+          onEventError(errorAssert);
+        }
+      });
+      _onEventReady(tmp);
+    },
+
     setOptionsDefaults: function (options, defaults) {
       /*
         this function recursively walks through the options tree
@@ -460,6 +487,20 @@ add db indexing
       };
       _onEventTest = function (test, mode) {
         if (remaining < 0) {
+          if (testSuite.testCases.hasOwnProperty(test)) {
+            test = testSuite.testCases[test];
+            /* test timeout */
+            if (!test.finished) {
+              test.time = new Date().getTime() - test.time;
+              testSuite.failures += 1;
+              testSuite.tests += 1;
+              console.error('\n' + testSuite.environment, 'test failed -',
+                local2._name + '.' + test.name);
+              EXPORTS.onEventErrorDefault(new Error(test.failure = 'test timeout'));
+            }
+            testSuite.time += test.time;
+            return;
+          }
           return;
         }
         switch (mode) {
@@ -493,7 +534,7 @@ add db indexing
             } else if (error) {
               testSuite.failures += 1;
               console.error('\n' + testSuite.environment, 'test failed -',
-                local2._name + '.' + test.name + '\n');
+                local2._name + '.' + test.name);
               EXPORTS.onEventErrorDefault(error);
               test.failure = error.stack || error.message || error;
             /* test passed */
@@ -510,20 +551,7 @@ add db indexing
           if (test.slice(0, 6) !== '_test_') {
             return;
           }
-          if (testSuite.testCases.hasOwnProperty[test]) {
-            test = testSuite.testCases[test];
-            /* test timeout */
-            if (!test.finished) {
-              test.finished = true;
-              test.time = new Date().getTime() - test.time;
-              testSuite.failures += 1;
-              testSuite.tests += 1;
-              EXPORTS.onEventErrorDefault(new Error(test.failure = 'test timeout'));
-            }
-            testSuite.time += test.time;
-            return;
-          }
-          /* queue test */
+          /* enqueue test */
           if (!remaining) {
             required.utility2_testCounter = required.utility2_testCounter || 0;
             required.utility2_testCounter += 1;
@@ -1313,9 +1341,9 @@ add db indexing
     _Db_prototype_tableUpdateRandom: function (limit, onEventError) {
       var data = {}, ii, jj, record;
       for (ii = 0; ii < limit; ii += 1) {
-        data['record:' + Math.random().toString(36).slice(2)] = record = {};
+        data['record ' + EXPORTS.dateAndSalt()] = record = {};
         for (jj = 0; jj < 2; jj += 1) {
-          record['field:' + Math.random().toString(36).slice(2)] = Math.random();
+          record['field ' + EXPORTS.dateAndSalt()] = Math.random();
         }
       }
       this.tableUpdate(JSON.stringify(data), onEventError);
@@ -1391,7 +1419,6 @@ add db indexing
         console.log('module not loaded - sqlite3');
       }
       /* exports */
-      EXPORTS.serverReady = EXPORTS.serverReady || EXPORTS.createDeferred();
       global.atob = function (text) {
         return new Buffer(text, 'base64').toString();
       };
@@ -1754,7 +1781,7 @@ add db indexing
       if (mode !== 'silent') {
         console.log(['shell', command]);
       }
-      required.child_process.spawn('/bin/sh', ['-c', command], { stdio: [0, 1, 2] });
+      return required.child_process.spawn('/bin/sh', ['-c', command], { stdio: [0, 1, 2] });
     },
 
     streamReadOnEventError: function (readable, onEventError, onEventProgress) {
@@ -2369,6 +2396,10 @@ add db indexing
       };
     },
 
+    middlewareOnEventError: function (error, request, response, next) {
+      EXPORTS.serverRespondDefault(response, 500, 'plain/text', error, next);
+    },
+
     '_routesDict_/assets/rollup.css': function (request, response, next) {
       EXPORTS.serverRespondFile(response, next,
         required.utility2.dir + '/assets.rollup.css');
@@ -2507,11 +2538,21 @@ add db indexing
       EXPORTS.server = EXPORTS.server || required.express()
         .use(required.express.logger('dev'))
         .use(required.utility2_middleware)
-        .on('error', EXPORTS.onEventErrorDefault)
-        .listen(EXPORTS.serverPort, function () {
+        .use(EXPORTS.middlewareOnEventError);
+      required.utility2_serverListen = required.utility2_serverListen = EXPORTS.ajaxNodejs({
+        url: 'http://localhost:' + EXPORTS.serverPort
+      }, function (error) {
+        if (!(error && error.code === 'ECONNREFUSED')) {
+          EXPORTS.serverReady(error || new Error('server port ' + EXPORTS.serverPort
+            + ' not available'));
+          return;
+        }
+        EXPORTS.server.listen(EXPORTS.serverPort, function () {
           console.log('server started on port ' + EXPORTS.serverPort);
-          EXPORTS.serverReady.ready();
+          EXPORTS.serverReady('ready');
         });
+      });
+
     },
 
     _testHtml: '<!DOCTYPE html><html><head>\n'
@@ -2622,8 +2663,8 @@ add db indexing
           response.write(chunk);
         };
         proc = required.child_process.spawn('/bin/sh', [tmp])
-          .on('close', function (error) {
-            response.end('error code: ' + error);
+          .on('close', function (exitCode) {
+            response.end('exit code: ' + exitCode);
           }).on('error', next);
         proc.stderr.on('data', _onEventData);
         proc.stdout.on('data', _onEventData);
@@ -2679,44 +2720,34 @@ add db indexing
         (files || []).forEach(EXPORTS.dbTable);
       });
       local._dirMaxDepth = 4;
-
-
-
-      /* test */
-      /* debug */
-      if (EXPORTS.nop()) {
-        return;
-      }
-      EXPORTS.debug = 0;
-      global.local = local;
-      /* debug */
-      EXPORTS.dbTableTest = EXPORTS.createDb('test');
-      var dbTableTest = global.dbTableTest = EXPORTS.dbTableTest;
-      if (!EXPORTS.nop()) {
-        return;
-      }
-      setTimeout(function () {
-        EXPORTS.ioChain([
-          function (data, onEventError) {
-            dbTableTest.tableDelete(onEventError);
-          },
-          function (data, onEventError) {
-            dbTableTest.tableUpdateRandom(8, onEventError);
-          },
-          function (data, onEventError) {
-            dbTableTest.tableScanForward('record:i', 0, onEventError);
-          },
-          function (data) {
-            console.log(data);
-            dbTableTest.tableScanBackward('record:i', 0);
-          },
-        ]);
-      }, 100);
     },
 
     _test_db: function (onEventError) {
-      onEventError();
-      var self = EXPORTS.createDb(EXPORTS.uuid4());
+      EXPORTS.serverReady(function (error) {
+        if (error) {
+          onEventError('skip');
+          return;
+        }
+        var self = EXPORTS.createDb(EXPORTS.uuid4());
+        EXPORTS.ioChain([
+          function (data, onEventError) {
+            self.tableDelete(onEventError);
+          },
+          function (data, onEventError) {
+            self.tableUpdateRandom(8, onEventError);
+          },
+          function (data, onEventError) {
+            self.tableScanForward('record:i', 0, onEventError);
+          },
+          function (data, onEventError) {
+            self.tableScanBackward('record:i', 0, onEventError);
+          },
+          function (data, onEventError) {
+            console.log(data);
+            onEventError();
+          },
+        ], onEventError);
+      });
     },
 
     dbTable: function (name) {
@@ -3044,8 +3075,8 @@ add db indexing
     },
 
     _dbActionDict_tableScanForward: function (self, options, onEventError) {
-      var _onEventError,
-        record = encodeURIComponent(options.record),
+      var file = encodeURIComponent(options.record),
+        _onEventError,
         remaining = Math.min(Number(options.limit) || 256, 256),
         written;
       _onEventError = function (error) {
@@ -3059,21 +3090,20 @@ add db indexing
         }
         if (!options.parents.length) {
           remaining = -1;
-          options.onEventData('}');
+          options.onEventData(']');
           onEventError();
           return;
         }
         var parent = options.parents.shift(), ii = parent.ii, files = parent.files, record;
-        printDebug('scan', remaining, files.length);
         /* backward */
         if (options.mode === 'backward') {
-          if (record && files[ii] > record) {
+          if (file && files[ii] > file) {
             ii -= 1;
           }
           files = files.slice(0, ii + 1).reverse();
         /* forward */
         } else {
-          if (files[ii] < record) {
+          if (files[ii] < file) {
             ii += 1;
           }
           files = files.slice(ii);
@@ -3094,17 +3124,17 @@ add db indexing
             options.onEventData(',');
           }
           written = true;
-          options.onEventData(JSON.stringify(record) + ':null');
+          options.onEventData(JSON.stringify(record));
         }
         if (!remaining) {
           remaining = -1;
-          options.onEventData('}');
+          options.onEventData(']');
           onEventError();
           return;
         }
         local._dirNext(self, options, options.mode, _onEventError);
       };
-      options.onEventData('{');
+      options.onEventData('[');
       _onEventError();
     },
 
@@ -3144,7 +3174,7 @@ add db indexing
 
     _dbActionQueue: function (self, options, onEventError) {
       /*
-        this function pushes action to a queue, where it's deferred if db is re-balancing
+        this function enqueue's the action if db is re-balancing
       */
       self.actionQueue.push(function (error) {
         if (error) {
@@ -3153,7 +3183,7 @@ add db indexing
         }
         local._dbAction(self, options, onEventError);
       });
-      /* execute queued actions if db is not re-balancing */
+      /* execute queue'd actions if db is not re-balancing */
       if (!self.rebalanceDepth) {
         while (self.actionQueue.length) {
           self.actionQueue.shift()();
@@ -3292,7 +3322,7 @@ add db indexing
           /* reset rebalance flag */
           self.rebalanceDepth = 0;
           self.marked = {};
-          /* unpause queued actions */
+          /* unpause queue'd actions */
           while (self.actionQueue.length) {
             self.actionQueue.shift()(error);
           }
@@ -3545,25 +3575,32 @@ add db indexing
     _initOnce: function () {
       /* nodejs */
       if (EXPORTS.isNodejs) {
-        required.utility2_phantomjsReady = required.utility2_phantomjsReady
-          || EXPORTS.createDeferred();
-        EXPORTS.serverReady.onEventReady(function () {
-          required.utility2_phantomjsPort
-            = parseInt('f' + Math.random().toString(16).slice(-3), 16);
-          /* spawn phantomjs process */
-          EXPORTS.shell('phantomjs ' + required.utility2.file + ' '
-            + EXPORTS.serverPort + ' ' + required.utility2_phantomjsPort);
+        EXPORTS.phantomjsReady = EXPORTS.phantomjsReady || EXPORTS.onEventReady();
+        required.utility2_phantomjsPort
+          = parseInt('f' + Math.random().toString(16).slice(-3), 16);
+        EXPORTS.serverReady(function (error) {
+          if (error) {
+            EXPORTS.phantomjsReady(error);
+            return;
+          }
           var interval = setInterval(function () {
             local._phantomjsTest('/test/timeout', function (error) {
               if (error) {
                 return;
               }
-              required.utility2_phantomjsReady.ready();
+              EXPORTS.phantomjsReady('ready');
+              clearInterval(interval);
+            }, 1000);
+          });
+          /* spawn phantomjs process */
+          EXPORTS.shell('phantomjs ' + required.utility2.file + ' '
+            + EXPORTS.serverPort + ' ' + required.utility2_phantomjsPort)
+            .on('close', function (exitCode) {
+              EXPORTS.phantomjsReady(new Error(exitCode));
               clearInterval(interval);
             });
-          }, 1000);
         });
-       /* phantomjs */
+      /* phantomjs */
       } else if (EXPORTS.isPhantomjs) {
         /* require */
         required.webpage = require('webpage');
@@ -3593,7 +3630,11 @@ add db indexing
     },
 
     phantomjsTest: function (url, onEventError) {
-      required.utility2_phantomjsReady.onEventReady(function () {
+      EXPORTS.phantomjsReady(function (error) {
+        if (error) {
+          onEventError(error);
+          return;
+        }
         local._phantomjsTest(url, onEventError);
       });
     },
@@ -3612,11 +3653,13 @@ add db indexing
     },
 
     _test_phantomjsTest: function (onEventError) {
-      if (!required.utility2_phantomjsPort) {
-        onEventError('skip');
-        return;
-      }
-      EXPORTS.phantomjsTest("/test/test.html", onEventError);
+      EXPORTS.phantomjsReady(function (error) {
+        if (error) {
+          onEventError('skip');
+          return;
+        }
+        EXPORTS.phantomjsTest("/test/test.html", onEventError);
+      });
     },
 
   };
