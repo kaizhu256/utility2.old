@@ -11,7 +11,7 @@ db add webui
 db auto-heal incorrectly indexed b-trees
 db limit record to 256 fields
 add db tableGet
-add db tableScanAndGet
+add db recordsScan
 create db http interface
 add db indexing
 */
@@ -86,7 +86,7 @@ add db indexing
           EXPORTS[key] = local[key];
         }
       });
-      EXPORTS.serverReady = EXPORTS.serverReady || EXPORTS.onEventReady();
+      EXPORTS.serverResume = EXPORTS.serverResume || EXPORTS.onEventResume('pause');
       if (EXPORTS.isBrowser) {
         /* browser test flag */
         if ((EXPORTS.isBrowserTest = (/\btestWatch=(\d+)\b/).exec(location.hash)) !== null) {
@@ -101,7 +101,7 @@ add db indexing
         }
       }
       if (!EXPORTS.isNodejs) {
-        EXPORTS.serverReady('ready');
+        EXPORTS.serverResume('resume');
       }
       /* exports */
       EXPORTS.moduleInit = local.moduleInit;
@@ -141,7 +141,7 @@ add db indexing
         return;
       }
       /* nodejs */
-      EXPORTS.serverReady(function (error) {
+      EXPORTS.serverResume(function (error) {
         if (error) {
           onEventError(error);
         }
@@ -151,7 +151,7 @@ add db indexing
     },
 
     _test_ajaxLocal: function (onEventError) {
-      EXPORTS.serverReady(function (error) {
+      EXPORTS.serverResume(function (error) {
         if (error) {
           onEventError('skip');
           return;
@@ -266,6 +266,10 @@ add db indexing
       onEventError(null, data);
     },
 
+    jsonCopy: function (data) {
+      return JSON.parse(JSON.stringify(data));
+    },
+
     jsonParseOrError: function (data) {
       /*
         this function returns JSON.parse(data) or error
@@ -289,8 +293,9 @@ add db indexing
     },
 
     moduleInit: function (module, local2) {
-      /* exports */
+      /* assert local2._name */
       console.assert(local2._name, [local2._name]);
+      /* exports */
       var name = local2._name.split('.'),
         exports = EXPORTS.required[name[0]] = EXPORTS.required[name[0]] || {};
       /* nodejs middleware routes */
@@ -356,9 +361,6 @@ add db indexing
         /* debug */
         EXPORTS.error = error;
         console.error(error.stack || error.message || error);
-        if (error.message === '') {
-          throw error;
-        }
         return;
       }
       if (data === undefined) {
@@ -367,60 +369,64 @@ add db indexing
       console.log((global.Buffer && global.Buffer.isBuffer(data)) ? data.toString() : data);
     },
 
-    onEventReady: function () {
-      var _error, queue = [], remaining = 0;
-      return function (error) {
-        if (typeof error === 'function') {
-          if (remaining < 0) {
-            error(_error);
-          } else {
-            queue.push(error);
+    onEventResume: function (mode) {
+      var _error, paused, queue = [], _resume, self;
+      _resume = function () {
+        paused = false;
+        queue.forEach(function (onEventResume) {
+          onEventResume(_error);
+        });
+        queue.length = 0;
+      };
+      self = function (error) {
+        if (error === 'pause') {
+          if (!_error) {
+            paused = true;
           }
-          return;
-        }
-        if (remaining < 0) {
-          return;
-        }
-        remaining = -1;
-        if (EXPORTS.isError(error)) {
+        } else if (error === 'resume') {
+          _resume();
+        } else if (EXPORTS.isError(error)) {
           _error = error;
-        } else if (error !== 'ready') {
+          _resume();
+        } else if (typeof error === 'function') {
+          if (paused) {
+            queue.push(error);
+          } else {
+            error(_error);
+          }
+        } else {
           throw new Error('unknown error ' + [error]);
         }
-        queue.forEach(function (onEventReady) {
-          onEventReady(_error);
-        });
-        queue = null;
       };
+      self(mode);
+      return self;
     },
 
-    _test_onEventReady: function (onEventError) {
-      var _onEventReady = EXPORTS.onEventReady(), tmp = 0;
-      _onEventReady(function () {
-        try {
-          console.assert(tmp === 1);
+    _test_onEventResume: function (onEventError) {
+      var _onEventResume = EXPORTS.onEventResume('pause'), tmp = 0;
+      _onEventResume(function () {
+        if (tmp === 1) {
           onEventError();
-        } catch (errorAssert) {
-          onEventError(errorAssert);
+          return;
         }
+        onEventError(new Error('test failed'));
       });
       setTimeout(function () {
         tmp += 1;
-        _onEventReady('ready');
+        _onEventResume('resume');
       }, 1);
     },
 
-    _test_onEventReadyError: function (onEventError) {
-      var _onEventReady = EXPORTS.onEventReady(), tmp = new Error();
-      _onEventReady(function (error) {
-        try {
-          console.assert(error === tmp);
+    _test_onEventResumeError: function (onEventError) {
+      var _onEventResume = EXPORTS.onEventResume('pause'), tmp = new Error();
+      _onEventResume(function (error) {
+        if (error === tmp) {
           onEventError();
-        } catch (errorAssert) {
-          onEventError(errorAssert);
+          return;
         }
+        onEventError(new Error('test failed'));
       });
-      _onEventReady(tmp);
+      _onEventResume(tmp);
     },
 
     setOptionsDefaults: function (options, defaults) {
@@ -459,13 +465,12 @@ add db indexing
     },
 
     _test_templateFormat: function (onEventError) {
-      try {
-        console.assert(EXPORTS.templateFormat('{{aa}}', { aa: 1 }) === '{{aa}}');
-        console.assert(EXPORTS.templateFormat('{{aa}}', { aa: 'bb' }) === 'bb');
+      if (EXPORTS.templateFormat('{{aa}}', { aa: 1 }) === '{{aa}}'
+          && EXPORTS.templateFormat('{{aa}}', { aa: 'bb' }) === 'bb') {
         onEventError();
-      } catch (error) {
-        onEventError(error);
+        return;
       }
+      onEventError(new Error('test failed'));
     },
 
     testLocal: function (module, local2) {
@@ -551,12 +556,12 @@ add db indexing
           if (test.slice(0, 6) !== '_test_') {
             return;
           }
-          /* enqueue test */
           if (!remaining) {
             required.utility2_testCounter = required.utility2_testCounter || 0;
             required.utility2_testCounter += 1;
           }
           remaining += 1;
+          /* en-queue test */
           setTimeout(_onEventTest, 100, testSuite.testCases[test]
             = { name: test, time: new Date().getTime() }, 'start');
         }
@@ -690,13 +695,12 @@ add db indexing
     },
 
     _test_urlSearch: function (onEventError) {
-      try {
-        console.assert(EXPORTS.urlSearchGetItem('/aa#bb=cc%2B', 'bb', '#') === 'cc+');
-        console.assert(EXPORTS.urlSearchSetItem('/aa', 'bb', 'cc+', '#') === '/aa#bb=cc%2B');
+      if (EXPORTS.urlSearchGetItem('/aa#bb=cc%2B', 'bb', '#') === 'cc+'
+          && EXPORTS.urlSearchSetItem('/aa', 'bb', 'cc+', '#') === '/aa#bb=cc%2B') {
         onEventError();
-      } catch (error) {
-        onEventError(error);
+        return;
       }
+      onEventError(new Error('test failed'));
     },
 
     uuid4: function () {
@@ -2155,6 +2159,7 @@ add db indexing
       case 'print':
         script = 'console.log(String(' + bb + '))';
         break;
+      /* sqlite3 commands */
       case 'sql':
         if (!required.sqlite3_db) {
           break;
@@ -2277,6 +2282,7 @@ add db indexing
         try {
           content = (/\/\* listing start \*\/\n([\S\s]+\n)\/\* listing end \*\/\n/).exec(content);
           keys = content[1].trim().split('\n');
+          /* assert non-empty keys */
           console.assert(keys.length);
           content = content[0];
         } catch (errorContent) {
@@ -2543,13 +2549,13 @@ add db indexing
         url: 'http://localhost:' + EXPORTS.serverPort
       }, function (error) {
         if (!(error && error.code === 'ECONNREFUSED')) {
-          EXPORTS.serverReady(error || new Error('server port ' + EXPORTS.serverPort
+          EXPORTS.serverResume(error || new Error('server port ' + EXPORTS.serverPort
             + ' not available'));
           return;
         }
         EXPORTS.server.listen(EXPORTS.serverPort, function () {
           console.log('server started on port ' + EXPORTS.serverPort);
-          EXPORTS.serverReady('ready');
+          EXPORTS.serverResume('resume');
         });
       });
 
@@ -2723,30 +2729,48 @@ add db indexing
     },
 
     _test_db: function (onEventError) {
-      EXPORTS.serverReady(function (error) {
+      EXPORTS.serverResume(function (error) {
         if (error) {
           onEventError('skip');
           return;
         }
-        var self = EXPORTS.createDb(EXPORTS.uuid4());
+        var self = EXPORTS.createDb('table test ' + EXPORTS.dateAndSalt()), sorted;
+        self.dirMaxFiles = 16;
         EXPORTS.ioChain([
           function (data, onEventError) {
             self.tableDelete(onEventError);
           },
           function (data, onEventError) {
-            self.tableUpdateRandom(8, onEventError);
+            self.tableUpdateRandom(64, onEventError);
           },
           function (data, onEventError) {
-            self.tableScanForward('record:i', 0, onEventError);
+            self.tableScanForward('record ', 0, onEventError);
           },
           function (data, onEventError) {
-            self.tableScanBackward('record:i', 0, onEventError);
+            if ((sorted = JSON.stringify(JSON.parse(data).sort())) === data) {
+              onEventError();
+              return;
+            }
+            onEventError(new Error('test failed - tableScanForward'));
           },
           function (data, onEventError) {
-            console.log(data);
+            self.tableScanBackward('record z', 0, onEventError);
+          },
+          function (data, onEventError) {
+            if ((data = JSON.stringify(JSON.parse(data).reverse())) === sorted) {
+              onEventError();
+              return;
+            }
+            onEventError(new Error('test failed - tableScanBackward'));
+          },
+          function (data, onEventError) {
             onEventError();
           },
-        ], onEventError);
+        ], function (error) {
+          self.tableDelete(function (_error) {
+            onEventError(error || _error);
+          });
+        });
       });
     },
 
@@ -2761,7 +2785,7 @@ add db indexing
         dirMaxFiles: 1024,
         marked: {},
         actionLock: 0,
-        actionQueue: [],
+        actionResume: EXPORTS.onEventResume('resume'),
       });
     },
 
@@ -2819,13 +2843,11 @@ add db indexing
       case 'recordsGet':
       case 'tableDelete':
       case 'tableScanBackward':
-      case 'tableScanBackwardAndGet':
       case 'tableUpdate':
       case 'tableUpdateOptions':
         local._dbActionDict[options.action](self, options, _onEventError);
         return;
       case 'tableScanForward':
-      case 'tableScanForwardAndGet':
         if (options.mode === 'backward' && !options.record) {
           mode = 'backward';
         }
@@ -3077,7 +3099,7 @@ add db indexing
     _dbActionDict_tableScanForward: function (self, options, onEventError) {
       var file = encodeURIComponent(options.record),
         _onEventError,
-        remaining = Math.min(Number(options.limit) || 256, 256),
+        remaining = Math.min(Number(options.limit) || 1024, 1024),
         written;
       _onEventError = function (error) {
         if (remaining < 0) {
@@ -3170,25 +3192,6 @@ add db indexing
         self[key] = options.json[key];
       });
       onEventError();
-    },
-
-    _dbActionQueue: function (self, options, onEventError) {
-      /*
-        this function enqueue's the action if db is re-balancing
-      */
-      self.actionQueue.push(function (error) {
-        if (error) {
-          onEventError(error);
-          return;
-        }
-        local._dbAction(self, options, onEventError);
-      });
-      /* execute queue'd actions if db is not re-balancing */
-      if (!self.rebalanceDepth) {
-        while (self.actionQueue.length) {
-          self.actionQueue.shift()();
-        }
-      }
     },
 
     _dbOnEventError2: function (self, options, onEventError) {
@@ -3317,15 +3320,14 @@ add db indexing
         if (remaining < 0) {
           return;
         }
+        /* finished re-balancing or encountered error */
         if (error || !self.rebalanceDepth) {
           remaining = -1;
           /* reset rebalance flag */
           self.rebalanceDepth = 0;
           self.marked = {};
-          /* unpause queue'd actions */
-          while (self.actionQueue.length) {
-            self.actionQueue.shift()(error);
-          }
+          /* resume db actions */
+          self.actionResume('resume');
           return;
         }
         if (!self.rebalanceDepthRepeat) {
@@ -3489,6 +3491,8 @@ add db indexing
       _onEventError = function (error) {
         /* rebalance directories if there are no active actions */
         if (self.rebalanceDepth && !self.actionLock) {
+          /* pause db actions while re-balancing */
+          self.actionResume('pause');
           local._dirRebalance(self);
         }
         if (error) {
@@ -3524,11 +3528,25 @@ add db indexing
             _onEventError(new Error('invalid data type ' + [typeof options.json]));
             return;
           }
-          local._dbActionQueue(self, options, _onEventError);
+          /* en-queue action if db is re-balancing */
+          self.actionResume(function (error) {
+            if (error) {
+              _onEventError(error);
+              return;
+            }
+            local._dbAction(self, options, _onEventError);
+          });
         });
         return;
       }
-      local._dbActionQueue(self, options, _onEventError);
+      /* en-queue action if db is re-balancing */
+      self.actionResume(function (error) {
+        if (error) {
+          _onEventError(error);
+          return;
+        }
+        local._dbAction(self, options, _onEventError);
+      });
     },
 
     _dbHtml: '<!DOCTYPE html><html><head>\n'
@@ -3575,12 +3593,12 @@ add db indexing
     _initOnce: function () {
       /* nodejs */
       if (EXPORTS.isNodejs) {
-        EXPORTS.phantomjsReady = EXPORTS.phantomjsReady || EXPORTS.onEventReady();
+        EXPORTS.phantomjsResume = EXPORTS.phantomjsResume || EXPORTS.onEventResume('pause');
         required.utility2_phantomjsPort
           = parseInt('f' + Math.random().toString(16).slice(-3), 16);
-        EXPORTS.serverReady(function (error) {
+        EXPORTS.serverResume(function (error) {
           if (error) {
-            EXPORTS.phantomjsReady(error);
+            EXPORTS.phantomjsResume(error);
             return;
           }
           var interval = setInterval(function () {
@@ -3588,7 +3606,7 @@ add db indexing
               if (error) {
                 return;
               }
-              EXPORTS.phantomjsReady('ready');
+              EXPORTS.phantomjsResume('resume');
               clearInterval(interval);
             }, 1000);
           });
@@ -3596,7 +3614,7 @@ add db indexing
           EXPORTS.shell('phantomjs ' + required.utility2.file + ' '
             + EXPORTS.serverPort + ' ' + required.utility2_phantomjsPort)
             .on('close', function (exitCode) {
-              EXPORTS.phantomjsReady(new Error(exitCode));
+              EXPORTS.phantomjsResume(new Error(exitCode));
               clearInterval(interval);
             });
         });
@@ -3630,7 +3648,7 @@ add db indexing
     },
 
     phantomjsTest: function (url, onEventError) {
-      EXPORTS.phantomjsReady(function (error) {
+      EXPORTS.phantomjsResume(function (error) {
         if (error) {
           onEventError(error);
           return;
@@ -3653,7 +3671,7 @@ add db indexing
     },
 
     _test_phantomjsTest: function (onEventError) {
-      EXPORTS.phantomjsReady(function (error) {
+      EXPORTS.phantomjsResume(function (error) {
         if (error) {
           onEventError('skip');
           return;
