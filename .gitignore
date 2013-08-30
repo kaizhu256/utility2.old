@@ -1,0 +1,10 @@
+artifacts/
+db/
+.DS_Store
+._.DS_Store
+git_modules/
+nginx/logs/
+node_modules/
+*.rollup.*
+tmp/
+.vim/
