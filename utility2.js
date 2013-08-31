@@ -220,26 +220,56 @@ add db indexing
     ioChain: function (chain, onEventError) {
       /*
         this function synchronizes a chain of asynchronous io calls of the form
-        function (data, onEventError)
+        function (state, data, next, onEventError)
+        usage:
+        EXPORTS.ioChain(function (state, data, onEventError) {
+          switch (state) {
+          case 0:
+            required.fs.writeFile('/tmp/foo.txt', 'hello world', onEventError);
+            break;
+          case 1:
+            required.fs.readFile('/tmp/foo.txt', 'utf8', onEventError);
+            break;
+          case 2:
+            onEventError(data === 'hello world' ? 'finish' : new Error('test failed'));
+            break;
+          }
+        }, onEventError);
       */
       onEventError = onEventError || EXPORTS.onEventErrorDefault;
-      var next = 0, _onEventError = function (error, data) {
-        next += 1;
-        if (error) {
-          /* debug */
-          EXPORTS.error = error;
-          onEventError(error, next);
-          return;
-        }
-        if (next < chain.length) {
-          chain[next](data, _onEventError);
-          return;
-        }
-        if (next === chain.length) {
-          onEventError(null, data);
+      var _onEventError, state = 0;
+      _onEventError = function (error, data) {
+        if (!error) {
+          chain(state += 1, data, _onEventError);
+        } else if (EXPORTS.isError(error)) {
+          onEventError(error);
+        } else if (error === 'finish') {
+          onEventError(null, error);
+        } else {
+          onEventError(new Error('unknown error ' + [error]));
         }
       };
-      chain[next](null, _onEventError);
+      chain(state, null, _onEventError);
+    },
+
+    _test_ioChain: function (onEventError) {
+      if (!EXPORTS.isNodejs) {
+        onEventError('skip');
+        return;
+      }
+      EXPORTS.ioChain(function (state, data, onEventError) {
+        switch (state) {
+        case 0:
+          required.fs.writeFile('/tmp/foo.txt', 'hello world', onEventError);
+          break;
+        case 1:
+          required.fs.readFile('/tmp/foo.txt', 'utf8', onEventError);
+          break;
+        case 2:
+          onEventError(data === 'hello world' ? 'finish' : new Error('test failed'));
+          break;
+        }
+      }, onEventError);
     },
 
     isError: function (object) {
@@ -1262,6 +1292,11 @@ add db indexing
       EXPORTS.ajaxLocal({ data: data, params: options, url: '/db/db.ajax' }, onEventError);
     },
 
+    _Db_prototype_fieldAppend: function (record, field, data, onEventError) {
+      this.ajax({ action: 'fieldAppend', data: data, field: field, record: record },
+        onEventError);
+    },
+
     _Db_prototype_fieldDelete: function (record, field, onEventError) {
       this.ajax({ action: 'fieldDelete', field: field, record: record }, onEventError);
     },
@@ -1323,6 +1358,10 @@ add db indexing
       this.ajax({ action: 'tableGet' }, onEventError);
     },
 
+    _Db_prototype_tableOptionsUpdateAndGet: function (options, onEventError) {
+      this.ajax({ action: 'tableOptionsUpdateAndGet', data: JSON.stringify(options) }, onEventError);
+    },
+
     _Db_prototype_tableScanBackward: function (record, limit, onEventError) {
       this.ajax({ action: 'tableScanBackward', record: record, limit: limit.toString() },
         onEventError);
@@ -1335,11 +1374,6 @@ add db indexing
 
     _Db_prototype_tableUpdate: function (data, onEventError) {
       this.ajax({ action: 'tableUpdate', data: data }, onEventError);
-    },
-
-    _Db_prototype_tableUpdateOptions: function (options, onEventError) {
-      this.ajax({ action: 'tableUpdateOptions', data: JSON.stringify(options) },
-        onEventError);
     },
 
     _Db_prototype_tableUpdateRandom: function (limit, onEventError) {
@@ -1356,9 +1390,6 @@ add db indexing
     createDb: function (name) {
       var self = new local._Db();
       self.name = name;
-      if (EXPORTS.dbTable) {
-        self.table = EXPORTS.dbTable(name);
-      }
       return self;
     },
 
@@ -1852,7 +1883,11 @@ add db indexing
       /* exports */
       EXPORTS.tmpDir = required.path.resolve(EXPORTS.tmpDir || process.cwd() + '/tmp');
       /* create cache directory */
-      EXPORTS.fsMkdirpSync(required.utility2_cacheDir = EXPORTS.tmpDir + '/cache');
+      try {
+        EXPORTS.fsMkdirpSync(required.utility2_cacheDir = EXPORTS.tmpDir + '/cache');
+      } catch (error) {
+        EXPORTS.onEventErrorDefault(error);
+      }
       /* periodically clean up cache directory */
       setInterval(local._cacheCleanup, EXPORTS.timeoutDefault);
       /* remove old coverage reports */
@@ -1888,6 +1923,32 @@ add db indexing
           onEventError(null, cache);
         }).on('error', onEventError)
       );
+    },
+
+    fsAppendFile: function (file, data, onEventError) {
+      /*
+        this function append data to a file, while auto-creating missing directories
+      */
+      required.fs.appendFile(file, data, function (error) {
+        if (!error) {
+          onEventError();
+          return;
+        }
+        /* fallback - retry after creating missing directory */
+        if (error.code === 'ENOENT') {
+          EXPORTS.fsMkdirp(EXPORTS.fsDirname(file), function (error) {
+            if (error) {
+              onEventError(error);
+              return;
+            }
+            /* retry */
+            required.fs.appendFile(file, data, onEventError);
+          });
+          return;
+        }
+        /* default behavior */
+        onEventError(error);
+      });
     },
 
     fsMkdirp: function (dir, onEventError) {
@@ -1940,27 +2001,27 @@ add db indexing
 
     fsRename: function (file1, file2, onEventError) {
       /*
-        this function renames a file, auto-creating missing directories
+        this function renames a file, while auto-creating missing directories
       */
       required.fs.rename(file1, file2, function (error) {
-        /* default behavior */
-        if (error) {
-          /* fallback - retry after creating missing directory */
-          if (error.code === 'ENOENT') {
-            EXPORTS.fsMkdirp(EXPORTS.fsDirname(file2), function (error) {
-              if (error) {
-                onEventError(error);
-                return;
-              }
-              /* retry */
-              required.fs.rename(file1, file2, onEventError);
-            });
-            return;
-          }
-          onEventError(error);
+        if (!error) {
+          onEventError();
           return;
         }
-        onEventError();
+        /* fallback - retry after creating missing directory */
+        if (error.code === 'ENOENT') {
+          EXPORTS.fsMkdirp(EXPORTS.fsDirname(file2), function (error) {
+            if (error) {
+              onEventError(error);
+              return;
+            }
+            /* retry */
+            required.fs.rename(file1, file2, onEventError);
+          });
+          return;
+        }
+        /* default behavior */
+        onEventError(error);
       });
     },
 
@@ -2030,17 +2091,31 @@ add db indexing
     fsWriteFileAtomic: function (file, data, options, onEventError) {
       /*
         this function atomically writes data to a file,
-        by first writing to a unique cache file, and then renaming it
+        by first writing to a unique cache file, and then renaming it,
+        while auto-creating missing directories
       */
       var cache = required.utility2_cacheDir + '/' + EXPORTS.dateAndSalt();
       options.flag = 'wx';
       /* write data */
       required.fs.writeFile(cache, data, options, function (error) {
-        if (error) {
-          onEventError(error);
+        if (!error) {
+          EXPORTS.fsRename(cache, file, onEventError);
           return;
         }
-        EXPORTS.fsRename(cache, file, onEventError);
+        /* fallback - retry after creating missing directory */
+        if (error.code === 'ENOENT') {
+          EXPORTS.fsMkdirp(EXPORTS.fsDirname(file), function (error) {
+            if (error) {
+              onEventError(error);
+              return;
+            }
+            /* retry */
+            required.fs.writeFile(cache, data, options, onEventError);
+          });
+          return;
+        }
+        /* default error behavior */
+        onEventError(error);
       });
     },
 
@@ -2723,7 +2798,7 @@ add db indexing
       EXPORTS.dbTables = EXPORTS.dbTables || {};
       /* read all current databases */
       required.fs.readdir(EXPORTS.dbDir, function (error, files) {
-        (files || []).forEach(EXPORTS.dbTable);
+        (files || []).forEach(local._dbTable);
       });
       local._dirMaxDepth = 4;
     },
@@ -2736,37 +2811,86 @@ add db indexing
         }
         var self = EXPORTS.createDb('table test ' + EXPORTS.dateAndSalt()), sorted;
         self.dirMaxFiles = 16;
-        EXPORTS.ioChain([
-          function (data, onEventError) {
+        EXPORTS.ioChain(function (state, data, onEventError) {
+          var _state = -1;
+          if ((_state += 1) === state) {
             self.tableDelete(onEventError);
-          },
-          function (data, onEventError) {
+            return;
+          }
+          /* test tableOptionsUpdateAndGet */
+          if ((_state += 1) === state) {
+            self.tableOptionsUpdateAndGet(null, onEventError);
+            return;
+          }
+          if ((_state += 1) === state) {
+            if (JSON.parse(data).dirMaxFiles !== 1024) {
+              onEventError(new Error('test failed - tableOptionsUpdateAndGet'));
+            } else {
+              onEventError();
+            }
+            return;
+          }
+          if ((_state += 1) === state) {
+            self.tableOptionsUpdateAndGet({ 'dirMaxFiles': 16 }, onEventError);
+            return;
+          }
+          if ((_state += 1) === state) {
+            if (JSON.parse(data).dirMaxFiles !== 16) {
+              onEventError(new Error('test failed - tableOptionsUpdateAndGet'));
+            } else {
+              onEventError();
+            }
+            return;
+          }
+          /* test tableUpdateRandom */
+          if ((_state += 1) === state) {
             self.tableUpdateRandom(64, onEventError);
-          },
-          function (data, onEventError) {
+            return;
+          }
+          /* test tableScanForward */
+          if ((_state += 1) === state) {
             self.tableScanForward('record ', 0, onEventError);
-          },
-          function (data, onEventError) {
-            if ((sorted = JSON.stringify(JSON.parse(data).sort())) === data) {
+            return;
+          }
+          if ((_state += 1) === state) {
+            if (JSON.parse(data).length !== 64) {
+              onEventError(new Error('test failed - tableUpdateRandom'));
+            } else if ((sorted = JSON.stringify(JSON.parse(data).sort())) !== data) {
+              onEventError(new Error('test failed - tableScanForward'));
+            } else {
               onEventError();
-              return;
             }
-            onEventError(new Error('test failed - tableScanForward'));
-          },
-          function (data, onEventError) {
+            return;
+          }
+          /* test tableScanBackward */
+          if ((_state += 1) === state) {
             self.tableScanBackward('record z', 0, onEventError);
-          },
-          function (data, onEventError) {
-            if ((data = JSON.stringify(JSON.parse(data).reverse())) === sorted) {
+            return;
+          }
+          if ((_state += 1) === state) {
+            if (JSON.stringify(JSON.parse(data).reverse()) !== sorted) {
+              onEventError(new Error('test failed - tableScanBackward'));
+            } else {
               onEventError();
-              return;
             }
-            onEventError(new Error('test failed - tableScanBackward'));
-          },
-          function (data, onEventError) {
-            onEventError();
-          },
-        ], function (error) {
+            return;
+          }
+          /* test fieldAppend */
+          if ((_state += 1) === state) {
+            self.fieldAppend('record fieldAppend', 'fieldAppend', '1', onEventError);
+            return;
+          }
+          // if ((_state += 1) === state) {
+            // if (JSON.stringify(JSON.parse(data).reverse()) !== sorted) {
+              // onEventError(new Error('test failed - tableScanBackward'));
+            // } else {
+              // onEventError();
+            // }
+            // return;
+          // }
+          /* finish testing */
+          onEventError('finish');
+        }, function (error) {
           self.tableDelete(function (_error) {
             onEventError(error || _error);
           });
@@ -2774,7 +2898,7 @@ add db indexing
       });
     },
 
-    dbTable: function (name) {
+    _dbTable: function (name) {
       /*
         this function creates a database with the given name
       */
@@ -2811,12 +2935,27 @@ add db indexing
         }
         break;
       }
+      /* validate data type */
+      if (options.json && typeof options.json !== 'object') {
+        switch (options.action) {
+        case 'fieldAppend':
+          break;
+        default:
+          onEventError(new Error('invalid data type ' + [typeof options.json]));
+          return;
+        }
+      }
       /* empty options.json */
       switch (options.action) {
+      case 'fieldAppend':
+        if (options.json === undefined) {
+          onEventError();
+          return;
+        }
+        break;
       case 'recordUpdate':
       case 'recordsDelete':
       case 'tableUpdate':
-      case 'tableUpdateOptions':
         if (EXPORTS.dictIsEmpty(options.json)) {
           onEventError();
           return;
@@ -2842,9 +2981,9 @@ add db indexing
       switch (options.action) {
       case 'recordsGet':
       case 'tableDelete':
+      case 'tableOptionsUpdateAndGet':
       case 'tableScanBackward':
       case 'tableUpdate':
-      case 'tableUpdateOptions':
         local._dbActionDict[options.action](self, options, _onEventError);
         return;
       case 'tableScanForward':
@@ -2871,6 +3010,11 @@ add db indexing
 
     _dbActionDict: {},
 
+    _dbActionDict_fieldAppend: function (self, options, onEventError) {
+      EXPORTS.fsAppendFile(options.dir + '/' + encodeURIComponent(options.field),
+        ',' + encodeURIComponent(JSON.stringify(options.JSON)), onEventError);
+    },
+
     _dbActionDict_fieldDelete: function (self, options, onEventError) {
       EXPORTS.fsRmrAtomic(options.dir + '/' + encodeURIComponent(options.field), onEventError);
     },
@@ -2885,6 +3029,10 @@ add db indexing
           }
           onEventError(error);
           return;
+        }
+        /* appended data */
+        if (data[0] === ',') {
+          data = '[' + decodeURIComponent(data.slice(1)) + ']';
         }
         if (EXPORTS.isError(EXPORTS.jsonParseOrError(data))) {
           local._onEventErrorCorruptFile(file, onEventError);
@@ -3090,6 +3238,21 @@ add db indexing
       local._dbAction(self, options, onEventError);
     },
 
+    _dbActionDict_tableOptionsUpdateAndGet: function (self, options, onEventError) {
+      /* update table options */
+      Object.keys(options.json || {}).forEach(function (key) {
+        self[key] = options.json[key];
+      });
+      /* get table options */
+      var data;
+      if (EXPORTS.isError(data = EXPORTS.jsonStringifyOrError(self))) {
+        onEventError(data);
+        return;
+      }
+      options.onEventData(data);
+      onEventError();
+    },
+
     _dbActionDict_tableScanBackward: function (self, options, onEventError) {
       options.action = 'tableScanForward';
       options.mode = 'backward';
@@ -3185,13 +3348,6 @@ add db indexing
           record: record
         }, _onEventError);
       });
-    },
-
-    _dbActionDict_tableUpdateOptions: function (self, options, onEventError) {
-      Object.keys(options.json).forEach(function (key) {
-        self[key] = options.json[key];
-      });
-      onEventError();
     },
 
     _dbOnEventError2: function (self, options, onEventError) {
@@ -3487,7 +3643,7 @@ add db indexing
         next(new Error('invalid table'));
         return;
       }
-      self = EXPORTS.dbTable(options.table);
+      self = local._dbTable(options.table);
       _onEventError = function (error) {
         /* rebalance directories if there are no active actions */
         if (self.rebalanceDepth && !self.actionLock) {
@@ -3522,10 +3678,6 @@ add db indexing
           }
           if (EXPORTS.isError(options.json = EXPORTS.jsonParseOrError(data))) {
             _onEventError(options.json);
-            return;
-          }
-          if (typeof options.json !== 'object') {
-            _onEventError(new Error('invalid data type ' + [typeof options.json]));
             return;
           }
           /* en-queue action if db is re-balancing */
@@ -3570,6 +3722,9 @@ add db indexing
   };
   local._init();
 }(global));
+
+
+
 (function modulePhantomjsShared(global) {
   /*
     this nodejs / phantomjs module runs a phantomjs server
