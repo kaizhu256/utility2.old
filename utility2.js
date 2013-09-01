@@ -5,7 +5,6 @@ common, shared utilities for both browser and nodejs
 https://git.corp.yahoo.com/gist/2230
 
 todo:
-add password protection for admin module
 migrate argv processing to commander
 db add webui
 db auto-heal incorrectly indexed b-trees
@@ -80,55 +79,37 @@ add db indexing
     _name: 'utility2.moduleCommonShared',
 
     _init: function () {
+      local.moduleInit(module, local);
+    },
+
+    _initOnce: function () {
       /* exports */
-      Object.keys(local).forEach(function (key) {
-        if (key[0] !== '_') {
-          EXPORTS[key] = local[key];
-        }
-      });
       EXPORTS.serverResume = EXPORTS.serverResume || EXPORTS.onEventResume('pause');
-      if (EXPORTS.isBrowser) {
-        /* browser test flag */
-        if ((EXPORTS.isBrowserTest = (/\btestWatch=(\d+)\b/).exec(location.hash)) !== null) {
-          /* increment watch counter */
-          location.hash = EXPORTS.urlSearchSetItem(location.hash, 'testWatch',
-            (Number(EXPORTS.isBrowserTest[1]) + 1).toString(), '#');
-          EXPORTS.isBrowserTest = 'watch';
-        } else if ((EXPORTS.isBrowserTest = (/\btestOnce=/).exec(location.hash)) !== null) {
-          EXPORTS.isBrowserTest = 'once';
-        } else if (EXPORTS.isPhantomjs) {
-          EXPORTS.isBrowserTest = 'phantomjs';
-        }
-      }
-      if (!EXPORTS.isNodejs) {
-        EXPORTS.serverResume('resume');
-      }
-      /* exports */
-      EXPORTS.moduleInit = local.moduleInit;
       EXPORTS.string256 = '\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\b\t\n\u000b\f\r\u000e\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c\u001d\u001e\u001f !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~';
-      EXPORTS.timeoutDefault = 30 * 1000;
-      /* init module */
-      EXPORTS.moduleInit(module, local);
+      EXPORTS.timeoutDefault = EXPORTS.timeoutDefault || 30 * 1000;
       /* browser */
       if (EXPORTS.isBrowser) {
-        /* cache element id */
-        $('[id]').each(function (ii, target) {
-          EXPORTS[target.id] = EXPORTS[target.id] || $(target);
-        });
-        /* ajax */
-        EXPORTS.ajaxProgressOnEventError = EXPORTS.ajaxProgressOnEventError
-          || function (options, onEventError) {
-            onEventError = onEventError || EXPORTS.onEventErrorDefault;
-            options.contentType = options.contentType || 'application/octet-stream';
-            options.dataType = options.dataType || 'text';
-            options.type = options.type || options.method;
-            $.ajax(options).done(function (data) {
-              onEventError(null, data);
-            }).fail(function (xhr, textStatus, errorMessage) {
-              onEventError(new Error(xhr.responseText || errorMessage));
-            });
-          };
+        local._initOnceBrowser();
       }
+    },
+
+    _initOnceBrowser: function () {
+      /* cache element id */
+      $('[id]').each(function (ii, target) {
+        EXPORTS[target.id] = EXPORTS[target.id] || $(target);
+      });
+      /* browser test flag */
+      if ((EXPORTS.isBrowserTest = (/\btestWatch=(\d+)\b/).exec(location.hash)) !== null) {
+        /* increment watch counter */
+        location.hash = EXPORTS.urlSearchSetItem(location.hash, 'testWatch',
+          (Number(EXPORTS.isBrowserTest[1]) + 1).toString(), '#');
+        EXPORTS.isBrowserTest = 'watch';
+      } else if ((EXPORTS.isBrowserTest = (/\btestOnce=/).exec(location.hash)) !== null) {
+        EXPORTS.isBrowserTest = 'once';
+      } else if (EXPORTS.isPhantomjs) {
+        EXPORTS.isBrowserTest = 'phantomjs';
+      }
+      EXPORTS.serverResume('resume');
     },
 
     ajaxLocal: function (options, onEventError) {
@@ -346,10 +327,6 @@ add db indexing
         if (required.utility2._moduleRequireOnce) {
           required.utility2._moduleRequireOnce(module, local2, exports);
         }
-      }
-      /* init nodejs */
-      if (EXPORTS.moduleInitNodejs) {
-        EXPORTS.moduleInitNodejs(module, local2, exports);
       }
       /* run test */
       EXPORTS.testLocal(module, local2, exports);
@@ -773,7 +750,6 @@ add db indexing
       if (!EXPORTS.isBrowser) {
         return;
       }
-      /* init module */
       EXPORTS.moduleInit(module, local);
     },
 
@@ -816,7 +792,6 @@ add db indexing
       if (!EXPORTS.isBrowser) {
         return;
       }
-      /* init module */
       EXPORTS.moduleInit(module, local);
     },
 
@@ -981,7 +956,6 @@ add db indexing
       if (!EXPORTS.isBrowser) {
         return;
       }
-      /* init module */
       EXPORTS.moduleInit(module, local);
     },
 
@@ -1223,7 +1197,6 @@ add db indexing
       if (!(EXPORTS.isBrowser && location.pathname === '/admin/admin.html')) {
         return;
       }
-      /* init module */
       EXPORTS.moduleInit(module, local);
     },
 
@@ -1264,7 +1237,6 @@ add db indexing
     _name: 'utility2.moduleDbShared',
 
     _init: function () {
-      /* init module */
       EXPORTS.moduleInit(module, local);
     },
 
@@ -1401,12 +1373,10 @@ add db indexing
       if (!EXPORTS.isNodejs) {
         return;
       }
-      local._initOnceNodejs();
-      /* init module */
       EXPORTS.moduleInit(module, local);
     },
 
-    _initOnceNodejs: function () {
+    _initOnce: function () {
       if (required.utility2_initOnce) {
         return;
       }
@@ -2457,6 +2427,8 @@ add db indexing
         for (path = request.urlPathNormalized; path !== path0; path = EXPORTS.fsDirname(path)) {
           path0 = path;
           if (routesDict.hasOwnProperty(path)) {
+            /* debug */
+            request.handler = routesDict[path];
             routesDict[path](request, response, next);
             return;
           }
@@ -2545,32 +2517,68 @@ add db indexing
       response.end(EXPORTS.timestamp);
     },
 
+    serverBasicAuthValidate: function (request) {
+      /*
+        this function validates a request's basic authentication.
+        basic authentication format:
+        btoa('Aladdin:open sesame')
+        atob('QWxhZGRpbjpvcGVuIHNlc2FtZQ==')
+      */
+      return (/^localhost:/).test(request.headers.host)
+        || (/\S*$/).exec(request.headers.authorization || '')[0]
+        === EXPORTS.serverBasicAuthSecret;
+    },
+
     '_securityDict_': function (request, response, next) {
-      printDebug('security');
-      next();
-      // if(!svr.ADMIN_BASIC_AUTH) {svr.respond404(rqrs); return;}
-      // if(!svr.adminBasicAuth(rqrs)) {
-        // rqrs.redirect = '/login?redirect=' + encodeURIComponent(rqrs.url2.href);
-      //   svr.respondRedirect = function(rqrs) {
-      //     rqrs.statusCode = 303; rqrs.headers.location = rqrs.redirect; svr.respond(rqrs);
-      //   };
-      // svr.handlerRqrs(rqrs);
+      if (EXPORTS.serverBasicAuthValidate(request)) {
+        next();
+        return;
+      }
+      EXPORTS.serverRespondDefault(response, 303, 'text/plain', '/signin?redirect='
+        + encodeURIComponent(request.url));
+    },
+
+    '_securityDict_/signin': function (request, response, next) {
+      var redirect;
+      if (EXPORTS.serverBasicAuthValidate(request)) {
+        if (request.urlParsed.params.redirect) {
+          if (EXPORTS.isError(redirect
+              = EXPORTS.urlDecodeOrError(request.urlParsed.params.redirect))) {
+            next(redirect);
+            return;
+          }
+          EXPORTS.serverRespondDefault(response, 303, 'text/plain', redirect);
+          return;
+        }
+        next();
+        return;
+      }
+      EXPORTS.serverRespondDefault(response, 401, 'text/plain', '401 Unauthorized');
     },
 
     serverRespondDefault: function (response, statusCode, contentType, data) {
       /*
         this convenience function give an appropriate response for a given status code
       */
-      if (!response._header) {
-        response.writeHead(statusCode, { 'content-type': contentType });
-      }
+      statusCode = Number(statusCode);
       data = data || statusCode + ' '
         + (required.http.STATUS_CODES[statusCode] || 'Unknown Status Code');
-      switch (statusCode.toString()) {
+      switch (statusCode) {
+      /* redirect */
+      case 303:
+        response.setHeader('Location', data);
+        break;
+      case 401:
+        response.setHeader('WWW-Authenticate', 'Basic realm="Authorization Required"');
+        break;
       /* error */
-      case '500':
+      case 500:
         console.error(data = data.stack || data);
         break;
+      }
+      if (!response.headersSent) {
+        response.statusCode = statusCode;
+        response.setHeader('Content-Type', contentType);
       }
       response.end(data);
     },
@@ -2599,6 +2607,13 @@ add db indexing
         return;
       }
       EXPORTS.server = EXPORTS.server || required.express()
+        .use(function (request, response, next) {
+          if (request.url === '/favicon.ico') {
+            EXPORTS.serverRespondFile(response, next, 'favicon.ico');
+            return;
+          }
+          next();
+        })
         .use(required.express.logger('dev'))
         .use(required.utility2_middlewareSecurity)
         .use(required.utility2_middleware)
@@ -2932,8 +2947,10 @@ add db indexing
           return;
         }
         /* appended data */
-        if (data[0] === ',') {
-          data = '[' + decodeURIComponent(data.slice(1)) + ']';
+        if (data[0] === ','
+            && EXPORTS.isError(data = EXPORTS.urlDecodeOrError('[' + data.slice(1) + ']'))) {
+          onEventError(data);
+          return;
         }
         if (EXPORTS.isError(EXPORTS.jsonParseOrError(data))) {
           local._onEventErrorCorruptFile(file, onEventError);
