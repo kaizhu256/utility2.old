@@ -315,11 +315,13 @@ add db indexing
       /* nodejs middleware routes */
       if (EXPORTS.isNodejs) {
         local2._routesDict = required.utility2_routesDict = required.utility2_routesDict || {};
+        local2._securityDict = required.utility2_securityDict
+          = required.utility2_securityDict || {};
       }
       Object.keys(local2).forEach(function (key) {
         var match;
         /* dict item */
-        if ((match = (/(.+Dict)_(.+)/).exec(key)) !== null) {
+        if ((match = (/(.+Dict)_(.*)/).exec(key)) !== null) {
           local2[match[1]][match[2]] = local2[key];
         /* prototype item */
         } else if ((match = (/(.+)_prototype_(.+)/).exec(key)) !== null) {
@@ -2425,19 +2427,21 @@ add db indexing
       if (!EXPORTS.isNodejs) {
         return;
       }
-      /* exports */
-      local._routesDict = required.utility2_routesDict
-        = required.utility2_routesDict || {};
-      /* middleware */
-      required.utility2_middleware = required.utility2_middleware
-        || local.createMiddleware(required.utility2_routesDict);
       /* init module */
       EXPORTS.moduleInit(module, local);
     },
 
+    _initOnce: function () {
+      /* middleware */
+      required.utility2_middleware = required.utility2_middleware
+        || local.createMiddleware(required.utility2_routesDict);
+      required.utility2_middlewareSecurity = required.utility2_middlewareSecurity
+        || local.createMiddleware(required.utility2_securityDict);
+    },
+
     createMiddleware: function (routesDict) {
       return function (request, response, next) {
-        var path;
+        var path, path0;
         /* debug */
         EXPORTS.request = request;
         EXPORTS.response = response;
@@ -2450,7 +2454,8 @@ add db indexing
         /* parse url search params */
         request.urlParsed = request.urlParsed || EXPORTS.urlSearchParse(request.url);
         /* dyanamic path handler */
-        for (path = request.urlPathNormalized; path.length > 1; path = EXPORTS.fsDirname(path)) {
+        for (path = request.urlPathNormalized; path !== path0; path = EXPORTS.fsDirname(path)) {
+          path0 = path;
           if (routesDict.hasOwnProperty(path)) {
             routesDict[path](request, response, next);
             return;
@@ -2540,23 +2545,16 @@ add db indexing
       response.end(EXPORTS.timestamp);
     },
 
-    coverageReport: function (coverage) {
-      if (!(global.__coverage__ && required.istanbul && required.utility2_coverageDir)
-          || required.utility2_coverageReportLock) {
-        return;
-      }
-      required.utility2_coverageReportLock = setTimeout(function () {
-        console.log('writing coverage report to ' + required.utility2_coverageDir);
-        required.utility2_coverageReportLock = null;
-        required.istanbul_Collector.add(global.__coverage__);
-        if (coverage) {
-          required.istanbul_Collector.add(coverage);
-        }
-        ['json', 'lcov'].forEach(function (reportType) {
-          required.istanbul.Report.create(reportType, { dir: required.utility2_coverageDir })
-            .writeReport(required.istanbul_Collector);
-        });
-      }, 1000);
+    '_securityDict_': function (request, response, next) {
+      printDebug('security');
+      next();
+      // if(!svr.ADMIN_BASIC_AUTH) {svr.respond404(rqrs); return;}
+      // if(!svr.adminBasicAuth(rqrs)) {
+        // rqrs.redirect = '/login?redirect=' + encodeURIComponent(rqrs.url2.href);
+      //   svr.respondRedirect = function(rqrs) {
+      //     rqrs.statusCode = 303; rqrs.headers.location = rqrs.redirect; svr.respond(rqrs);
+      //   };
+      // svr.handlerRqrs(rqrs);
     },
 
     serverRespondDefault: function (response, statusCode, contentType, data) {
@@ -2602,6 +2600,7 @@ add db indexing
       }
       EXPORTS.server = EXPORTS.server || required.express()
         .use(required.express.logger('dev'))
+        .use(required.utility2_middlewareSecurity)
         .use(required.utility2_middleware)
         .use(EXPORTS.middlewareOnEventError);
       required.utility2_serverListen = required.utility2_serverListen = EXPORTS.ajaxNodejs({
