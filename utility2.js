@@ -220,36 +220,26 @@ add db indexing
     ioChain: function (chain, onEventError) {
       /*
         this function synchronizes a chain of asynchronous io calls of the form
-        function (state, data, next, onEventError)
+        function (data, onEventError)
         usage:
-        EXPORTS.ioChain(function (state, data, onEventError) {
-          switch (state) {
-          case 0:
-            required.fs.writeFile('/tmp/foo.txt', 'hello world', onEventError);
-            break;
-          case 1:
-            required.fs.readFile('/tmp/foo.txt', 'utf8', onEventError);
-            break;
-          case 2:
-            onEventError(data === 'hello world' ? 'finish' : new Error('test failed'));
-            break;
-          }
-        }, onEventError);
+        EXPORTS.ioChain([function (data, onEventError) {
+          required.fs.writeFile('/tmp/foo.txt', 'hello world', onEventError);
+        }, function (data, onEventError) {
+          required.fs.readFile('/tmp/foo.txt', 'utf8', onEventError);
+        }, function (data, onEventError) {
+          onEventError(data === 'hello world' ? null : new Error('test failed'));
+        }], onEventError);
       */
       onEventError = onEventError || EXPORTS.onEventErrorDefault;
-      var _onEventError, state = 0;
-      _onEventError = function (error, data) {
-        if (!error) {
-          chain(state += 1, data, _onEventError);
-        } else if (EXPORTS.isError(error)) {
-          onEventError(error);
-        } else if (error === 'finish') {
-          onEventError(null, error);
-        } else {
-          onEventError(new Error('unknown error ' + [error]));
+      var next = 0, _onEventError = function (error, data) {
+        next += 1;
+        if (error || next === chain.length) {
+          onEventError(error, data);
+          return;
         }
+        chain[next](data, _onEventError);
       };
-      chain(state, null, _onEventError);
+      chain[next](null, _onEventError);
     },
 
     _test_ioChain: function (onEventError) {
@@ -257,19 +247,13 @@ add db indexing
         onEventError('skip');
         return;
       }
-      EXPORTS.ioChain(function (state, data, onEventError) {
-        switch (state) {
-        case 0:
-          required.fs.writeFile('/tmp/foo.txt', 'hello world', onEventError);
-          break;
-        case 1:
-          required.fs.readFile('/tmp/foo.txt', 'utf8', onEventError);
-          break;
-        case 2:
-          onEventError(data === 'hello world' ? 'finish' : new Error('test failed'));
-          break;
-        }
-      }, onEventError);
+      EXPORTS.ioChain([function (data, onEventError) {
+        required.fs.writeFile('/tmp/foo.txt', 'hello world', onEventError);
+      }, function (data, onEventError) {
+        required.fs.readFile('/tmp/foo.txt', 'utf8', onEventError);
+      }, function (data, onEventError) {
+        onEventError(data === 'hello world' ? null : new Error('test failed'));
+      }], onEventError);
     },
 
     isError: function (object) {
@@ -2804,175 +2788,93 @@ add db indexing
     },
 
     _test_db: function (onEventError) {
-      EXPORTS.serverResume(function (error) {
-        if (error) {
+      var self = EXPORTS.createDb('table test ' + EXPORTS.dateAndSalt()), sorted;
+      EXPORTS.ioChain([function (data, onEventError) {
+        EXPORTS.serverResume(function (error) {
+          onEventError(error ? 'skip' : null);
+        });
+      /* delete stale table */
+      }, function (data, onEventError) {
+        self.tableDelete(onEventError);
+      /* test tableOptionsUpdateAndGet */
+      }, function (data, onEventError) {
+        self.tableOptionsUpdateAndGet(null, function (error, data) {
+          if (error) {
+            onEventError(new Error('test failed - tableOptionsUpdateAndGet'));
+          }
+          if (JSON.parse(data).dirMaxFiles !== 1024) {
+            onEventError(new Error('test failed - tableOptionsUpdateAndGet'));
+          } else {
+            onEventError();
+          }
+        });
+      }, function (data, onEventError) {
+        self.tableOptionsUpdateAndGet({ 'dirMaxFiles': 16 }, function (error, data) {
+          if (error) {
+            onEventError(new Error('test failed - tableOptionsUpdateAndGet'));
+          }
+          if (JSON.parse(data).dirMaxFiles !== 16) {
+            onEventError(new Error('test failed - tableOptionsUpdateAndGet'));
+          } else {
+            onEventError();
+          }
+        });
+      /* test tableUpdateRandom */
+      }, function (data, onEventError) {
+        self.tableUpdateRandom(64, onEventError);
+      /* test tableScanForward */
+      }, function (data, onEventError) {
+        self.tableScanForward('record ', 0, function (error, data) {
+          if (error) {
+            onEventError(new Error('test failed - tableScanForward'));
+          }
+          if (JSON.parse(data).length !== 64) {
+            onEventError(new Error('test failed - tableUpdateRandom'));
+          } else if ((sorted = JSON.stringify(JSON.parse(data).sort())) !== data) {
+            onEventError(new Error('test failed - tableScanForward'));
+          } else {
+            onEventError();
+          }
+        });
+      /* test tableScanBackward */
+      }, function (data, onEventError) {
+        self.tableScanBackward('record z', 0, function (error, data) {
+          if (error) {
+            onEventError(new Error('test failed - tableScanBackward'));
+          }
+          if (JSON.stringify(JSON.parse(data).reverse()) !== sorted) {
+            onEventError(new Error('test failed - tableScanBackward'));
+          } else {
+            onEventError();
+          }
+        });
+      }], function (error) {
+        if (error === 'skip') {
           onEventError('skip');
           return;
         }
-        var self = EXPORTS.createDb('table test ' + EXPORTS.dateAndSalt()), sorted;
-        self.dirMaxFiles = 16;
-        EXPORTS.ioChain(function (state, data, onEventError) {
-          var _state = -1;
-          if ((_state += 1) === state) {
-            self.tableDelete(onEventError);
-            return;
-          }
-          /* test tableOptionsUpdateAndGet */
-          if ((_state += 1) === state) {
-            self.tableOptionsUpdateAndGet(null, onEventError);
-            return;
-          }
-          if ((_state += 1) === state) {
-            if (JSON.parse(data).dirMaxFiles !== 1024) {
-              onEventError(new Error('test failed - tableOptionsUpdateAndGet'));
-            } else {
-              onEventError();
-            }
-            return;
-          }
-          if ((_state += 1) === state) {
-            self.tableOptionsUpdateAndGet({ 'dirMaxFiles': 16 }, onEventError);
-            return;
-          }
-          if ((_state += 1) === state) {
-            if (JSON.parse(data).dirMaxFiles !== 16) {
-              onEventError(new Error('test failed - tableOptionsUpdateAndGet'));
-            } else {
-              onEventError();
-            }
-            return;
-          }
-          /* test tableUpdateRandom */
-          if ((_state += 1) === state) {
-            self.tableUpdateRandom(64, onEventError);
-            return;
-          }
-          /* test tableScanForward */
-          if ((_state += 1) === state) {
-            self.tableScanForward('record ', 0, onEventError);
-            return;
-          }
-          if ((_state += 1) === state) {
-            if (JSON.parse(data).length !== 64) {
-              onEventError(new Error('test failed - tableUpdateRandom'));
-            } else if ((sorted = JSON.stringify(JSON.parse(data).sort())) !== data) {
-              onEventError(new Error('test failed - tableScanForward'));
-            } else {
-              onEventError();
-            }
-            return;
-          }
-          /* test tableScanBackward */
-          if ((_state += 1) === state) {
-            self.tableScanBackward('record z', 0, onEventError);
-            return;
-          }
-          if ((_state += 1) === state) {
-            if (JSON.stringify(JSON.parse(data).reverse()) !== sorted) {
-              onEventError(new Error('test failed - tableScanBackward'));
-            } else {
-              onEventError();
-            }
-            return;
-          }
-          /* test fieldAppend */
-          if ((_state += 1) === state) {
-            self.fieldAppend('record fieldAppend', 'fieldAppend', '1', onEventError);
-            return;
-          }
-          // if ((_state += 1) === state) {
-            // if (JSON.stringify(JSON.parse(data).reverse()) !== sorted) {
-              // onEventError(new Error('test failed - tableScanBackward'));
-            // } else {
-              // onEventError();
-            // }
-            // return;
-          // }
-          /* finish testing */
-          onEventError('finish');
-        }, function (error) {
-          self.tableDelete(function (_error) {
-            onEventError(error || _error);
-          });
+        /* clean up table */
+        self.tableDelete(function (_error) {
+          onEventError(error || _error);
         });
       });
     },
 
-    _dbTable: function (name) {
-      /*
-        this function creates a database with the given name
-      */
-      return (EXPORTS.dbTables[name] = EXPORTS.dbTables[name] || {
-        dir: EXPORTS.dbDir + '/' + encodeURIComponent(name),
-        /* the default dirMaxFiles allows a table to reasonably handle one quadrillion records,
-           assuming adequate disk space */
-        dirMaxFiles: 1024,
-        marked: {},
-        actionLock: 0,
-        actionResume: EXPORTS.onEventResume('resume'),
-      });
-    },
-
     _dbAction: function (self, options, onEventError) {
-      /* validate action */
-      if (!local._dbActionDict[options.action]) {
-        onEventError(new Error('unknown action ' + [options.action]));
+      var error, mode, _onEventError;
+      if (EXPORTS.isError(error = local._dbOptionsValidate(options))) {
+        onEventError(error);
         return;
       }
-      switch ((/[a-z]+/).exec(options.action)[0]) {
-      /* validate field */
-      case 'field':
-        if (!options.field) {
-          onEventError(new Error('invalid field'));
-          return;
-        }
-        break;
-      /* validate record */
-      case 'record':
-        if (!options.record) {
-          onEventError(new Error('invalid record'));
-          return;
-        }
-        break;
-      }
-      /* validate data type */
-      if (options.json && typeof options.json !== 'object') {
-        switch (options.action) {
-        case 'fieldAppend':
-          break;
-        default:
-          onEventError(new Error('invalid data type ' + [typeof options.json]));
-          return;
-        }
-      }
-      /* empty options.json */
-      switch (options.action) {
-      case 'fieldAppend':
-        if (options.json === undefined) {
-          onEventError();
-          return;
-        }
-        break;
-      case 'recordUpdate':
-      case 'recordsDelete':
-      case 'tableUpdate':
-        if (EXPORTS.dictIsEmpty(options.json)) {
-          onEventError();
-          return;
-        }
-        break;
-      case 'recordsGet':
-        if (EXPORTS.dictIsEmpty(options.json)) {
-          options.onEventData('{}');
-          onEventError();
-          return;
-        }
-        break;
+      if (typeof error === 'string') {
+        options.onEventData(error);
+        onEventError();
+        return;
       }
       /* perform io */
       options.parents = [{ dir: self.dir }];
       self.actionLock += 1;
-      var mode, _onEventError = function (error) {
+      _onEventError = function (error) {
         if (self.actionLock > 0) {
           self.actionLock -= 1;
         }
@@ -3363,6 +3265,95 @@ add db indexing
         options.action2 = null;
         local._dbAction(self, options, onEventError);
       };
+    },
+
+    _dbOptionsValidate: function (options) {
+      /* validate action */
+      if (!local._dbActionDict[options.action]) {
+        return new Error('unknown action ' + [options.action]);
+      }
+      switch ((/[a-z]+/).exec(options.action)[0]) {
+      /* validate field */
+      case 'field':
+        if (!options.field) {
+          return new Error('invalid field');
+        }
+        break;
+      /* validate record */
+      case 'record':
+        if (!options.record) {
+          return new Error('invalid record');
+        }
+        break;
+      }
+      /* validate data type */
+      if (!options.json) {
+        switch (options.action) {
+        case 'fieldDelete':
+        case 'fieldGet':
+        case 'fileDownload':
+        case 'recordDelete':
+        case 'recordGet':
+        case 'tableDelete':
+        case 'tableGet':
+        case 'tableOptionsUpdateAndGet':
+        case 'tableScanBackward':
+        case 'tableScanForward':
+          return;
+        default:
+          return new Error('required data missing');
+        }
+      }
+      var ii, key, tmp;
+      switch (options.action) {
+      case 'fieldAppend':
+        if (options.json === undefined) {
+          return new Error('invalid data');
+        }
+        return;
+      /* convert list into dict */
+      case 'recordsDelete':
+      case 'recordsGet':
+        if (Array.isArray(options.json)) {
+          tmp = options.json;
+          options.json = {};
+          for (ii = 0; ii < tmp.length; ii += 1) {
+            if (typeof key !== 'string') {
+              return new Error('invalid key');
+            }
+            options.json[key] = null;
+          }
+        }
+        break;
+      }
+      if (typeof options.json !== 'object') {
+        return new Error('invalid data type ' + [typeof options.json]);
+      }
+      /* empty options.json */
+      if (!EXPORTS.dictIsEmpty(options.json)) {
+        return;
+      }
+      switch (options.action) {
+      case 'recordsGet':
+        return '{}';
+      default:
+        return '';
+      }
+    },
+
+    _dbTable: function (name) {
+      /*
+        this function creates a database with the given name
+      */
+      return (EXPORTS.dbTables[name] = EXPORTS.dbTables[name] || {
+        dir: EXPORTS.dbDir + '/' + encodeURIComponent(name),
+        /* the default dirMaxFiles allows a table to reasonably handle one quadrillion records,
+           assuming adequate disk space */
+        dirMaxFiles: 1024,
+        marked: {},
+        actionLock: 0,
+        actionResume: EXPORTS.onEventResume('resume'),
+      });
     },
 
     _dirNext: function (self, options, mode, onEventError) {
