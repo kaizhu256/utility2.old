@@ -4,12 +4,13 @@
     "email": "kaizhu@yahoo-inc.com"
   }],
   "dependencies": {
-    "commander": "*",
+    "csslint": "*",
     "express": "*",
     "graceful-fs": "*",
     "jslint": "*",
     "istanbul": "*",
     "mime": "*",
+    "nopt": "*",
     "uglify-js": "*"
   },
   "description": "common, shared nodejs utilities",
