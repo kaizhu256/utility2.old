@@ -1,12 +1,13 @@
 #!/usr/bin/env node
+/*jslint browser: true, indent: 2, nomen: true, regexp: true, todo: true, unparam: true*/
+/*global EXPORTS, global, required, state, underscore, $*/
 /*
 utility2.js
 common, shared utilities for both browser and nodejs
-https://git.corp.yahoo.com/gist/2230
 
 todo:
-migrate argv processing to commander
-db add webui
+integrate forever-webui
+db add admin webui
 db auto-heal incorrectly indexed b-trees
 db limit record to 256 fields
 add db tableGet
@@ -17,48 +18,64 @@ add db indexing
 
 
 
-/*jslint browser: true, indent: 2, nomen: true, regexp: true*/
 (function moduleInitializeFirstShared() {
   /*
     this shared module performs initialization before the below modules are loaded
   */
   'use strict';
-  if (typeof global === 'undefined') {
-    window.global = window;
+  try {
+    window.global = window.global || window;
+  } catch (ignore) {
   }
-  var EXPORTS = global.EXPORTS = global.EXPORTS || {}, local = {
+  global.EXPORTS = global.EXPORTS || {};
+  global.required = EXPORTS.required = EXPORTS.required || global.required || {};
+  global.state = EXPORTS.state = EXPORTS.state || global.state || {};
+  var local = {
+
+    _name: 'utility2.moduleInitializeFirstShared',
+
     _init: function () {
-      global.module = global.module || null;
-      global.required = EXPORTS.required = EXPORTS.required || {};
-      /* debug */
+      /*
+        this function initializes the module
+      */
+      /* make console.log callable without context */
       console._log = console._log || console.log;
-      console.log = global.printDebug = function () {
+      console.log = function () {
         console._log.apply(console, arguments);
       };
+      global.debugPrint = function (arg) {
+        /*
+          this global function is used purely for temporary debugging,
+          and jslint will nag you to remove it
+        */
+        console._log.apply(console, arguments);
+        return arg;
+      };
+      /* underscore */
+      global.underscore = global.underscore || global._;
       if (global.process && process.versions) {
         /* nodejs */
         if (process.versions.node) {
-          EXPORTS.isNodejs = true;
-          EXPORTS.require = require;
+          state.isNodejs = true;
+          EXPORTS.require = EXPORTS.require || require;
+          /* underscore */
+          global.underscore = global.underscore || require('underscore');
         }
         /* node-webkit */
         if (process.versions['node-webkit']) {
-          EXPORTS.isNodeWebkit = true;
-        }
-      }
-      /* browser */
-      if (global.document && document.body) {
-        EXPORTS.isBrowser = true;
-        if (!global.jQuery) {
-          require('./jquery.js');
+          state.isNodeWebkit = true;
         }
       }
       /* phantomjs */
       if (global.phantom) {
-        EXPORTS.isPhantomjs = true;
-        EXPORTS.serverPort = require('system').args[1];
+        state.isPhantomjs = true;
+        EXPORTS.state.serverPort = require('system').args[1];
+      /* browser */
+      } else if (global.document && global.jQuery) {
+        state.isBrowser = true;
       }
     }
+
   };
   local._init();
 }());
@@ -70,74 +87,182 @@ add db indexing
     this shared module exports common, shared utilities
   */
   'use strict';
-  var EXPORTS = global.EXPORTS = global.EXPORTS || {},
-    required = EXPORTS.required = EXPORTS.required || {},
-    $ = global.jQuery,
-    local;
-  local = {
+  var local = {
 
     _name: 'utility2.moduleCommonShared',
 
     _init: function () {
-      local.moduleInit(module, local);
+      /*
+        this function initializes the module
+      */
+      EXPORTS.moduleInit = local.moduleInit;
+      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
     },
 
     _initOnce: function () {
+      /*
+        this function initializes the module once
+      */
       /* exports */
-      EXPORTS.serverResume = EXPORTS.serverResume || EXPORTS.onEventResume('pause');
-      EXPORTS.string256 = '\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\b\t\n\u000b\f\r\u000e\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c\u001d\u001e\u001f !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~';
-      EXPORTS.timeoutDefault = EXPORTS.timeoutDefault || 30 * 1000;
-      /* browser */
-      if (EXPORTS.isBrowser) {
-        local._initOnceBrowser();
+      /* create object deferring code that requires server initialization first */
+      state.serverResume = state.serverResume || EXPORTS.onEventResume('pause');
+      /* misc ascii reference */
+      state.string256 = '\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\b\t\n\u000b\f\r\u000e\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c\u001d\u001e\u001f !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~';
+      /* global default timeout */
+      state.timeoutDefault = state.timeoutDefault || 30 * 1000;
+      if (!state.isNodejs) {
+        /* don't wait for server initialization, because it doesn't exist! */
+        state.serverResume('resume');
       }
+      /* browser initialization */
+      local._initOnceBrowser();
     },
 
     _initOnceBrowser: function () {
+      /*
+        this function runs browser initialization code
+      */
+      if (!state.isBrowser) {
+        return;
+      }
       /* cache element id */
       $('[id]').each(function (ii, target) {
-        EXPORTS[target.id] = EXPORTS[target.id] || $(target);
+        state[target.id] = state[target.id] || $(target);
       });
       /* browser test flag */
-      if ((EXPORTS.isBrowserTest = (/\btestWatch=(\d+)\b/).exec(location.hash)) !== null) {
+      state.isBrowserTest = (/\btestWatch=(\d+)\b/).exec(location.hash);
+      if (state.isBrowserTest) {
         /* increment watch counter */
         location.hash = EXPORTS.urlSearchSetItem(location.hash, 'testWatch',
-          (Number(EXPORTS.isBrowserTest[1]) + 1).toString(), '#');
-        EXPORTS.isBrowserTest = 'watch';
-      } else if ((EXPORTS.isBrowserTest = (/\btestOnce=/).exec(location.hash)) !== null) {
-        EXPORTS.isBrowserTest = 'once';
-      } else if (EXPORTS.isPhantomjs) {
-        EXPORTS.isBrowserTest = 'phantomjs';
+          (Number(state.isBrowserTest[1]) + 1).toString(), '#');
+        state.isBrowserTest = 'watch';
+        return;
       }
-      EXPORTS.serverResume('resume');
+      /* browser test once flag */
+      state.isBrowserTest = (/\btestOnce=/).exec(location.hash);
+      if (state.isBrowserTest) {
+        state.isBrowserTest = 'once';
+        return;
+      }
+      /* browser phantomjs flag */
+      if (state.isPhantomjs) {
+        state.isBrowserTest = 'phantomjs';
+      }
     },
 
     ajaxLocal: function (options, onEventError) {
+      /*
+        this convenience function makes an ajax request on the localhost server
+      */
+      onEventError = onEventError || EXPORTS.onEventErrorDefault;
       if (options.data) {
-        options.method = options.type = 'POST';
+        options.method = options.type = options.method || options.type || 'POST';
       }
       /* browser */
-      if (EXPORTS.isBrowser) {
+      if (state.isBrowser || state.isPhantomjs) {
         EXPORTS.ajaxProgressOnEventError(options, onEventError);
         return;
       }
       /* nodejs */
-      EXPORTS.serverResume(function (error) {
+      state.serverResume(function (error) {
         if (error) {
           onEventError(error);
+          return;
         }
-        options.url = 'http://localhost:' + EXPORTS.serverPort + options.url;
         EXPORTS.ajaxNodejs(options, onEventError);
       });
     },
 
-    _test_ajaxLocal: function (onEventError) {
-      EXPORTS.serverResume(function (error) {
-        if (error) {
-          onEventError('skip');
+    ajaxLocalMulti2: function (options, onEventError) {
+      /*
+        this function makes multiple ajax calls for multiple params
+      */
+      onEventError = onEventError || EXPORTS.onEventErrorDefault;
+      var _onEventError, params, remaining = 0,
+        /* remove hash-tag from url */
+        urlParsed = (/[^#]*/).exec(options.url)[0].split('?');
+      _onEventError = function (error, data) {
+        if (remaining < 0) {
           return;
         }
-        EXPORTS.ajaxLocal({ url: '/test/test.echo' }, onEventError);
+        if (error) {
+          remaining = -1;
+          onEventError(error);
+          return;
+        }
+        remaining -= 1;
+        onEventError(null, data, remaining);
+      };
+      params = [{}];
+      (urlParsed[1] || '').split('&').forEach(function (value) {
+        var dict, ii, key;
+        value = value.split('=');
+        key = value[0];
+        value = value[1];
+        for (ii = params.length - 1; ii >= 0; ii -= 1) {
+          dict = params[ii];
+          if (dict[key] && !(options.unique && dict[key] === value)) {
+            dict = EXPORTS.objectCopyDeep(dict);
+            params.push(dict);
+          }
+          dict[key] = value;
+        }
+      });
+      params.forEach(function (dict) {
+        var options2 = EXPORTS.objectCopyDeep(options);
+        options2.url = urlParsed[0] + '?' + Object.keys(dict).sort().map(function (key) {
+          return key + '=' + dict[key];
+        }).join('&');
+        remaining += 1;
+        EXPORTS.ajaxLocal(options2, _onEventError);
+      });
+      /* null case */
+      if (remaining === 0) {
+        remaining = 1;
+        EXPORTS.ajaxLocal(options, _onEventError);
+      }
+    },
+
+    ajaxLocalMulti2_test: function (onEventError) {
+      /* null case */
+      EXPORTS.ioAggregate([function (onEventError) {
+        var remaining = 1;
+        EXPORTS.ajaxLocalMulti2({
+          url: '/test/test.echo'
+        }, function (error, data, _remaining) {
+          remaining -= 1;
+          if (_remaining === 0) {
+            if (remaining !== 0) {
+              onEventError(new Error(remaining));
+              return;
+            }
+            onEventError();
+          }
+        });
+      }, function (onEventError) {
+        var remaining = 4;
+        EXPORTS.ajaxLocalMulti2({
+          url: '/test/test.echo?aa=1&aa=2&bb=3&bb=4&cc=5#dd=6'
+        }, function (error, data, _remaining) {
+          if (!(/^GET \/test\/test\.echo\?aa=.&bb=.&cc=. /).test(data)) {
+            onEventError(new Error(data));
+            return;
+          }
+          remaining -= 1;
+          if (_remaining === 0) {
+            if (remaining !== 0) {
+              onEventError(new Error(remaining));
+              return;
+            }
+            onEventError();
+          }
+        });
+      }], function (error) {
+        if (error) {
+          onEventError(error);
+          return;
+        }
+        onEventError();
       });
     },
 
@@ -150,6 +275,74 @@ add db indexing
         .replace((/\=+/g), '');
     },
 
+    clearCallSetInterval: function (key, callback, interval) {
+      /*
+        this function:
+          1. clear interval key
+          2. run callback
+          3. set interval key to callback
+      */
+      var dict;
+      dict = state.setIntervalDict = state.setIntervalDict || {};
+      /* 1. clear interval key */
+      clearInterval(dict[key]);
+      /* 2. run callback */
+      callback();
+      /* 3. set interval key to callback */
+      dict[key] = setInterval(callback, interval);
+      return dict[key];
+    },
+
+    createErrorTimeout: function (message) {
+      /*
+        this function creates a new timeout error
+      */
+      var error = new Error(message);
+      error.code = error.errno = 'ETIMEDOUT';
+      return error;
+    },
+
+    createUtc: function (arg) {
+      /*
+        this function parses the argument into a date object, assuming UTC timezone
+      */
+      var time = arg;
+      /* no arguments */
+      if (!arguments.length) {
+        return new Date();
+      }
+      /* ISO format */
+      if ((/^\d\d\d\d\D\d\d\D\d\d(?:\D|$)/).test(time)) {
+        time = time.split(/\D/);
+        return new Date(time[0] + '-' + time[1] + '-' + time[2] + 'T' + (time[3] || '00')
+          + ':' + (time[4] || '00') + ':' + (time[5] || '00') + '.' + (time[6] || '000') + 'Z');
+      }
+      /* arbitrary format */
+      time = new Date(time);
+      if (time.getTime()) {
+        /* subtract timezone offset to get UTC time */
+        time.setMinutes(time.getMinutes() - time.getTimezoneOffset());
+      }
+      return time;
+    },
+
+    createUtc_test: function (onEventError) {
+      try {
+        console.assert(EXPORTS.createUtc().toISOString() === new Date().toISOString());
+        console.assert(EXPORTS.createUtc('oct 10 2010').toISOString().slice(0, 19)
+          === '2010-10-10T00:00:00');
+        console.assert(EXPORTS.createUtc('2010-10-10').toISOString().slice(0, 19)
+          === '2010-10-10T00:00:00');
+        console.assert(EXPORTS.createUtc('2010-10-10 00:00:00').toISOString().slice(0, 19)
+          === '2010-10-10T00:00:00');
+        console.assert(EXPORTS.createUtc('2010-10-10T00:00:00Z').toISOString().slice(0, 19)
+          === '2010-10-10T00:00:00');
+        onEventError();
+      } catch (error) {
+        onEventError(error);
+      }
+    },
+
     dateAndSalt: function () {
       /*
         this function generates a unique, incrementing date counter with a random salt
@@ -158,33 +351,21 @@ add db indexing
         local._dateAndSaltCounter = 1000;
       }
       /* timestamp field */
+      local._dateAndSaltCounter += 1;
       return (new Date().toISOString().slice(0, 20)
         /* counter field */
-        + (local._dateAndSaltCounter += 1)
+        + local._dateAndSaltCounter
         /* random number field */
         + Math.random().toString().slice(2))
         /* bug - phantomjs can only parse dates less than 30 characters long */
         .slice(0, 29);
     },
 
-    _test_dateAndSalt: function (onEventError) {
+    dateAndSalt_test: function (onEventError) {
       /* assert each call returns incrementing result */
       onEventError(!(EXPORTS.dateAndSalt(1) < EXPORTS.dateAndSalt(2)
         /* assert call can be converted to date */
         && new Date(EXPORTS.dateAndSalt()).getTime()));
-    },
-
-    dictIsEmpty: function (dict) {
-      /*
-        this function return true if dict is empty and false otherwise
-      */
-      var key;
-      for (key in dict) {
-        if (dict.hasOwnProperty(key)) {
-          return false;
-        }
-      }
-      return true;
     },
 
     fsDirname: function (file) {
@@ -194,46 +375,82 @@ add db indexing
       return file.replace((/\/[^\/]+\/*$/), '');
     },
 
-    htmlEscape: function (text) {
-      return text.replace((/&/g), '&amp;').replace((/</g), '&lt;').replace((/>/g), '&gt;');
-    },
-
-    ioChain: function (chain, onEventError) {
+    ioAggregate: function (callbacks, onEventError) {
       /*
-        this function synchronizes a chain of asynchronous io calls of the form
-        function (data, onEventError)
-        usage:
-        EXPORTS.ioChain([function (data, onEventError) {
-          required.fs.writeFile('/tmp/foo.txt', 'hello world', onEventError);
-        }, function (data, onEventError) {
-          required.fs.readFile('/tmp/foo.txt', 'utf8', onEventError);
-        }, function (data, onEventError) {
-          onEventError(data === 'hello world' ? null : new Error('test failed'));
-        }], onEventError);
+        this function aggregates the result from a list of async callbacks of the form
+        function (onEventError)
       */
-      onEventError = onEventError || EXPORTS.onEventErrorDefault;
-      var next = 0, _onEventError = function (error, data) {
-        next += 1;
-        if (error || next === chain.length) {
-          onEventError(error, data);
-          return;
-        }
-        chain[next](data, _onEventError);
-      };
-      chain[next](null, _onEventError);
-    },
-
-    _test_ioChain: function (onEventError) {
-      if (!EXPORTS.isNodejs) {
-        onEventError('skip');
+      var _onEventError, remaining = callbacks.length;
+      if (!remaining) {
+        onEventError();
         return;
       }
-      EXPORTS.ioChain([function (data, onEventError) {
-        required.fs.writeFile('/tmp/foo.txt', 'hello world', onEventError);
-      }, function (data, onEventError) {
-        required.fs.readFile('/tmp/foo.txt', 'utf8', onEventError);
-      }, function (data, onEventError) {
-        onEventError(data === 'hello world' ? null : new Error('test failed'));
+      _onEventError = function (error) {
+        if (remaining < 0) {
+          return;
+        }
+        remaining -= 1;
+        if (error || !remaining) {
+          remaining = -1;
+          onEventError(error);
+        }
+      };
+      callbacks.forEach(function (io) {
+        io(_onEventError);
+      });
+    },
+
+    ioAggregate_test: function (onEventError) {
+      var result = 0;
+      EXPORTS.ioAggregate([function (onEventError) {
+        setTimeout(function () {
+          result += 1;
+          onEventError();
+        }, 1);
+      }, function (onEventError) {
+        setTimeout(function () {
+          result += 1;
+          onEventError();
+        }, 1);
+      }], function (error) {
+        if (error) {
+          onEventError(error);
+          return;
+        }
+        onEventError(result === 2 ? null : new Error('test failed - ioAggregate'));
+      });
+    },
+
+    ioChain: function (callbacks, onEventError) {
+      /*
+        this function synchronizes a chain of asynchronous io calls
+      */
+      onEventError = onEventError || EXPORTS.onEventErrorDefault;
+      var next = 0, _onEventError = function (error) {
+        next += 1;
+        if (error || next === callbacks.length) {
+          onEventError(error);
+          return;
+        }
+        callbacks[next](_onEventError);
+      };
+      callbacks[next](_onEventError);
+    },
+
+    ioChain_test: function (onEventError) {
+      var data = 0;
+      EXPORTS.ioChain([function (next) {
+        setTimeout(function () {
+          data += 1;
+          next();
+        }, 1);
+      }, function (next) {
+        setTimeout(function () {
+          data += 1;
+          next();
+        }, 1);
+      }, function (next) {
+        next(data === 2 ? null : new Error('test failed'));
       }], onEventError);
     },
 
@@ -246,23 +463,29 @@ add db indexing
       }
     },
 
-    jsEvalOnEventError: function (script, file, onEventError) {
+    isErrorTimeout: function (object) {
+      /*
+        this function returns the object if it's a timeout error
+      */
+      if (EXPORTS.isError(object) && object.code === 'ETIMEDOUT') {
+        return object;
+      }
+    },
+
+    jsEvalOnEventError: function (file, script, onEventError) {
       var data;
+      file = file || '';
       try {
         /*jslint evil: true*/
-        data = EXPORTS.isNodejs ? required.vm.runInThisContext(script, file) : eval(script);
+        data = state.isNodejs ? required.vm.runInThisContext(script, file) : eval(script);
       } catch (error) {
         /* debug */
-        EXPORTS.error = error;
+        state.error = error;
         console.error(file);
         onEventError(error);
         return;
       }
       onEventError(null, data);
-    },
-
-    jsonCopy: function (data) {
-      return JSON.parse(JSON.stringify(data));
     },
 
     jsonParseOrError: function (data) {
@@ -287,61 +510,111 @@ add db indexing
       }
     },
 
+    listShuffle: function (list) {
+      /*
+        this function inplace shuffles elements in a list
+      */
+      var ii, random, swap;
+      for (ii = 1; ii <= list.length; ii += 1) {
+        /* optimization - Fisher-Yates algorithm */
+        random = Math.floor(Math.random() * ii);
+        swap = list[ii];
+        list[ii] = list[random];
+        list[random] = swap;
+      }
+    },
+
+    mimeLookup: function (file) {
+      if (required.mime) {
+        return required.mime.lookup(file);
+      }
+      switch ((/[^\.]*$/).exec(file)[0]) {
+      case 'css ':
+        return 'text/css';
+      case 'html':
+        return 'text/html';
+      case 'js':
+        return 'application/javascript';
+      case 'json':
+        return 'application/json';
+      case 'txt':
+        return 'text/plain';
+      default:
+        return 'application/octet-stream';
+      }
+    },
+
     moduleInit: function (module, local2) {
+      var exports, name;
       /* assert local2._name */
       console.assert(local2._name, [local2._name]);
+      name = local2._name.split('.');
       /* exports */
-      var name = local2._name.split('.'),
-        exports = EXPORTS.required[name[0]] = EXPORTS.required[name[0]] || {};
-      /* nodejs middleware routes */
-      if (EXPORTS.isNodejs) {
-        local2._routesDict = required.utility2_routesDict = required.utility2_routesDict || {};
-        local2._securityDict = required.utility2_securityDict
-          = required.utility2_securityDict || {};
-      }
+      exports = EXPORTS.required[name[0]] = EXPORTS.required[name[0]] || {};
       Object.keys(local2).forEach(function (key) {
         var match;
         /* dict item */
-        if ((match = (/(.+Dict)_(.*)/).exec(key)) !== null) {
-          local2[match[1]][match[2]] = local2[key];
-        /* prototype item */
-        } else if ((match = (/(.+)_prototype_(.+)/).exec(key)) !== null) {
-          local2[match[1]].prototype[match[2]] = local2[key];
-        /* export local2 */
-        } else if (key[0] === '_') {
-          exports[key] = local2[key];
-        /* export global */
-        } else {
-          EXPORTS[key] = local2[key];
+        match = (/(.+Dict)_(.*)/).exec(key);
+        if (match) {
+          state[match[1]] = state[match[1]] || {};
+          state[match[1]][match[2]] = local2[key];
+          return;
         }
+        /* prototype item */
+        match = (/(.+)_prototype_(.+)/).exec(key);
+        if (match) {
+          local2[match[1]].prototype[match[2]] = local2[key];
+          return;
+        }
+        /* export local2 */
+        if (key[0] === '_') {
+          exports[key] = local2[key];
+          return;
+        }
+        /* export global */
+        EXPORTS[key] = local2[key];
       });
       /* first-time init */
-      required.utility2_initOnceDict = required.utility2_initOnceDict || {};
-      if (!required.utility2_initOnceDict[local2._name]) {
-        required.utility2_initOnceDict[local2._name] = true;
+      state.initOnceDict = state.initOnceDict || {};
+      if (!state.initOnceDict[local2._name]) {
+        state.initOnceDict[local2._name] = true;
         /* init once */
         if (local2._initOnce) {
           local2._initOnce();
         }
         /* require once */
-        if (required.utility2._moduleRequireOnce) {
+        if (module && required.utility2._moduleRequireOnce) {
           required.utility2._moduleRequireOnce(module, local2, exports);
+        }
+        /* init document ready once */
+        if (state.isBrowser && local2._initReadyOnce) {
+          $(local2._initReadyOnce);
         }
       }
       /* run test */
-      EXPORTS.testLocal(module, local2, exports);
+      state.serverResume(function () {
+        EXPORTS.testLocal(module, local2, exports);
+      });
     },
 
     nop: function () {
       /*
         this function performs no operation (nop)
       */
+      return;
     },
 
-    _test_nop: function (onEventError) {
+    nop_test: function (onEventError) {
       var error = !(EXPORTS.nop() === undefined
         && EXPORTS.nop(1, 2) === undefined);
       onEventError(error);
+    },
+
+    objectCopyDeep: function (object) {
+      /*
+        this function returns a deep-copy of an object using JSON.parse(JSON.stringify(object))
+      */
+      return JSON.parse(JSON.stringify(object));
     },
 
     onEventErrorDefault: function (error, data) {
@@ -352,7 +625,7 @@ add db indexing
       */
       if (error) {
         /* debug */
-        EXPORTS.error = error;
+        state.error = error;
         console.error(error.stack || error.message || error);
         return;
       }
@@ -373,9 +646,7 @@ add db indexing
       };
       self = function (error) {
         if (error === 'pause') {
-          if (!_error) {
-            paused = true;
-          }
+          paused = !_error;
         } else if (error === 'resume') {
           _resume();
         } else if (EXPORTS.isError(error)) {
@@ -395,14 +666,14 @@ add db indexing
       return self;
     },
 
-    _test_onEventResume: function (onEventError) {
+    onEventResume_test: function (onEventError) {
       var _onEventResume = EXPORTS.onEventResume('pause'), tmp = 0;
       _onEventResume(function () {
         if (tmp === 1) {
           onEventError();
           return;
         }
-        onEventError(new Error('test failed'));
+        onEventError(new Error('test failed - onEventResume'));
       });
       setTimeout(function () {
         tmp += 1;
@@ -410,44 +681,78 @@ add db indexing
       }, 1);
     },
 
-    _test_onEventResumeError: function (onEventError) {
+    onEventResume_error_test: function (onEventError) {
       var _onEventResume = EXPORTS.onEventResume('pause'), tmp = new Error();
       _onEventResume(function (error) {
         if (error === tmp) {
           onEventError();
           return;
         }
-        onEventError(new Error('test failed'));
+        onEventError(new Error('test failed - onEventResume error'));
       });
       _onEventResume(tmp);
     },
 
+    scriptLint: function (file, script) {
+      /*
+        this function is a dummy substitute for the real function
+      */
+      return script;
+    },
+
+    serverPortRandom: function () {
+      /*jslint bitwise: true*/
+      return (Math.random() * 0xffff) | 0x8000;
+    },
+
     setOptionsDefaults: function (options, defaults) {
       /*
-        this function recursively walks through the options tree
-        and sets default values if the are not set.
-        usage:
-        setOptionsDefaults(
-          options = { foo: 1, bar: {} },
-          defaults = { bar: { baz: 2 } }
-        );
-        return:
-        { foo: 1, bar: { baz: 2 } }
+        this function recursively walks through the options tree,
+        and sets default values for unset leaf nodes
       */
-      var key, value;
-      for (key in defaults) {
-        if (defaults.hasOwnProperty(key)) {
-          value = defaults[key];
-          if (!options.hasOwnProperty(key)) {
-            options[key] = value;
-          } else if (
-            options[key] && typeof options[key] === 'object' && typeof value === 'object'
-          ) {
-            EXPORTS.setOptionsDefaults(options[key], value);
-          }
+      underscore.each(defaults, function (valueDefault, key) {
+        var value = options[key];
+        /* set default value */
+        if (value === undefined) {
+          options[key] = valueDefault;
+        /* recurse if value and default value are both dictionaries */
+        } else if (value
+            && !Array.isArray(value)
+            && typeof value === 'object'
+            && typeof valueDefault === 'object') {
+          EXPORTS.setOptionsDefaults(value, valueDefault);
         }
-      }
+      });
       return options;
+    },
+
+    setOptionsDefaults_test: function (onEventError) {
+      var options = EXPORTS.setOptionsDefaults({ aa: 1, bb: {}, cc: [] },
+        { aa: 2, bb: { cc: 2 }, cc: [1, 2] });
+      onEventError(options.aa === 1
+          && options.bb.cc === 2
+          && JSON.stringify(options.cc) === '[]'
+          ? null
+          : new Error('test failed - setOptionsDefault'));
+    },
+
+    stringToCamelCase: function (text) {
+      /*
+        this function converts dashed names to camel-case
+      */
+      return text.replace((/-[a-z]/g), function (match) {
+        return match[1].toUpperCase();
+      });
+    },
+
+    stringToCamelCase_test: function (onEventError) {
+      try {
+        console.assert(EXPORTS.stringToCamelCase('') === '');
+        console.assert(EXPORTS.stringToCamelCase('aa-bb-cc') === 'aaBbCc');
+        onEventError();
+      } catch (error) {
+        onEventError(error);
+      }
     },
 
     templateFormat: function (template, dict) {
@@ -457,7 +762,7 @@ add db indexing
       });
     },
 
-    _test_templateFormat: function (onEventError) {
+    templateFormat_test: function (onEventError) {
       if (EXPORTS.templateFormat('{{aa}}', { aa: 1 }) === '{{aa}}'
           && EXPORTS.templateFormat('{{aa}}', { aa: 'bb' }) === 'bb') {
         onEventError();
@@ -468,11 +773,11 @@ add db indexing
 
     testLocal: function (module, local2) {
       /* browser-side testing */
-      if (EXPORTS.isPhantomjs || (EXPORTS.isBrowser && !EXPORTS.isBrowserTest)) {
+      if (state.isPhantomjs || (state.isBrowser && !state.isBrowserTest)) {
         return;
       }
       var environment, _onEventTest, remaining = 0, testSuite;
-      environment = EXPORTS.isBrowser ? 'browser' : 'nodejs';
+      environment = state.isBrowser ? 'browser' : 'nodejs';
       testSuite = {
         environment: environment,
         failures: 0,
@@ -494,7 +799,9 @@ add db indexing
               testSuite.tests += 1;
               console.error('\n' + testSuite.environment, 'test failed -',
                 local2._name + '.' + test.name);
-              EXPORTS.onEventErrorDefault(new Error(test.failure = 'test timeout'));
+              test.failure = 'test timeout';
+              EXPORTS.onEventErrorDefault(new Error(test.failure));
+
             }
             testSuite.time += test.time;
             return;
@@ -505,12 +812,12 @@ add db indexing
         /* finish test cases */
         case 'finish':
           remaining = -1;
-          required.utility2_testCounter -= 1;
+          state.testCounter -= 1;
           /* timeout remaining tests */
           Object.keys(testSuite.testCases).forEach(_onEventTest);
           /* finish test suites */
-          if (required.utility2_testCounter <= 0) {
-            required.utility2_testCounter = 0;
+          if (state.testCounter <= 0) {
+            state.testCounter = 0;
             EXPORTS.testReport();
           }
           return;
@@ -546,43 +853,60 @@ add db indexing
           });
           return;
         default:
-          if (test.slice(0, 6) !== '_test_') {
+          if (test.slice(-5) !== '_test') {
             return;
           }
           if (!remaining) {
-            required.utility2_testCounter = required.utility2_testCounter || 0;
-            required.utility2_testCounter += 1;
+            state.testCounter = state.testCounter || 0;
+            state.testCounter += 1;
           }
           remaining += 1;
           /* en-queue test */
-          setTimeout(_onEventTest, 100, testSuite.testCases[test]
-            = { name: test, time: new Date().getTime() }, 'start');
+          testSuite.testCases[test] = { name: test, time: new Date().getTime() };
+          setTimeout(_onEventTest, 1, testSuite.testCases[test], 'start');
         }
       };
       Object.keys(local2).forEach(_onEventTest);
       if (remaining) {
         /* add test suite */
-        required.utility2_testSuites = required.utility2_testSuites || [];
-        required.utility2_testSuites.push(testSuite);
+        state.testSuites = state.testSuites || [];
+        state.testSuites.push(testSuite);
         /* add timeout to test suite */
-        setTimeout(_onEventTest, EXPORTS.timeoutDefault, null, 'finish');
+        setTimeout(_onEventTest, state.timeoutDefault, null, 'finish');
       }
+    },
+
+    testAssert: function (test, onEventError) {
+      /*
+        this convenience function when used, helps achieve 100% code coverage in test code
+      */
+      return function (error, data) {
+        if (error) {
+          onEventError(error);
+          return;
+        }
+        try {
+          test(data);
+        } catch (errorAssert) {
+          onEventError(errorAssert);
+        }
+      };
     },
 
     testReport: function () {
       var result = '\n';
-      required.utility2_testSuites.forEach(function (testSuite) {
+      state.testSuites.forEach(function (testSuite) {
         result += [testSuite.environment, 'tests -', testSuite.failures, 'failed /',
           testSuite.skipped, 'skipped /', testSuite.passed, 'passed in', testSuite.name]
           .join(' ') + '\n';
       });
       console.log(result);
-      if (EXPORTS.isBrowser) {
+      if (state.isBrowser) {
         /* upload test report */
         EXPORTS.ajaxLocal({
           data: JSON.stringify({
             coverage: global.__coverage__,
-            testSuites: required.utility2_testSuites
+            testSuites: state.testSuites
           }),
           url: '/test/test.upload'
         });
@@ -591,10 +915,10 @@ add db indexing
           global.__coverage__ = {};
         }
       } else {
-        required.utility2._testReport(required.utility2_testSuites);
+        required.utility2._testReport(state.testSuites);
       }
       /* reset test suites */
-      required.utility2_testSuites.length = 0;
+      state.testSuites.length = 0;
     },
 
     tryOnEventError: function (callback, onEventError) {
@@ -621,11 +945,22 @@ add db indexing
     },
 
     urlPathNormalizeOrError: function (url) {
-      return (url.length > 4096
-          || (url = (/[^#&?]*/).exec(encodeURI(url))[0]) === ''
-          || url.length > 256
-          || (/\.\/|\.$/).test(url)) ? new Error('invalid url') : url
-        .replace((/\/\/+/), '/').replace((/\/$/), '');
+      if (url.length <= 4096) {
+        url = (/[^#&?]*/).exec(encodeURI(url))[0];
+        if (url && url.length <= 256 && !(/\.\/|\.$/).test(url)) {
+          return url.replace((/\/\/+/), '/').replace((/\/$/), '');
+        }
+      }
+      return new Error('invalid url');
+    },
+
+    urlSearchGetItem: function (url, key, delimiter) {
+      return EXPORTS.urlSearchParse(url, delimiter).params[key] || '';
+    },
+
+    urlSearchGetItem_test: function (onEventError) {
+      onEventError(EXPORTS.urlSearchGetItem('/aa#bb=cc%2B', 'bb', '#') === 'cc+' ? null
+        : new Error('test failed - urlSearchGetItem'));
     },
 
     urlSearchParse: function (url, delimiter) {
@@ -644,35 +979,34 @@ add db indexing
       while (true) {
         match = regexp.exec(search);
         if (!match) {
-          return { params: params, path: url };
+          break;
         }
+        /* validate key / value */
         key = EXPORTS.urlDecodeOrError(match[1]);
         value = EXPORTS.urlDecodeOrError(match[2]);
-        /* validate key / value */
-        if (!(EXPORTS.isError(key) || EXPORTS.isError(value))) {
+        if (!((EXPORTS.isError(key))
+          || (EXPORTS.isError(value)))) {
           params[key] = value;
         }
       }
+      return { params: params, path: url };
     },
 
     urlSearchParsedJoin: function (parsed, delimiter) {
+      var path = parsed.path;
       delimiter = delimiter || '?';
-      if (parsed.path.indexOf(delimiter) < 0) {
-        parsed.path += delimiter;
+      if (path.indexOf(delimiter) < 0) {
+        path += delimiter;
       }
       Object.keys(parsed.params).sort().forEach(function (key, ii) {
         if (typeof parsed.params[key] === 'string') {
-          if (ii) {
-            parsed.path += '&';
+          if (ii || path.slice(-1) !== delimiter) {
+            path += '&';
           }
-          parsed.path += encodeURIComponent(key) + '=' + encodeURIComponent(parsed.params[key]);
+          path += encodeURIComponent(key) + '=' + encodeURIComponent(parsed.params[key]);
         }
       });
-      return parsed.path;
-    },
-
-    urlSearchGetItem: function (url, key, delimiter) {
-      return EXPORTS.urlSearchParse(url, delimiter).params[key] || '';
+      return path.replace('?&', '?');
     },
 
     urlSearchRemoveItem: function (url, key, delimiter) {
@@ -687,13 +1021,9 @@ add db indexing
       return EXPORTS.urlSearchParsedJoin(parsed, delimiter);
     },
 
-    _test_urlSearch: function (onEventError) {
-      if (EXPORTS.urlSearchGetItem('/aa#bb=cc%2B', 'bb', '#') === 'cc+'
-          && EXPORTS.urlSearchSetItem('/aa', 'bb', 'cc+', '#') === '/aa#bb=cc%2B') {
-        onEventError();
-        return;
-      }
-      onEventError(new Error('test failed'));
+    urlSearchSetItem_test: function (onEventError) {
+      onEventError(EXPORTS.urlSearchSetItem('/aa#bb=1', 'cc', 'dd+', '#')
+        === '/aa#bb=1&cc=dd%2B' ? null : new Error('test failed - urlSearchSetItem'));
     },
 
     uuid4: function () {
@@ -726,73 +1056,220 @@ add db indexing
 
   };
   local._init();
-}(global));
+}());
 
 
 
-(function moduleCommonBrowser(global) {
+(function moduleCommonBrowser() {
   /*
     this browser module exports common, shared utilities
    */
   'use strict';
-  var EXPORTS = global.EXPORTS = global.EXPORTS || {},
-    $ = global.jQuery,
-    local;
-  local = {
+  var local = {
 
     _name: 'utility2.moduleCommonBrowser',
 
-    _onEventModalHide: function (event) {
-      $(event.target).parents('.modal').modal('hide');
-    },
-
     _init: function () {
-      if (!EXPORTS.isBrowser) {
+      if (!state.isBrowser) {
         return;
       }
-      EXPORTS.moduleInit(module, local);
+      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
     },
 
     _initOnce: function () {
-      /* event handling */
-      $(document.body).on('click', '.modal [data-dismiss="modal"]', local._onEventModalHide);
-      /* reload page if server code is modified */
-      if (EXPORTS.isBrowserTest === 'watch') {
-        setInterval(function () {
-          $.ajax({ url: '/test/test.timestamp' }).done(function (timestamp) {
-            /* if timestamp is greater than current saved timestamp, then reload */
-            if (timestamp > (local._timestamp = local._timestamp || timestamp)) {
-              location.reload();
-            }
-          });
-        /* 4000 ms poll */
-        }, 4000);
+      /* watch server for changes and reload via sse */
+      if (state.isBrowserTest === 'watch') {
+        new global.EventSource('/test/test.watch').addEventListener('message', function () {
+          location.reload();
+        });
+      }
+    },
+
+    onEventErrorAlertDefault: function (error, data) {
+      EXPORTS.onEventErrorDefault(error, data);
+      if (error) {
+        global.alert(error.stack || error.message || error);
       }
     },
 
   };
   local._init();
-}(global));
+}());
 
 
 
-(function moduleStateBrowser(global) {
+(function moduleFtsShared() {
+  /*
+    this browser module exports fts api
+   */
+  'use strict';
+  var local = {
+
+    _name: 'utility2.moduleFtsShared',
+
+    _init: function () {
+      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
+    },
+
+    _ftsAddDatum: function (id, text, prefixTable) {
+      id = ' ' + id.toString() + ' ';
+      text = text.trim().toLowerCase();
+      var match,
+        /* optimization - 2 letter prefix */
+        regexp = (/[^\s\-_]{2,}/g),
+        tokens = ' ';
+      while (true) {
+        match = regexp.exec(text);
+        if (!match) {
+          break;
+        }
+        match = match[0] + ' ';
+        tokens += match;
+        /* optimization - 2 letter prefix */
+        match = match.slice(0, 2);
+        if (!prefixTable[match]) {
+          prefixTable[match] = id;
+        } else if (prefixTable[match].indexOf(id) < 0) {
+          prefixTable[match] += id.slice(1);
+        }
+      }
+      return tokens;
+    },
+
+    _Fts: function () {
+      return;
+    },
+
+    createFts: function () {
+      var self = new local._Fts();
+      self.data = { prefixTable: {}, tokenTable: {} };
+      return self;
+    },
+
+    _Fts_prototype_addData: function (data) {
+      var self = this.data, _prefixTable = {}, id, ii, key;
+      /* break data into smaller chunks if too big*/
+      if (data.length > 256) {
+        for (ii = 0; ii < data.length; ii += 256) {
+          this.addData(data.slice(ii, ii + 256));
+          if (state.debugFlag) {
+            console.log('fts - indexed data range ' + ii + ' - ' + (ii + 255));
+          }
+        }
+        return;
+      }
+      for (ii = 0; ii < data.length; ii += 1) {
+        id = data[ii][0];
+        if (!self.tokenTable[id]) {
+          self.tokenTable[id] = local._ftsAddDatum(id, data[ii][1], _prefixTable);
+        }
+      }
+      /* merge prefixTable */
+      for (key in _prefixTable) {
+        if (_prefixTable.hasOwnProperty(key)) {
+          if (self.prefixTable[key]) {
+            self.prefixTable[key] += _prefixTable[key].slice(1);
+          } else {
+            self.prefixTable[key] = _prefixTable[key];
+          }
+        }
+      }
+    },
+
+    _Fts_prototype_query: function (query) {
+      var self = this.data,
+        list,
+        lists = [],
+        match,
+        prefixes = [],
+        /* optimization - 2 letter prefix */
+        regexp = (/[^\s]{2,}/g),
+        result = [],
+        shortestList;
+      query = query.trim().toLowerCase();
+      while (true) {
+        match = regexp.exec(query);
+        if (!match) {
+          break;
+        }
+        /* optimization - 2 letter prefix */
+        match = match[0].slice(0, 2);
+        if (prefixes.indexOf(match) < 0) {
+          prefixes.push(match);
+          list = self.prefixTable[match];
+          /* quit search because of extraneous word */
+          if (!list) {
+            break;
+          }
+          list = list.trim().split(/\s+/);
+          lists.push(list);
+          if (!shortestList || list.length < shortestList.length) {
+            shortestList = list;
+          }
+        }
+      }
+      if (!shortestList || lists.length < prefixes.length) {
+        return [];
+      }
+      shortestList.forEach(function (id) {
+        var ii, tokens = self.tokenTable[id];
+        for (ii = 0; ii < lists.length; ii += 1) {
+          if (lists[ii].indexOf(id) < 0) {
+            return;
+          }
+        }
+        /* optimization - 2 letter prefix */
+        regexp = (/[^\s]{2,}/g);
+        /* check all query terms match */
+        while (true) {
+          match = regexp.exec(query);
+          if (!match) {
+            break;
+          }
+          if (tokens.indexOf(' ' + match[0]) < 0) {
+            return;
+          }
+        }
+        result.push([id, tokens]);
+      });
+      return result;
+    },
+
+    Fts_test: function (onEventError) {
+      try {
+        var result, self = EXPORTS.createFts();
+        self.addData([[1, 'ab cc'], [2, 'aa bb- Cc aa'], [3, 'aBc']]);
+        result = JSON.stringify(self.query('aa cc'));
+        if (result !== '[["2"," aa bb cc aa "]]') {
+          onEventError(new Error('test failed - ' + result));
+          return;
+        }
+        onEventError();
+      } catch (error) {
+        onEventError(error);
+      }
+    },
+
+  };
+  local._init();
+}());
+
+
+
+(function moduleStateBrowser() {
   /*
     this browser module handles the global state and syncs it with localStorage and permalink
    */
   'use strict';
-  var EXPORTS = global.EXPORTS = global.EXPORTS || {},
-    $ = global.jQuery,
-    local;
-  local = {
+  var local = {
 
     _name: 'utility2.moduleStateBrowser',
 
     _init: function () {
-      if (!EXPORTS.isBrowser) {
+      if (!state.isBrowser) {
         return;
       }
-      EXPORTS.moduleInit(module, local);
+      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
     },
 
     _initOnce: function () {
@@ -801,13 +1278,9 @@ add db indexing
         /* event change - update state key and refresh */
         .on('change', '[data-state]', local._onEventInputStateChange)
         /* event click - update and click action button in divSplitBtnDropdown */
-        .on('click', 'div.divSplitBtnDropdown > ul.dropdown-menu > li > a[data-value]',
+        .on('click', '.divSplitBtnDropdown a[data-value]',
           local._onEventDivSplitBtnDropdownAClick);
-      $(global).on('resize', function () {
-        $('div.divSplitBtnDropdown > button[data-state]').each(function (ii, target) {
-          local._onEventDivSplitBtnDropdownBtnRedraw($(target));
-        });
-      });
+      $(global).on('resize', EXPORTS.onEventDivSplitBtnDropdownRedrawAll);
       /* restore state */
       EXPORTS.stateRestore();
     },
@@ -825,18 +1298,18 @@ add db indexing
       /*
         this function retores localStorage with defaults and overrides
       */
+      /* restore overrides */
+      if (overrides) {
+        Object.keys(overrides).forEach(function (key) {
+          EXPORTS.stateSetItem(key, overrides[key]);
+        });
+      }
       /* restore defaults */
       if (defaults) {
         Object.keys(defaults).forEach(function (key) {
           if (!localStorage.hasOwnProperty(key)) {
             EXPORTS.stateSetItem(key, defaults[key]);
           }
-        });
-      }
-      /* restore overrides */
-      if (overrides) {
-        Object.keys(overrides).forEach(function (key) {
-          EXPORTS.stateSetItem(key, overrides[key]);
         });
       }
       /* restore input state */
@@ -860,13 +1333,9 @@ add db indexing
             target.html(parent.find('ul > li > a[data-value="' + value + '"]').html());
             /* redraw button */
             setTimeout(function () {
-              local._onEventDivSplitBtnDropdownBtnRedraw(target);
+              local._onEventDivSplitBtnDropdownRedraw(parent);
             }, 1);
           }
-          break;
-        case 'select':
-          target.attr('data-value', value);
-          target.find('option[data-value="' + value + '"]').prop('selected', true);
           break;
         }
       }
@@ -900,69 +1369,67 @@ add db indexing
       case 'textarea':
         EXPORTS.stateSetItem(target.attr('data-state'), target.val());
         break;
-      case 'select':
-        EXPORTS.stateSetItem(
-          target.attr('data-state'),
-          target.find('option:selected').attr('data-value')
-        );
-        break;
       }
-      target.trigger('changed');
+      target.trigger('state.changed');
     },
 
-    _onEventDivSplitBtnDropdownBtnRedraw: function (target) {
-      var parent = target.parent();
-      target.outerWidth(
-        parent.innerWidth() - parent.find('button.dropdown-toggle').outerWidth() - 1
-      );
+    _onEventDivSplitBtnDropdownRedraw: function (target) {
+      var children = target.children(), width = target.innerWidth();
+      $(children[0]).outerWidth(width - 32);
+      $(children[2]).outerWidth(width - 48);
+    },
+
+    onEventDivSplitBtnDropdownRedrawAll: function () {
+      $('.divSplitBtnDropdown').each(function (ii, target) {
+        local._onEventDivSplitBtnDropdownRedraw($(target));
+      });
     },
 
     _onEventDivSplitBtnDropdownAClick: function (event) {
       event.preventDefault();
       var target = $(event.target),
-        value = target.attr('data-value'),
-        btn = target.parents('div.divSplitBtnDropdown').children('button[data-state]'),
-        key = btn.attr('data-state');
+        parent = target.parents('.divSplitBtnDropdown'),
+        btn = parent.children('button[data-state]'),
+        key = btn.attr('data-state'),
+        value = target.attr('data-value');
       /* save button state */
       if (key) {
         EXPORTS.stateSetItem(key, value);
+        /* redraw button */
+        local._onEventDivSplitBtnDropdownRedraw(btn);
       }
       /* click action button */
-      btn.attr('data-value', value).html(target.html()).trigger('changed').trigger('click');
-      /* redraw button */
-      local._onEventDivSplitBtnDropdownBtnRedraw(btn);
+      btn.attr('data-value', value).html(target.html())
+        .trigger('state.changed').trigger('click');
     },
 
   };
   local._init();
-}(global));
+}());
 
 
 
-(function moduleXhrProgressBrowser(global) {
+(function moduleXhrProgressBrowser() {
   /*
     this browser module provides a drop-in replacement for jQuery.ajax
     with an automatic progress meter
   */
   'use strict';
-  var EXPORTS = global.EXPORTS = global.EXPORTS || {},
-    $ = global.jQuery,
-    local;
-  local = {
+  var local = {
 
     _name: 'utility2.moduleXhrProgressBrowser',
 
     _init: function () {
-      if (!EXPORTS.isBrowser) {
+      if (!state.isBrowser || state.divXhrProgress) {
         return;
       }
-      EXPORTS.moduleInit(module, local);
+      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
     },
 
     _initOnce: function () {
       /* css */
       $(document.head).append('<style>\n'
-        + 'div#divXhrProgress {\n'
+        + '#divXhrProgress {\n'
           + 'background-color: #fff;\n'
           + 'border: 2px solid black;\n'
           + 'border-radius: 5px;\n'
@@ -976,20 +1443,21 @@ add db indexing
           + 'width: 128px;\n'
           + 'z-index: 99999;\n'
         + '}\n'
-        + 'div#divXhrProgress > div.progress {\n'
+        + '#divXhrProgress > .progress {\n'
           + 'background-color: #777;\n'
           + 'margin: 10px;\n'
         + '}\n'
-        + 'div#divXhrProgress > div.progress {\n'
+        + '#divXhrProgress > .progress {\n'
           + 'background-color: #777;\n'
           + 'margin: 10px;\n'
         + '}\n'
         + '</style>\n');
       /* initialize xhr progress container */
-      $(document.body).append(local._divXhrProgress = $('<div id="divXhrProgress">\n'
+      local._divXhrProgress = $('<div id="divXhrProgress">\n'
         + '<div class="active progress progress-striped">\n'
           + '<div class="progress-bar progress-bar-info">loading\n'
-        + '</div></div></a>\n'));
+        + '</div></div></a>\n');
+      $(document.body).append(local._divXhrProgress);
       local._divXhrProgressBar = local._divXhrProgress.find('div.progress-bar');
       /* event handling */
       local._divXhrProgress.on('click', function () {
@@ -1000,41 +1468,9 @@ add db indexing
       global.local = local;
     },
 
-    ajaxProgress: function (options) {
-      /*
-        this convenience function serves as a drop-in replacement for jQuery.ajax.
-        usage:
-        EXPORTS.ajaxProgress({
-          contentType: 'application/octet-stream',
-          data: 'hello world',
-          dataType: 'text',
-          type: 'POST',
-          url: '/upload/foo.txt'
-        }).done(function (data, textStatus, xhr) {
-          EXPORTS.onEventErrorDefault(null, data);
-        }).fail(function (xhr, textStatus, errorMessage) {
-          EXPORTS.onEventErrorDefault(new Error(errorMessage));
-        });
-      */
-      if (typeof options === 'string') {
-        options = { url: options };
-      }
-      options.contentType = options.contentType || 'application/octet-stream';
-      options.dataType = options.dataType || 'text';
-      options.type = options.type || options.method;
-      if (options.params) {
-        options.url = EXPORTS.urlSearchParsedJoin({
-          params: options.params,
-          path: options.url
-        });
-      }
-      options.xhr = options.xhr || local._xhrProgress;
-      return $.ajax(options);
-    },
-
     ajaxProgressOnEventError: function (options, onEventError) {
       /*
-        this convenience function simplifies the callback
+        this function performs ajax calls with progress meter
         usage:
         EXPORTS.ajaxProgressOnEventError({
           data: 'hello world',
@@ -1042,15 +1478,47 @@ add db indexing
           url: '/upload/foo.txt'
         }, EXPORTS.onEventErrorDefault);
       */
+      if (typeof options === 'string') {
+        options = { url: options };
+      }
       /* binary file */
       if (options.file && !options.data) {
         local._ajaxProgressOnEventErrorFile(options, onEventError);
         return;
       }
       onEventError = onEventError || EXPORTS.onEventErrorDefault;
-      EXPORTS.ajaxProgress(options).done(function (data) {
+      options.contentType = options.contentType || 'application/octet-stream';
+      options.dataType = options.dataType || 'text';
+      options.type = options.type || options.method;
+      options.xhr = options.xhr || local._xhrProgress;
+      if (options.params) {
+        options.url = EXPORTS.urlSearchParsedJoin({
+          params: options.params,
+          path: options.url
+        });
+      }
+      /* debug */
+      if (options.debugFlag || state.debugFlag) {
+        console.log(options);
+      }
+      return $.ajax(options).done(function (data, textStatus, xhr) {
+        global.xhr = xhr;
+        switch (options.dataType) {
+        case 'statusCode':
+          onEventError(null, xhr.status);
+          return;
+        }
         onEventError(null, data);
       }).fail(function (xhr, textStatus, errorMessage) {
+        switch (options.dataType) {
+        case 'statusCode':
+          /* ignore error, if all we want is the status code */
+          if (xhr.status) {
+            onEventError(null, xhr.status);
+            return;
+          }
+          break;
+        }
         onEventError(new Error(xhr.status + ' ' + textStatus + ' - ' + options.url + '\n'
           + (xhr.responseText || errorMessage)));
       });
@@ -1098,8 +1566,9 @@ add db indexing
       /*
         this function increments progress in an indeterminate manner
       */
+      local._progress += 0.25;
       local._xhrProgressStatus(
-        100 - 100 / (local._progress += 0.25) + '%',
+        100 - 100 / (local._progress) + '%',
         'progress-bar-info',
         'loading'
       );
@@ -1178,50 +1647,53 @@ add db indexing
 
   };
   local._init();
-}(global));
+}());
 
 
 
 (function moduleAdminBrowser() {
   /*
-    this browser module exports key / value data store
+    this browser module exports the admin api
   */
   'use strict';
-  var EXPORTS = global.EXPORTS = global.EXPORTS || {},
-    local;
-  local = {
+  var local = {
 
     _name: 'utility2.moduleAdminBrowser',
 
     _init: function () {
-      if (!(EXPORTS.isBrowser && location.pathname === '/admin/admin.html')) {
+      if (!state.isBrowser) {
         return;
       }
-      EXPORTS.moduleInit(module, local);
+      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
     },
 
     _initOnce: function () {
+      if (!(state.isBrowser && location.pathname === '/admin/admin.html')) {
+        return;
+      }
       /* event handling */
-      EXPORTS.inputAdminUpload.on("change", function (event) {
+      state.inputAdminUpload.on("change", function (event) {
         EXPORTS.ajaxProgressOnEventError({
           file: event.target.files[0],
           method: "POST",
           url: "/admin/admin.upload"
         });
+        /* reset input */
+        $(event.target).val('');
       });
     },
 
-    ajaxAdminDebug: function (script, onEventError) {
+    adminDebug: function (script, onEventError) {
       EXPORTS.ajaxLocal({ data: script, url: "/admin/admin.debug" }, onEventError);
     },
 
-    ajaxAdminShell: function (script, onEventError) {
-      EXPORTS.ajaxLocal({ data: script, url: "/admin/shell" }, onEventError);
+    adminShell: function (script, onEventError) {
+      EXPORTS.ajaxLocal({ data: script, url: "/admin/admin.shell" }, onEventError);
     },
 
   };
   local._init();
-}(global));
+}());
 
 
 
@@ -1230,17 +1702,29 @@ add db indexing
     this shared module exports key / value data store
   */
   'use strict';
-  var EXPORTS = global.EXPORTS = global.EXPORTS || {},
-    local;
-  local = {
+  var local = {
 
     _name: 'utility2.moduleDbShared',
 
     _init: function () {
-      EXPORTS.moduleInit(module, local);
+      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
+    },
+
+    createDb: function (name) {
+      var self = new local._Db();
+      self.name = name;
+      return self;
+    },
+
+    createDbRandom: function () {
+      /*
+        this function creates a random db for tests
+      */
+      return EXPORTS.createDb('table test ' + EXPORTS.dateAndSalt());
     },
 
     _Db: function () {
+      return;
     },
 
     _Db_prototype_ajax: function (options, onEventError) {
@@ -1261,14 +1745,6 @@ add db indexing
 
     _Db_prototype_fieldGet: function (record, field, onEventError) {
       this.ajax({ action: 'fieldGet', field: field, record: record }, onEventError);
-    },
-
-    _Db_prototype_fileDownload: function (file, onEventError) {
-      this.ajax({ action: 'fileDownload', record: file }, onEventError);
-    },
-
-    _Db_prototype_fileUpload: function (file, data, onEventError) {
-      this.ajax({ action: 'fileUpload', data: data, record: file }, onEventError);
     },
 
     _Db_prototype_recordDelete: function (record, onEventError) {
@@ -1296,8 +1772,28 @@ add db indexing
       this.ajax({ action: 'recordsDeleteAndUpdate', data: records }, onEventError);
     },
 
+    Db_recordsDeleteAndUpdate_test: function (onEventError) {
+      var self = EXPORTS.createDbRandom();
+      EXPORTS.dbTestChain(self, [function (next) {
+        self.recordsDeleteAndUpdate('{}', EXPORTS.testAssert(function (data) {
+          console.assert(data === '');
+          next();
+        }, next));
+      }], onEventError);
+    },
+
     _Db_prototype_recordsGet: function (records, onEventError) {
       this.ajax({ action: 'recordsGet', data: records }, onEventError);
+    },
+
+    Db_recordsGet_test: function (onEventError) {
+      var self = EXPORTS.createDbRandom();
+      EXPORTS.dbTestChain(self, [function (next) {
+        self.recordsGet('{}', EXPORTS.testAssert(function (data) {
+          console.assert(data === '{}');
+          next();
+        }, next));
+      }], onEventError);
     },
 
     _Db_prototype_recordsUpdate: function (data, onEventError) {
@@ -1320,6 +1816,22 @@ add db indexing
       this.ajax({ action: 'tableOptionsUpdateAndGet', data: JSON.stringify(options) }, onEventError);
     },
 
+    Db_tableOptionsUpdateAndGet_test: function (onEventError) {
+      var self = EXPORTS.createDbRandom();
+      EXPORTS.dbTestChain(self, [function (next) {
+        self.tableOptionsUpdateAndGet(null, EXPORTS.testAssert(function (data) {
+          console.assert(JSON.parse(data).dirMaxFiles === 1024);
+          next();
+        }, next));
+      }, function (next) {
+        self.tableOptionsUpdateAndGet({ 'dirMaxFiles': 16 },
+          EXPORTS.testAssert(function (data) {
+            console.assert(JSON.parse(data).dirMaxFiles === 16);
+            next();
+          }, next));
+      }], onEventError);
+    },
+
     _Db_prototype_tableScanBackward: function (record, limit, onEventError) {
       this.ajax({ action: 'tableScanBackward', record: record, limit: limit.toString() },
         onEventError);
@@ -1336,6 +1848,10 @@ add db indexing
 
     _Db_prototype_tableUpdateRandom: function (limit, onEventError) {
       var data = {}, ii, jj, record;
+      if (!limit || limit < 0) {
+        onEventError();
+        return;
+      }
       for (ii = 0; ii < limit; ii += 1) {
         data['record ' + EXPORTS.dateAndSalt()] = record = {};
         for (jj = 0; jj < 2; jj += 1) {
@@ -1345,45 +1861,51 @@ add db indexing
       this.tableUpdate(JSON.stringify(data), onEventError);
     },
 
-    createDb: function (name) {
-      var self = new local._Db();
-      self.name = name;
-      return self;
+    dbTestAggregate: function (self, callbacks, onEventError) {
+      EXPORTS.dbTestChain(self, [function (next) {
+        EXPORTS.ioAggregate(callbacks, next);
+      }], onEventError);
+    },
+
+    dbTestChain: function (self, callbacks, onEventError) {
+      EXPORTS.ioChain(callbacks, function (error) {
+        /* delete table after test */
+        self.tableDelete(function (_error) {
+          onEventError(error || _error);
+        });
+      });
     },
 
   };
   local._init();
-}(global));
+}());
 
 
 
-(function moduleCommonNodejs(global) {
+(function moduleCommonNodejs() {
   /*
     this nodejs module exports common, nodejs utilities
   */
   'use strict';
-  var EXPORTS = global.EXPORTS = global.EXPORTS || {},
-    required = EXPORTS.required = EXPORTS.required || {},
-    local;
-  local = {
+  var local = {
 
     _name: 'utility2.moduleCommonNodejs',
 
     _init: function () {
-      if (!EXPORTS.isNodejs) {
+      if (!state.isNodejs) {
         return;
       }
-      EXPORTS.moduleInit(module, local);
+      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
     },
 
     _initOnce: function () {
-      if (required.utility2_initOnce) {
+      if (state.initOnce) {
         return;
       }
-      required.utility2_initOnce = true;
+      state.initOnce = true;
       /* require */
       required.child_process = required.child_process || require('child_process');
-      required.fs = required.fs || require('graceful-fs');
+      required.fs = required.fs || require('fs');
       required.http = required.http || require('http');
       required.http.globalAgent.maxSockets = 256;
       required.https = required.https || require('https');
@@ -1394,20 +1916,45 @@ add db indexing
       required.url = required.url || require('url');
       required.util = required.util || require('util');
       required.vm = required.vm || require('vm');
+      required.zlib = required.zlib || require('zlib');
       /* require external */
-      required.commander = required.commander || require('commander');
-      required.istanbul = required.istanbul || require('istanbul');
-      required.istanbul_Instrumenter = required.istanbul_Instrumenter
-        || new required.istanbul.Instrumenter();
-      required.jslint_linter = required.jslint_linter || require('jslint/lib/linter');
-      required.jslint_reporter = required.jslint_reporter || require('jslint/lib/reporter');
-      required.mime = required.mime || require('mime');
-      required.uglifyjs = required.uglifyjs || require('uglify-js');
-      try {
-        required.sqlite3 = required.sqlite3 || require('sqlite3');
+      [
+        'csslint',
+        'cssmin',
+        'express',
+        'graceful-fs',
+        'istanbul',
+        'jslint',
+        'mime',
+        'moment',
+        'nopt',
+        'sqlite3',
+        'uglify-js'
+      ].forEach(function (module) {
+        var module2 = module.replace((/\W/g), '_');
+        try {
+          required[module2] = required[module2] || require(module);
+        } catch (errorRequire) {
+          console.log('module not loaded - ' + module);
+        }
+      });
+      /* override required.fs with required.graceful_fs */
+      if (required.graceful_fs) {
+        required.fs = required.graceful_fs;
+      }
+      /* initialize istanbul */
+      if (required.istanbul) {
+        required.istanbul_Instrumenter = required.istanbul_Instrumenter
+          || new required.istanbul.Instrumenter();
+      }
+      /* initialize jslint */
+      if (required.jslint) {
+        required.jslint_linter = required.jslint_linter || require('jslint/lib/linter');
+        required.jslint_reporter = required.jslint_reporter || require('jslint/lib/reporter');
+      }
+      /* initialize sqlite3 */
+      if (required.sqlite3) {
         required.sqlite3_db = new required.sqlite3.cached.Database(':memory:');
-      } catch (errorSqlite3) {
-        console.log('module not loaded - sqlite3');
       }
       /* exports */
       global.atob = function (text) {
@@ -1416,23 +1963,6 @@ add db indexing
       global.btoa = function (text) {
         return new Buffer(text).toString('base64');
       };
-      /* argv */
-      process.argv.forEach(function (arg, ii) {
-        switch (arg) {
-        case '--server-port':
-          EXPORTS.serverPort = process.argv[ii + 1];
-          break;
-        case '--socks5':
-          required.utility2_ajaxsocks5Flag = true;
-          break;
-        case '--test':
-          /* set test server port */
-          EXPORTS.serverPort = parseInt('f' + Math.random().toString(16).slice(-3), 16);
-          /* set test timeout */
-          setTimeout(process.exit, Number(process.argv[ii + 1]) || EXPORTS.timeoutDefault);
-          break;
-        }
-      });
       /* check for code coverage */
       if (!global.__coverage__) {
         Object.keys(global).forEach(function (key) {
@@ -1440,6 +1970,36 @@ add db indexing
             global.__coverage__ = global[key];
           }
         });
+      }
+      /* process argv */
+      process.argv.forEach(function (arg, ii, argv) {
+        if ((/^--[a-z]/).test(arg)) {
+          /* --no-foo -> state.isFoo = false */
+          if ((/^--no-[a-z]/).test(arg)) {
+            state[EXPORTS.stringToCamelCase('is' + arg.slice(4))] = false;
+          /* --foo bar -> state.isFoo = bar */
+          } else if (argv[ii + 1] && !(/^--[a-z]/).test(argv[ii + 1])) {
+            state[EXPORTS.stringToCamelCase(arg.slice(2))] = argv[ii + 1];
+          /* --foo -> state.isFoo = true */
+          } else {
+            state[EXPORTS.stringToCamelCase('is' + arg.slice(1))] = true;
+          }
+        }
+      });
+      if (state.socks5) {
+        state.socks5LocalPort = EXPORTS.serverPortRandom();
+        EXPORTS.shell({
+          script: 'ssh -D ' + state.socks5LocalPort + ' -o StrictHostKeyChecking=no -p '
+            + (state.socks5.split(':')[1] || '22') + ' ' + state.socks5.split(':')[0],
+          stdio: []
+        });
+      }
+      if (state.isTest) {
+        /* set test server port */
+        state.serverPort = EXPORTS.serverPortRandom();
+        setTimeout(EXPORTS.serverStart, 1);
+        /* set test timeout */
+        setTimeout(process.exit, state.timeoutDefault);
       }
     },
 
@@ -1452,8 +2012,24 @@ add db indexing
       if (typeof options === 'string') {
         options = { url: options };
       }
-      var onEventProgress = options.onEventProgress || EXPORTS.nop,
+      /* default to localhost if missing http://<host> prefix in url */
+      if (options.url[0] === '/') {
+        options.url = state.localhost + options.url;
+      }
+      /* assert valid http / https url */
+      console.assert(options.url && options.url.slice(0, 4) === 'http', [options.url]);
+      var _onEventError,
+        onEventProgress = options.onEventProgress || EXPORTS.nop,
+        request,
+        timeout,
         urlParsed = required.url.parse(options.proxy || options.url);
+      _onEventError = function (error, data) {
+        if (timeout < 0) {
+          return;
+        }
+        clearTimeout(timeout);
+        onEventError(error, data);
+      };
       options.hostname = urlParsed.hostname;
       options.path = options.proxy ? options.url : urlParsed.path;
       options.rejectUnauthorized = false;
@@ -1465,23 +2041,36 @@ add db indexing
       }
       options.port = urlParsed.port;
       onEventProgress();
-      /* socks5 */
-      if ((options.socks5 || required.utility2_ajaxsocks5Flag) && options.hostname !== 'localhost'
-          && !options.createConnection) {
-        local._ajaxSocks5(options, onEventError);
+      /* local ajax */
+      if (options.url.indexOf(state.localhost) === 0) {
+        /* basic auth */
+        options.headers = options.headers || {};
+        options.headers.authorization = options.headers.authorization
+          || 'Basic ' + state.securityBasicAuthSecret;
+      }
+      /* simulate making ajax request and print debug info, but do not actually do anything */
+      if (options.debugFlag === 'simulate') {
+        console.log(['ajaxNodejs', options]);
         return;
       }
-      ((urlParsed.protocol === 'https:') ? required.https
+      /* set timeout */
+      timeout = setTimeout(function () {
+        timeout = -1;
+        onEventError(EXPORTS.createErrorTimeout());
+      }, options.timeout || state.timeoutDefault);
+      /* socks5 */
+      if ((options.socks5 || state.socks5) && options.socks5 !== false
+          && !options.createConnection && options.url.indexOf(state.localhost) !== 0) {
+        local._ajaxSocks5(options, _onEventError);
+        return;
+      }
+      request = ((urlParsed.protocol === 'https:') ? required.https
         : required.http).request(options, function (response) {
         onEventProgress();
         if (options.onEventResponse && options.onEventResponse(response)) {
           return;
         }
-        EXPORTS.streamReadOnEventError(response, function (error, data) {
-          if (error) {
-            onEventError(error);
-            return;
-          }
+        if (options.redirect !== false) {
           /* http redirect */
           switch (response.statusCode) {
           case 300:
@@ -1493,7 +2082,7 @@ add db indexing
             options.redirected = options.redirected || 0;
             options.redirected += 1;
             if (options.redirected >= 8) {
-              onEventError(new Error('too many http redirects - '
+              _onEventError(new Error('too many http redirects - '
                 + response.headers.location));
               return;
             }
@@ -1502,31 +2091,69 @@ add db indexing
               options.data = null;
               options.method = 'GET';
             }
-            EXPORTS.ajaxNodejs(options, onEventError);
+            EXPORTS.ajaxNodejs(options, _onEventError);
             return;
-          case 500:
-            onEventError(new Error(data.toString() || response.statusCode));
+          }
+        }
+        switch (options.dataType) {
+        case 'headers':
+          _onEventError(null, response.headers);
+          return;
+        case 'response':
+          _onEventError(null, response.on('error', _onEventError));
+          return;
+        case 'statusCode':
+          _onEventError(null, response.statusCode);
+          return;
+        }
+        var readStream = response;
+        switch (response.headers['content-encoding']) {
+        case 'deflate':
+          readStream = response.pipe(required.zlib.createInflate());
+          break;
+        case 'gzip':
+          readStream = response.pipe(required.zlib.createGunzip());
+          break;
+        }
+        readStream.on('error', _onEventError);
+        EXPORTS.streamReadOnEventError(readStream, function (error, data) {
+          if (error) {
+            _onEventError(error);
+            return;
+          }
+          if (response.statusCode >= 400) {
+            _onEventError(new Error((options.method || 'GET') + ' - ' + options.url
+              + ' - ' + response.statusCode + ' - ' + data.toString()));
             return;
           }
           switch (options.dataType) {
-          /* try to JSON.parse the response */
           case 'binary':
             break;
+          /* try to JSON.parse the response */
           case 'json':
-            if (EXPORTS.isError(data = EXPORTS.jsonParseOrError(data))) {
+            data = EXPORTS.jsonParseOrError(data);
+            if (EXPORTS.isError(data)) {
               /* or if parsing fails, pass an error with offending url */
-              onEventError(new Error('invalid json data from ' + options.url));
+              _onEventError(new Error('invalid json data from ' + options.url));
               return;
             }
             break;
           default:
             data = data.toString();
           }
-          onEventError(null, data);
+          _onEventError(null, data);
         }, onEventProgress);
-      }).on('error', onEventError).end(options.data);
+      }).on('error', _onEventError);
+      if (options.file) {
+        options.readStream = options.readStream || required.fs.createReadStream(options.file);
+      }
+      if (options.readStream) {
+        options.readStream.on('error', _onEventError).pipe(request.on('error', _onEventError));
+      } else {
+        request.end(options.data);
+      }
       /* debug */
-      if (EXPORTS.debug) {
+      if (options.debugFlag || state.debugFlag) {
         console.log(['ajaxNodejs', options]);
       }
     },
@@ -1539,21 +2166,7 @@ add db indexing
         _onEventTimeout,
         port = Number(options.port || 80),
         socket;
-      _onEventError = function (error) {
-        onEventError(error);
-        socket.destroy();
-      };
-      socket = required.net.createConnection({ host: 'localhost', port: 1080 });
-      _onEventTimeout = setTimeout(_onEventError, EXPORTS.timeoutDefault, new Error('socks5 timeout'));
-      socket.on('connect', function () {
-        /*jslint bitwise: true*/
-        try {
-          socket.write(Buffer.concat([new Buffer([5, 1, 0, 5, 1, 0, 3, hostname.length]),
-            hostname, new Buffer([port >> 8, port & 0xff])]));
-        } catch (error) {
-          _onEventError(error);
-        }
-      }).on('error', _onEventError).on('data', _onEventData = function (chunk) {
+      _onEventData = function (chunk) {
         chunks = Buffer.concat([chunks, chunk]);
         var ii;
         for (ii = 0; ii < Math.min(chunks.length, 5); ii += 1) {
@@ -1617,25 +2230,58 @@ add db indexing
         /* disable socket pooling */
         options.agent = false;
         EXPORTS.ajaxNodejs(options, onEventError);
+      };
+      _onEventError = function (error) {
+        onEventError(error);
+        socket.destroy();
+      };
+      _onEventTimeout = setTimeout(_onEventError, state.timeoutDefault,
+        new Error('socks5 timeout'));
+      socket = required.net.createConnection({
+        host: 'localhost',
+        port: state.socks5LocalPort
       });
+      socket.on('connect', function () {
+        /*jslint bitwise: true*/
+        try {
+          socket.write(Buffer.concat([new Buffer([5, 1, 0, 5, 1, 0, 3, hostname.length]),
+            hostname, new Buffer([port >> 8, port & 0xff])]));
+        } catch (error) {
+          _onEventError(error);
+        }
+      }).on('error', _onEventError).on('data', _onEventData);
     },
 
-    _test_ajaxSocks5: function (onEventError) {
+    ajaxSocks5_test: function (onEventError) {
       /*
         this function tests ajax requests through socks5
       */
-      if (!required.utility2_ajaxsocks5Flag) {
+      if (!state.socks5) {
         onEventError('skip');
         return;
       }
-      EXPORTS.ajaxNodejs({ url: 'http://www.google.com' }, onEventError);
+      EXPORTS.ajaxNodejs({ url: 'http://www.yahoo.com' }, onEventError);
+    },
+
+    _cssLint: function (file, script) {
+      /*
+        this function lints a css script for errors
+      */
+      if (!required.csslint) {
+        return script;
+      }
+      console.log(required.csslint.CSSLint.getFormatter('text')
+        .formatResults(required.csslint.CSSLint.verify(script, { ignore: 'ids' }), file, {
+          quiet: true
+        }));
+      return script;
     },
 
     fsWatch: function (file) {
       /*
         this function watches a file and performs specified actions if it is modified.
         usage:
-        fsWatch({ action: ['jslint', 'eval'], name: 'foo.js' });
+        fsWatch({ action: ['lint', 'eval'], name: 'foo.js' });
       */
       var file2 = file, _onEventChange = function (stat2, stat1, mode) {
         /* execute following code only if modified timestamp has changed */
@@ -1649,9 +2295,14 @@ add db indexing
           }
           /* bump up timestamp */
           EXPORTS.timestamp = new Date().toISOString();
+          /* test watch */
+          state.testWatch = state.testWatch || [];
+          (state.testWatch).forEach(function (response) {
+            response.write('data:\n\n');
+          });
           var content2 = content.replace(/^#/, '//#');
           /* code coverage instrumentation */
-          if (global.__coverage__ && file.name.slice(-3) === '.js') {
+          if (required.istanbul && global.__coverage__ && file.name.slice(-3) === '.js') {
             /*jslint stupid: true*/
             content2 = required.istanbul_Instrumenter.instrumentSync(content2, file.name);
           }
@@ -1661,12 +2312,12 @@ add db indexing
             /* eval the file in global context */
             case 'eval':
               if (mode !== 'noEval') {
-                EXPORTS.jsEvalOnEventError(content2, file.name, EXPORTS.onEventErrorDefault);
+                EXPORTS.jsEvalOnEventError(file.name, content2, EXPORTS.onEventErrorDefault);
               }
               break;
-            /* jslint file - jslint npm module must be installed */
-            case 'jslint':
-              EXPORTS.jsLint(file.name, content2);
+            /* css / js lint file - csslint / jslint npm module must be installed */
+            case 'lint':
+              EXPORTS.scriptLint(file.name, content2);
               break;
             default:
               /* action is a function call */
@@ -1675,7 +2326,7 @@ add db indexing
           });
           /* perform copy */
           (file.copy || []).forEach(function (file2) {
-            EXPORTS.fsWriteFileAtomic(file2, content, {}, EXPORTS.onEventErrorDefault);
+            EXPORTS.fsWriteFileAtomic(file2, content, null, EXPORTS.onEventErrorDefault);
           });
           /* perform copyx */
           (file.copyx || []).forEach(function (file2) {
@@ -1685,10 +2336,8 @@ add db indexing
         });
       };
       file.name = required.path.resolve(file.name);
-      required.utility2_fsWatchDict = required.utility2_fsWatchDict || {};
-      file = required.utility2_fsWatchDict[file.name]
-        = (required.utility2_fsWatchDict = required.utility2_fsWatchDict || {})[file.name]
-          || file2;
+      state.fsWatchDict = state.fsWatchDict || {};
+      file = state.fsWatchDict[file.name] = state.fsWatchDict[file.name] || file2;
       /* first-time watch */
       if (file === file2) {
         /* watch file in 1000 ms intervals */
@@ -1710,18 +2359,24 @@ add db indexing
       _onEventChange({ mtime: 2}, { mtime: 1}, 'noEval');
     },
 
-    jsLint: function (file, script) {
+    _jsLint: function (file, script) {
+      /*
+        this function lints a js script for errors
+      */
+      if (!required.jslint) {
+        return script;
+      }
       /* do not lint if code coverage is enabled */
       if (global.__coverage__) {
         return script;
       }
       var ast, lint;
-      /* warn unused variables */
-      if (file.slice(-3) === '.js' && required.uglifyjs) {
+      /* warn about unused variables */
+      if (file.slice(-3) === '.js' && required.uglify_js) {
         try {
-          ast = required.uglifyjs.parse(script, { filename: file });
+          ast = required.uglify_js.parse(script, { filename: file });
           ast.figure_out_scope();
-          ast.transform(required.uglifyjs.Compressor());
+          ast.transform(required.uglify_js.Compressor());
         } catch (errorUglifyjs) {
           EXPORTS.onEventErrorDefault(errorUglifyjs);
         }
@@ -1736,43 +2391,73 @@ add db indexing
       return script;
     },
 
-    moduleInitNodejs: function (module, local2, exports) {
-      /* imports */
-      ['_fileContent', '_fileContentBrowser'].forEach(function (key) {
-        local2[key] = exports[key];
-      });
-      /* main module */
-      if (require.main !== module) {
-        return;
-      }
+    jsUglify: function (file, script) {
+      /*
+        this function uglifies a js script
+      */
+      var ast = required.uglify_js.parse(script, { filename: file }),
+        result = required.uglify_js.OutputStream();
+      /* compress */
+      ast.figure_out_scope();
+      ast.transform(required.uglify_js.Compressor());
+      /* mangle */
+      ast.figure_out_scope();
+      ast.compute_char_frequency();
+      ast.mangle_names();
+      /* output */
+      ast.print(result);
+      return result.toString();
     },
 
     _moduleRequireOnce: function (module, local2, exports) {
       if (exports.file) {
         return;
       }
-      exports.file = module.filename;
+      exports.file = (module && module.filename) || 'undefined';
       exports.dir = EXPORTS.fsDirname(exports.file);
       module.exports = exports;
       /* watch module */
-      EXPORTS.fsWatch({ action: ['jslint', function (file, content, content2) {
+      EXPORTS.fsWatch({ action: ['lint', function (file, content, content2) {
         exports._fileContent = content2;
         exports._fileContentBrowser = global.__coverage__ ? content2
-          : (content2 + '\n(function moduleNodejs() {\n}(global));\n')
+          : (content2 + '\n(function moduleNodejs() {\n}());\n')
             .replace((/\n\(function module\w*Nodejs\([\S\s]*/), '').trim();
       }, 'eval'], name: exports.file });
     },
 
-    _serverPort: 6710,
-
-    shell: function (command, mode) {
+    scriptLint: function (file, script) {
       /*
-        this convenience function provides a quick and dirty way to execute shell commands
+        this function lints css / html / js / json scripts
       */
-      if (mode !== 'silent') {
-        console.log(['shell', command]);
+      switch (required.path.extname(file)) {
+      case '.css':
+        return local._cssLint(file, script);
+      default:
+        return local._jsLint(file, script);
       }
-      return required.child_process.spawn('/bin/sh', ['-c', command], { stdio: [0, 1, 2] });
+    },
+
+    shell: function (options) {
+      /*
+        this convenience function provides a quick and dirty way to execute shell scripts
+      */
+      if (options.verbose !== false) {
+        console.log(['shell', options]);
+      }
+      if (typeof options === 'string') {
+        options = { script: options };
+      }
+      options.stdio = options.stdio || ['ignore', 1, 2];
+      var child = required.child_process.spawn(
+        options.argv ? options.argv[0] : '/bin/sh',
+        options.argv ? options.argv.slice(1) : ['-c', options.script],
+        options
+      );
+      /* log pid */
+      if (state.pidDir) {
+        required.fs.writeFile(state.pidDir + '/' + child.pid, '', EXPORTS.onEventErrorDefault);
+      }
+      return child;
     },
 
     streamReadOnEventError: function (readable, onEventError, onEventProgress) {
@@ -1790,95 +2475,56 @@ add db indexing
       });
     },
 
-    jsUglify: function (file, script) {
-      /*
-        this function uglifies a script
-      */
-      var ast = required.uglifyjs.parse(script, { filename: file }),
-        result = required.uglifyjs.OutputStream();
-      /* compress */
-      ast.figure_out_scope();
-      ast.transform(required.uglifyjs.Compressor());
-      /* mangle */
-      ast.figure_out_scope();
-      ast.compute_char_frequency();
-      ast.mangle_names();
-      /* output */
-      ast.print(result);
-      return result.toString();
-    },
-
   };
   local._init();
-}(global));
+}());
 
 
 
-(function moduleFsNodejs(global) {
+(function moduleFsNodejs() {
   /*
     this nodejs module exports filesystem api
   */
   'use strict';
-  var EXPORTS = global.EXPORTS = global.EXPORTS || {},
-    required = EXPORTS.required = EXPORTS.required || {},
-    local;
-  local = {
+  var local = {
 
     _name: 'utility2.moduleFsNodejs',
 
     _init: function () {
-      if (!EXPORTS.isNodejs) {
+      if (!state.isNodejs) {
         return;
       }
-      /* init module */
-      EXPORTS.moduleInit(module, local);
+      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
     },
 
     _initOnce: function () {
       /*jslint stupid: true*/
       /* exports */
-      EXPORTS.tmpDir = required.path.resolve(EXPORTS.tmpDir || process.cwd() + '/tmp');
+      state.tmpDir = required.path.resolve(state.tmpDir || process.cwd() + '/tmp');
       /* create cache directory */
       try {
-        EXPORTS.fsMkdirpSync(required.utility2_cacheDir = EXPORTS.tmpDir + '/cache');
+        state.cacheDir = state.tmpDir + '/cache';
+        EXPORTS.fsMkdirpSync(state.cacheDir);
+        state.pidDir = state.tmpDir + '/pid';
+        EXPORTS.fsMkdirpSync(state.pidDir);
+        /* kill stale pid's from previous process */
+        required.fs.readdirSync(state.pidDir).forEach(function (file) {
+          try {
+            process.kill(file);
+          } catch (ignore) {
+          }
+          required.fs.unlink(state.pidDir + '/' + file, EXPORTS.nop);
+        });
       } catch (error) {
         EXPORTS.onEventErrorDefault(error);
       }
       /* periodically clean up cache directory */
-      setInterval(local._cacheCleanup, EXPORTS.timeoutDefault);
+      EXPORTS.clearCallSetInterval('fsCacheCleanup', local._fsCacheCleanup,
+        60 * 60 * 1000);
       /* remove old coverage reports */
       EXPORTS.fsRmrAtomic(process.cwd() + '/tmp/coverage', EXPORTS.nop);
       /* remove old test reports */
       EXPORTS.fsRmrAtomic(process.cwd() + '/tmp/test', EXPORTS.nop);
-    },
-
-    _cacheCleanup: function () {
-      /*
-        this function cleans up the cache directory
-      */
-      /* remove files from cache directory */
-      (required.utility2_cacheFiles || []).forEach(function (file) {
-        local._fsRmr(required.utility2_cacheDir + '/' + file, EXPORTS.onEventErrorDefault);
-      });
-      /* get list of files to be removed for the next cycle */
-      required.fs.readdir(required.utility2_cacheDir, function (error, files) {
-        required.utility2_cacheFiles = files;
-      });
-    },
-
-    cacheWriteStream: function (readable, options, onEventError) {
-      /*
-        this function writes data from readable stream to a unique cache file
-      */
-      var cache = required.utility2_cacheDir + '/' + EXPORTS.dateAndSalt();
-      options.flag = 'wx';
-      /* write stream */
-      readable.on('error', onEventError).pipe(
-        /* create cache writable stream */
-        required.fs.createWriteStream(cache, options).on('close', function () {
-          onEventError(null, cache);
-        }).on('error', onEventError)
-      );
     },
 
     fsAppendFile: function (file, data, onEventError) {
@@ -1905,6 +2551,36 @@ add db indexing
         /* default behavior */
         onEventError(error);
       });
+    },
+
+    _fsCacheCleanup: function () {
+      /*
+        this function cleans up the cache directory
+      */
+      /* remove files from cache directory */
+      (state.cacheFiles || []).forEach(function (file) {
+        local._fsRmr(state.cacheDir + '/' + file, EXPORTS.onEventErrorDefault);
+      });
+      /* get list of files to be removed for the next cycle */
+      required.fs.readdir(state.cacheDir, function (error, files) {
+        state.cacheFiles = files;
+      });
+    },
+
+    fsCacheWritestream: function (readable, options, onEventError) {
+      /*
+        this function writes data from readable stream to a unique cache file
+      */
+      var cache = state.cacheDir + '/' + EXPORTS.dateAndSalt();
+      options = options || {};
+      options.flag = 'wx';
+      /* write stream */
+      readable.on('error', onEventError).pipe(
+        /* create cache writable stream */
+        required.fs.createWriteStream(cache, options).on('close', function () {
+          onEventError(null, cache);
+        }).on('error', onEventError)
+      );
     },
 
     fsMkdirp: function (dir, onEventError) {
@@ -2029,7 +2705,7 @@ add db indexing
         this function atomically removes a file / directory,
         by first renaming it to a cache directory, and then removing it afterwards
       */
-      var cache = required.utility2_cacheDir + '/' + EXPORTS.dateAndSalt();
+      var cache = state.cacheDir + '/' + EXPORTS.dateAndSalt();
       required.fs.rename(dir, cache, function (error) {
         if (error) {
           if (error.code === 'ENOENT') {
@@ -2050,7 +2726,8 @@ add db indexing
         by first writing to a unique cache file, and then renaming it,
         while auto-creating missing directories
       */
-      var cache = required.utility2_cacheDir + '/' + EXPORTS.dateAndSalt();
+      var cache = state.cacheDir + '/' + EXPORTS.dateAndSalt();
+      options = options || {};
       options.flag = 'wx';
       /* write data */
       required.fs.writeFile(cache, data, options, function (error) {
@@ -2106,48 +2783,30 @@ add db indexing
       });
       xml += '</testsuites>\n';
       /* write test report */
-      EXPORTS.fsWriteFileAtomic(EXPORTS.tmpDir + '/test/' + EXPORTS.dateAndSalt()
-        + '.xml', xml, {}, EXPORTS.onEventErrorDefault);
+      EXPORTS.fsWriteFileAtomic(state.tmpDir + '/test/' + EXPORTS.dateAndSalt()
+        + '.xml', xml, null, EXPORTS.onEventErrorDefault);
     },
 
   };
   local._init();
-}(global));
+}());
 
 
 
-(function moduleReplNodejs(global) {
+(function moduleReplNodejs() {
   /*
     this nodejs module starts up an interactive console debugger
   */
   'use strict';
-  var EXPORTS = global.EXPORTS = global.EXPORTS || {},
-    required = EXPORTS.required = EXPORTS.required || {},
-    local;
-  local = {
+  var local = {
 
     _name: 'utility2.moduleReplNodejs',
 
     _init: function () {
-      if (!EXPORTS.isNodejs) {
+      if (!state.isNodejs) {
         return;
       }
-      /* init module */
-      EXPORTS.moduleInit(module, local);
-    },
-
-    _initOnce: function () {
-      /* init module */
-      EXPORTS.moduleInit(module, local);
-      /* start interactive interpreter / debugger */
-      if (!required.utility2_repl) {
-        required.utility2_repl = required.repl.start({ eval: function (script, context, file,
-          onEventError) {
-          EXPORTS.jsEvalOnEventError(required.utility2._replParse(script), '', onEventError);
-        }, useGlobal: true });
-        required.utility2_repl.context.EXPORTS = EXPORTS;
-        required.utility2_repl.context.required = required;
-      }
+      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
     },
 
     _replParse: function (script) {
@@ -2179,12 +2838,12 @@ add db indexing
           bb = 'log | head -n 18';
           break;
         }
-        EXPORTS.shell('git ' + bb, 'silent');
+        EXPORTS.shell({ script: 'git ' + bb, verbose: false });
         return;
       case 'grep':
-        EXPORTS.shell('find . -type f | grep -v '
-          + '"/\\.\\|.*\\b\\(\\.\\d\\|archive\\|artifacts\\|build\\|coverage\\|docs\\|\\git_modules\\|jquery\\|log\\|logs\\|min\\|node_modules\\|rollup.*\\|swp\\|test\\|tmp\\)\\b" '
-          + '| tr "\\n" "\\000" | xargs -0 grep -in ' + JSON.stringify(bb), 'silent');
+        EXPORTS.shell({ script: 'find . -type f | grep -v '
+          + '"/\\.\\|.*\\b\\(\\.\\d\\|archive\\|artifacts\\|bower_components\\|build\\|coverage\\|docs\\|external\\|git_modules\\|jquery\\|log\\|logs\\|min\\|node_modules\\|rollup.*\\|swp\\|test\\|tmp\\)\\b" '
+          + '| tr "\\n" "\\000" | xargs -0 grep -in ' + JSON.stringify(bb), verbose: false });
         return;
       /* print stringified object */
       case 'print':
@@ -2206,102 +2865,122 @@ add db indexing
           });
         }
         return;
-      /* execute /bin/sh commands in console */
+      /* execute /bin/sh script in console */
       case '$':
-        EXPORTS.shell(bb, 'silent');
+        EXPORTS.shell({ script: bb, verbose: false });
         return;
       }
       return '(' + script + '\n)';
     },
 
+    replStart: function () {
+      /* start interactive interpreter / debugger */
+      if (state.repl || state.repl === false) {
+        return;
+      }
+      state.repl = required.repl.start({ eval: function (script, context, file,
+        onEventError) {
+        EXPORTS.jsEvalOnEventError(null, required.utility2._replParse(script), onEventError);
+      }, useGlobal: true });
+      state.repl.context.EXPORTS = EXPORTS;
+      state.repl.context.required = required;
+    },
+
   };
   local._init();
-}(global));
+}());
 
 
 
-(function moduleRollupNodejs(global) {
+(function moduleRollupNodejs() {
   /*
     this nodejs module exports rollup api
   */
   'use strict';
-  var EXPORTS = global.EXPORTS = global.EXPORTS || {},
-    required = EXPORTS.required = EXPORTS.required || {},
-    local;
-  local = {
+  var local = {
 
     _name: 'utility2.moduleRollupNodejs',
 
     _init: function () {
-      if (!EXPORTS.isNodejs) {
+      if (!state.isNodejs) {
         return;
       }
-      /* init module */
-      EXPORTS.moduleInit(module, local);
+      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
     },
 
-    cssRollup: function (file, onEventError) {
-      EXPORTS.jsRollup(file, function (error) {
+    _initOnce: function () {
+      var _onEventError;
+      /* run only in command-line */
+      if (module !== require.main) {
+        return;
+      }
+      _onEventError = function (error) {
         if (error) {
-          onEventError(error);
-          return;
+          throw error;
         }
-        local._cssRollup(file, onEventError);
-      });
+        process.exit();
+      };
+      if (state.minify) {
+        EXPORTS.scriptMinify(state.minify, _onEventError);
+      } else if (state.rollup) {
+        EXPORTS.scriptRollup(state.rollup, _onEventError);
+      }
     },
 
-    _cssRollup: function (file, onEventError) {
-      required.fs.readFile(file, 'utf8', function (error, content) {
-        if (error) {
-          onEventError(error);
+    _cssRollupFile: function (file, content, onEventError) {
+      /*
+        this function performs additional css parsing
+      */
+      var dict,
+        keys,
+        remaining = 0;
+      try {
+        dict = (/\/\* listing start \*\/\n([\S\s]+?\n)\/\* listing end \*\/\n/).exec(content);
+        EXPORTS.scriptLint('', (/\n\/\* (\{[\S\s]+?\n\}) \*\/\n/).exec(dict[1])[1]);
+        dict = JSON.parse((/\n\/\* (\{[\S\s]+?\n\}) \*\/\n/).exec(dict[1])[1]);
+        keys = Object.keys(dict).filter(function (regexp) {
+          regexp = new RegExp(regexp);
+          return regexp.test(content);
+        });
+        if (!keys.length) {
+          onEventError();
           return;
         }
-        var dict,
-          keys,
-          remaining = 0;
-        try {
-          dict = (/\/\* listing start \*\/\n([\S\s]+?\n)\/\* listing end \*\/\n/).exec(content);
-          EXPORTS.jsLint('', (/\n\/\* (\{[\S\s]+?\n\}) \*\/\n/).exec(dict[1])[1]);
-          dict = JSON.parse((/\n\/\* (\{[\S\s]+?\n\}) \*\/\n/).exec(dict[1])[1]);
-          keys = Object.keys(dict).filter(function (regexp) {
-            regexp = new RegExp(regexp);
-            return regexp.test(content);
-          });
-          if (!keys.length) {
-            onEventError();
+      } catch (errorContent) {
+        onEventError(errorContent);
+        return;
+      }
+      keys.forEach(function (regexp) {
+        var _onEventError = function (error, data) {
+          if (remaining < 0) {
             return;
           }
-        } catch (errorContent) {
-          onEventError(errorContent);
-          return;
-        }
-        keys.forEach(function (regexp) {
-          var _onEventError = function (error, data) {
-            if (remaining < 0) {
-              return;
-            }
-            if (error) {
-              remaining = -1;
-              onEventError(error);
-              return;
-            }
-            remaining -= 1;
-            content = content.replace(new RegExp(regexp, 'g'), function (_, file) {
-              return '\n"data:' + required.mime.lookup(file) + ';base64,'
-                + data.toString('base64') + '"\n';
-            });
-            if (!remaining) {
-              remaining = -1;
-              EXPORTS.fsWriteFileAtomic(file, content, {}, onEventError);
-            }
-          };
-          remaining += 1;
-          EXPORTS.ajaxNodejs({ dataType: 'binary', url: dict[regexp] }, _onEventError);
-        });
+          if (error) {
+            remaining = -1;
+            onEventError(error);
+            return;
+          }
+          content = content.replace(new RegExp(regexp, 'g'), function (_, file) {
+            return '\n"data:' + EXPORTS.mimeLookup(file) + ';base64,'
+              + data.toString('base64') + '"\n';
+          });
+          remaining -= 1;
+          if (remaining === 0) {
+            remaining = -1;
+            local._scriptRollupFile(file, content, onEventError);
+          }
+        };
+        remaining += 1;
+        EXPORTS.ajaxNodejs({ dataType: 'binary', debugFlag: true, url: dict[regexp] },
+          _onEventError);
       });
     },
 
-    jsRollup: function (file, onEventError) {
+    scriptRollup: function (file, onEventError) {
+      /*
+        this function rolls up a css / js file
+      */
+      console.log('updating rollup file ... ' + file);
       required.fs.readFile(file, 'utf8', function (error, content) {
         if (error) {
           onEventError(error);
@@ -2320,8 +2999,9 @@ add db indexing
           onEventError(errorContent);
           return;
         }
-        keys.forEach(function (url) {
-          var _onEventError = function (error, data) {
+        keys.forEach(function (key) {
+          var _onEventError, url;
+          _onEventError = function (error, data) {
             /* concat data to content */
             if (dict[error]) {
               content += '\n' + error + '\n' + dict[error] + '\n';
@@ -2335,24 +3015,64 @@ add db indexing
               onEventError(error);
               return;
             }
+            dict[key] = data.replace((/^\ufeff/), '');
             remaining -= 1;
-            dict[url] = data.replace((/^\ufeff/), '');
-            if (!remaining) {
+            if (remaining === 0) {
               remaining = -1;
+              /* concat data to content */
               keys.forEach(_onEventError);
-              EXPORTS.fsWriteFileAtomic(file, content, {}, onEventError);
+              /* remove trailing whitespace */
+              content = content.replace((/[ \t]+$/gm), '').trim();
+              /* additional css parsing */
+              if (file.slice(-4) === '.css') {
+                local._cssRollupFile(file, content, onEventError);
+                return;
+              }
+              local._scriptRollupFile(file, content, onEventError);
             }
           };
-          if (url.slice(3, 7) === 'http') {
+          url = (/[^"](https*:\/\/\S*)/).exec(key);
+          if (url) {
             remaining += 1;
-            EXPORTS.ajaxNodejs({ url: url.slice(3, -3) }, _onEventError);
+            EXPORTS.ajaxNodejs({ debugFlag: true, url: url[1] }, _onEventError);
           }
         });
       });
     },
 
-    _test_cssRollup: function (onEventError) {
-      var file = EXPORTS.tmpDir + '/test.rollup.css';
+    _scriptRollupFile: function (file, content, onEventError) {
+      /*
+        this function saves the file content into both raw and minified form
+      */
+      EXPORTS.fsWriteFileAtomic(file, content, null, function (error) {
+        if (error) {
+          onEventError(error);
+          return;
+        }
+        EXPORTS.scriptMinify(file, onEventError);
+      });
+    },
+
+    scriptMinify: function (file, onEventError) {
+      /*
+        this function minifies css / js scripts
+      */
+      required.fs.readFile(file, 'utf8', function (error, data) {
+        if (error) {
+          onEventError(error);
+          return;
+        }
+        EXPORTS.fsWriteFileAtomic(
+          file.replace('.css', '.min.css').replace('.js', '.min.js'),
+          file.slice(-4) === '.css' ? required.cssmin(data) : EXPORTS.jsUglify(file, data),
+          null,
+          onEventError
+        );
+      });
+    },
+
+    cssRollup_test: function (onEventError) {
+      var file = state.tmpDir + '/test.rollup.css';
       required.fs.exists(file, function (exists) {
         /* skip test */
         if (!exists) {
@@ -2363,106 +3083,146 @@ add db indexing
       });
     },
 
-    _test_jsRollup: function (onEventError) {
-      var file = EXPORTS.tmpDir + '/test.rollup.js';
+    jsRollup_test: function (onEventError) {
+      var file = state.tmpDir + '/test.rollup.js';
       required.fs.exists(file, function (exists) {
         /* skip test */
         if (!exists) {
           onEventError('skip');
           return;
         }
-        local.jsRollup(file, onEventError);
+        EXPORTS.jsRollup(file, onEventError);
       });
     },
 
   };
   local._init();
-}(global));
+}());
 
 
 
-(function moduleServerNodejs(global) {
+(function moduleServerNodejs() {
   /*
     this nodejs module exports filesystem api
   */
   'use strict';
-  var EXPORTS = global.EXPORTS = global.EXPORTS || {},
-    required = EXPORTS.required = EXPORTS.required || {},
-    local;
-  local = {
+  var local = {
 
     _name: 'utility2.moduleServerNodejs',
 
     _init: function () {
-      if (!EXPORTS.isNodejs) {
+      if (!state.isNodejs) {
         return;
       }
-      /* init module */
-      EXPORTS.moduleInit(module, local);
+      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
     },
 
     _initOnce: function () {
+      /* security - basic auth */
+      state.securityBasicAuthSecret = state.securityBasicAuthSecret
+        || Math.random().toString(36).slice(2);
       /* middleware */
-      required.utility2_middleware = required.utility2_middleware
-        || local.createMiddleware(required.utility2_routesDict);
-      required.utility2_middlewareSecurity = required.utility2_middlewareSecurity
-        || local.createMiddleware(required.utility2_securityDict);
-    },
-
-    createMiddleware: function (routesDict) {
-      return function (request, response, next) {
-        var path, path0;
-        /* debug */
-        EXPORTS.request = request;
-        EXPORTS.response = response;
-        /* security - validate path */
-        if (EXPORTS.isError(path = request.urlPathNormalized = request.urlPathNormalized
-            || EXPORTS.urlPathNormalizeOrError(request.url))) {
-          next(path);
-          return;
-        }
-        /* parse url search params */
-        request.urlParsed = request.urlParsed || EXPORTS.urlSearchParse(request.url);
-        /* dyanamic path handler */
-        for (path = request.urlPathNormalized; path !== path0; path = EXPORTS.fsDirname(path)) {
-          path0 = path;
-          if (routesDict.hasOwnProperty(path)) {
-            /* debug */
-            request.handler = routesDict[path];
-            routesDict[path](request, response, next);
-            return;
-          }
-        }
-        /* fallback to next middleware */
+      state.middleware = state.middleware
+        || local._createMiddleware(state.routerDict);
+      state.middlewareLogger = state.middlewareLogger || function (request, response, next) {
         next();
       };
+      state.middlewareAssets = state.middlewareAssets
+        || local._createMiddleware(state.routerAssetsDict);
+      state.middlewarePrelogger = state.middlewarePrelogger
+        || local._createMiddleware(state.routerPreloggerDict);
+      state.middlewareProxy = state.middlewareProxy
+        || local._createMiddleware(state.routerProxyDict);
+      state.middlewareSecurity = state.middlewareSecurity
+        || local._createMiddleware(state.routerSecurityDict);
     },
 
-    middlewareOnEventError: function (error, request, response, next) {
-      EXPORTS.serverRespondDefault(response, 500, 'plain/text', error, next);
+    'routerPreloggerDict_/favicon.ico': function (request, response, next) {
+      EXPORTS.serverRespondFile(response, process.cwd() + '/public/assets/favicon.ico', next);
     },
 
-    '_routesDict_/assets/rollup.css': function (request, response, next) {
-      EXPORTS.serverRespondFile(response, next,
-        required.utility2.dir + '/assets.rollup.css');
+    'routerSecurityDict_/': function (request, response, next) {
+      /*
+        this function handles default security
+      */
+      if (EXPORTS.securityBasicAuthValidate(request)) {
+        next();
+        return;
+      }
+      EXPORTS.serverRespondDefault(response, 303, 'text/plain', '/signin?redirect='
+        + encodeURIComponent(request.url));
     },
 
-    '_routesDict_/assets/rollup.js': function (request, response, next) {
-      EXPORTS.serverRespondFile(response, next,
-        required.utility2.dir + '/assets.rollup.js');
+    'routerSecurityDict_/public': function (request, response, next) {
+      /*
+        this function grants public access to the /public path
+      */
+      next();
     },
 
-    '_routesDict_/assets/utility2.js': function (request, response) {
-      EXPORTS.serverRespondDefault(response, 200, 'application/javascript',
-        required.utility2._fileContentBrowser);
+    'routerSecurityDict_/signin': function (request, response, next) {
+      var redirect;
+      if (EXPORTS.securityBasicAuthValidate(request)) {
+        if (request.urlParsed.params.redirect) {
+          redirect = EXPORTS.urlDecodeOrError(request.urlParsed.params.redirect);
+          if (EXPORTS.isError(redirect)) {
+            next(redirect);
+            return;
+          }
+          EXPORTS.serverRespondDefault(response, 303, 'text/plain', redirect);
+          return;
+        }
+        next();
+        return;
+      }
+      EXPORTS.serverRespondDefault(response, 401, 'text/plain', '401 Unauthorized');
     },
 
-    '_routesDict_/test/test.echo': function (request, response) {
+    'routerProxyDict_/': function (request, response, next) {
+      next();
+    },
+
+    'routerDict_/backend/backend.ajax': function (request, response, next) {
+      /*
+        this function proxies frontend request to backend
+      */
+      var headers = EXPORTS.objectCopyDeep(request.headers),
+        url = EXPORTS.templateFormat(request.url.replace('/backend/backend.ajax/', ''),
+          state.backendHostDict),
+        urlParsed = required.url.parse(url);
+      headers.host = urlParsed.host;
+      EXPORTS.ajaxNodejs({
+        headers: headers,
+        onEventResponse: function (response2) {
+          if (!response.headersSent) {
+            response.writeHead(200, response2.headers);
+          }
+          response2.on('error', next).pipe(response.on('error', next));
+          return true;
+        },
+        readStream: request,
+        url: url
+      });
+    },
+
+    'routerDict_/eval/hashTag.html': function (request, response) {
+      /*
+        this function returns a script evaluating the hashtag
+      */
+      if (!response.headersSent) {
+        response.writeHead(200, { 'content-type': 'text/html' });
+      }
+      response.end('<script>eval(decodeURIComponent(location.hash.slice(1)))</script>');
+    },
+
+    'routerDict_/test/test.echo': function (request, response) {
       /*
         this convenience function echoes the request back to the response
       */
       var headers, name;
-      response.writeHead(200, { 'content-type': 'text/plain' });
+      if (!response.headersSent) {
+        response.writeHead(200, { 'content-type': 'text/plain' });
+      }
       response.write(request.method + ' ' + request.url + ' http/' + request.httpVersion
         + '\n');
       headers = request.headers;
@@ -2476,13 +3236,10 @@ add db indexing
       request.pipe(response);
     },
 
-    '_routesDict_/test/test.html': function (request, response) {
-      EXPORTS.serverRespondDefault(response, 200, 'text/html', local._testHtml);
-    },
-
-    '_routesDict_/test/test.upload': function (request, response, next) {
+    'routerDict_/test/test.upload': function (request, response, next) {
       EXPORTS.streamReadOnEventError(request, function (error, data) {
-        if (error || EXPORTS.isError(error = EXPORTS.jsonParseOrError(data))) {
+        error = error || EXPORTS.jsonParseOrError(data);
+        if (EXPORTS.isError(error)) {
           next(error);
           return;
         }
@@ -2513,47 +3270,152 @@ add db indexing
       });
     },
 
-    '_routesDict_/test/test.timestamp': function (request, response) {
-      response.end(EXPORTS.timestamp);
+    'routerDict_/test/test.watch': function (request, response) {
+      /*
+        this function informs the client about server file changes using server sent events
+      */
+      if (request.headers.accept !== 'text/event-stream') {
+        response.end();
+        return;
+      }
+      /* https://developer.mozilla.org/en-US/docs/Server-sent_events/Using_server-sent_events */
+      response.setHeader('content-type', 'text/event-stream');
+      response.write('retry: ' + state.timeoutDefault + '\n\n');
+      var list = state.testWatch;
+      if (list.length >= 256) {
+        list.length = 0;
+      }
+      list.push(response);
     },
 
-    serverBasicAuthValidate: function (request) {
+    'routerAssetsDict_/public': function (request, response, next) {
+      /*
+        this function serves public asset files
+      */
+      EXPORTS.serverRespondFile(response, process.cwd() + request.urlPathNormalized, next);
+    },
+
+    'routerAssetsDict_/public/assets/utility2.js': function (request, response) {
+      /*
+        this function serves the utility2.js asset file
+      */
+      EXPORTS.serverRespondDefault(response, 200, 'application/javascript',
+        required.utility2._fileContentBrowser);
+    },
+
+    'routerAssetsDict_/test/test.html': function (request, response) {
+      /*
+        this function serves the test.html asset file
+      */
+      EXPORTS.serverRespondDefault(response, 200, 'text/html', local._testHtml);
+    },
+
+    _createMiddleware: function (routerDict) {
+      /*
+        this function creates a middleware app using the specified route dict
+      */
+      return function (request, response, next) {
+        var path, path0;
+        /* debug */
+        state.request = request;
+        state.response = response;
+        /* security - validate path */
+        path = request.urlPathNormalized = request.urlPathNormalized
+          || EXPORTS.urlPathNormalizeOrError(request.url);
+        if (EXPORTS.isError(path)) {
+          next(path);
+          return;
+        }
+        /* parse url search params */
+        request.urlParsed = request.urlParsed || EXPORTS.urlSearchParse(request.url);
+        /* dyanamic path handler */
+        for (path = request.urlPathNormalized; path !== path0; path = EXPORTS.fsDirname(path)) {
+          path0 = path = path || '/';
+          /* found a handler matching request path */
+          if (routerDict[path]) {
+            /* debug */
+            request.handler = routerDict[path];
+            /* process request with error handling */
+            try {
+              routerDict[path](request, response, next);
+            } catch (error) {
+              next(error);
+            }
+            return;
+          }
+        }
+        /* fallback to next middleware */
+        next();
+      };
+    },
+
+    middlewareApplication: function (request, response, next) {
+      /*
+        this function exports the main middleware application
+      */
+      var _onEventError = function (error) {
+        /* call error-handling middleware */
+        if (EXPORTS.isError(error)) {
+          EXPORTS.middlewareOnEventError(error, request, response, next);
+          return true;
+        }
+      };
+      /* call pre-logger middleware for things which don't require logging */
+      state.middlewarePrelogger(request, response, function (error) {
+        if (_onEventError(error)) {
+          return;
+        }
+        /* call logging middleware */
+        state.middlewareLogger(request, response, function (error) {
+          if (_onEventError(error)) {
+            return;
+          }
+          /* call security middleware */
+          state.middlewareSecurity(request, response, function (error) {
+            if (_onEventError(error)) {
+              return;
+            }
+            /* call proxy middleware */
+            state.middlewareProxy(request, response, function (error) {
+              if (_onEventError(error)) {
+                return;
+              }
+              /* call backend proxy middleware */
+              state.middleware(request, response, function (error) {
+                if (_onEventError(error)) {
+                  return;
+                }
+                /* call static assets middleware */
+                state.middlewareAssets(request, response, function (error) {
+                  if (_onEventError(error)) {
+                    return;
+                  }
+                  /* fallback to next middleware */
+                  next();
+                });
+              });
+            });
+          });
+        });
+      });
+    },
+
+    middlewareOnEventError: function (error, request, response, next) {
+      EXPORTS.serverRespondDefault(response, 500, 'plain/text', error, next);
+    },
+
+    securityBasicAuthValidate: function (request) {
       /*
         this function validates a request's basic authentication.
         basic authentication format:
         btoa('Aladdin:open sesame')
         atob('QWxhZGRpbjpvcGVuIHNlc2FtZQ==')
       */
-      return (/^localhost:/).test(request.headers.host)
+      /* ignore localhost */
+      return (/^localhost\b/).test(request.headers.host)
+        /* basic auth validation */
         || (/\S*$/).exec(request.headers.authorization || '')[0]
-        === EXPORTS.serverBasicAuthSecret;
-    },
-
-    '_securityDict_': function (request, response, next) {
-      if (EXPORTS.serverBasicAuthValidate(request)) {
-        next();
-        return;
-      }
-      EXPORTS.serverRespondDefault(response, 303, 'text/plain', '/signin?redirect='
-        + encodeURIComponent(request.url));
-    },
-
-    '_securityDict_/signin': function (request, response, next) {
-      var redirect;
-      if (EXPORTS.serverBasicAuthValidate(request)) {
-        if (request.urlParsed.params.redirect) {
-          if (EXPORTS.isError(redirect
-              = EXPORTS.urlDecodeOrError(request.urlParsed.params.redirect))) {
-            next(redirect);
-            return;
-          }
-          EXPORTS.serverRespondDefault(response, 303, 'text/plain', redirect);
-          return;
-        }
-        next();
-        return;
-      }
-      EXPORTS.serverRespondDefault(response, 401, 'text/plain', '401 Unauthorized');
+        === state.securityBasicAuthSecret;
     },
 
     serverRespondDefault: function (response, statusCode, contentType, data) {
@@ -2566,25 +3428,28 @@ add db indexing
       switch (statusCode) {
       /* redirect */
       case 303:
-        response.setHeader('Location', data);
+        response.setHeader('location', data);
         break;
       case 401:
-        response.setHeader('WWW-Authenticate', 'Basic realm="Authorization Required"');
+        response.setHeader('www-authenticate', 'Basic realm="Authorization Required"');
         break;
       /* error */
       case 500:
-        console.error(data = data.stack || data);
+        data = data.stack || data;
+        console.error(data);
         break;
       }
       if (!response.headersSent) {
         response.statusCode = statusCode;
-        response.setHeader('Content-Type', contentType);
+        if (contentType) {
+          response.setHeader('content-type', contentType);
+        }
       }
       response.end(data);
     },
 
-    serverRespondFile: function (response, next, file) {
-      response.setHeader('content-type', required.mime.lookup(file));
+    serverRespondFile: function (response, file, next) {
+      response.setHeader('content-type', EXPORTS.mimeLookup(file));
       required.fs.createReadStream(file).on('error', function () {
         next();
       }).pipe(response);
@@ -2602,41 +3467,51 @@ add db indexing
 
     _serverRespondOnEventProgressPadding: new Array(1024).join(' '),
 
-    serverStart: function () {
-      if (!EXPORTS.serverPort) {
+    serverRespondProxy: function (request, response, next, url) {
+      /*
+        this function reverse-proxies frontend request to backend network
+      */
+      var headers = EXPORTS.objectCopyDeep(request.headers),
+        urlParsed = required.url.parse(url);
+      /* update host header with actual destination */
+      headers.host = urlParsed.host;
+      EXPORTS.ajaxNodejs({
+        headers: headers,
+        onEventResponse: function (response2) {
+          if (!response.headersSent) {
+            response.writeHead(200, response2.headers);
+          }
+          response2.on('error', next).pipe(response.on('error', next));
+          return true;
+        },
+        readStream: request,
+        url: url
+      });
+    },
+
+    serverStart: function (port) {
+      state.serverPort = state.serverPort || port;
+      if (!state.serverPort) {
         return;
       }
-      EXPORTS.server = EXPORTS.server || required.express()
-        .use(function (request, response, next) {
-          if (request.url === '/favicon.ico') {
-            EXPORTS.serverRespondFile(response, next, 'favicon.ico');
-            return;
-          }
-          next();
-        })
-        .use(required.express.logger('dev'))
-        .use(required.utility2_middlewareSecurity)
-        .use(required.utility2_middleware)
-        .use(EXPORTS.middlewareOnEventError);
-      required.utility2_serverListen = required.utility2_serverListen = EXPORTS.ajaxNodejs({
-        url: 'http://localhost:' + EXPORTS.serverPort
-      }, function (error) {
-        if (!(error && error.code === 'ECONNREFUSED')) {
-          EXPORTS.serverResume(error || new Error('server port ' + EXPORTS.serverPort
-            + ' not available'));
-          return;
-        }
-        EXPORTS.server.listen(EXPORTS.serverPort, function () {
-          console.log('server started on port ' + EXPORTS.serverPort);
-          EXPORTS.serverResume('resume');
-        });
+      /* setup localhost */
+      state.localhost = state.localhost || 'http://localhost:' + state.serverPort;
+      /* create server */
+      state.server = state.server || required.express().use(EXPORTS.middlewareApplication);
+      /* listen on specified port */
+      if (state.serverListened) {
+        return;
+      }
+      state.serverListened = true;
+      state.server.listen(state.serverPort, function () {
+        console.log('server started on port ' + state.serverPort);
+        state.serverResume('resume');
       });
-
     },
 
     _testHtml: '<!DOCTYPE html><html><head>\n'
       + [
-        '/assets/rollup.css'
+        '/public/assets/external.rollup.auto.css'
       ].map(function (url) {
         return '<link href="' + url + '" rel="stylesheet" />\n';
       }).join('')
@@ -2645,8 +3520,8 @@ add db indexing
       + '</style></head><body>\n'
 
       + [
-        '/assets/rollup.js',
-        '/assets/utility2.js',
+        '/public/assets/external.rollup.auto.js',
+        '/public/assets/utility2.js',
       ].map(function (url) {
         return '<script src="' + url + '"></script>\n';
       }).join('')
@@ -2654,54 +3529,43 @@ add db indexing
 
   };
   local._init();
-}(global));
+}());
 
 
 
-(function moduleAdminNodejs(global) {
+(function moduleAdminNodejs() {
   /*
-    this admin module exports admin api
+    this admin module exports the admin api
   */
   'use strict';
-  var EXPORTS = global.EXPORTS = global.EXPORTS || {},
-    required = EXPORTS.required = EXPORTS.required || {},
-    local;
-  local = {
+  var local = {
 
     _name: 'utility2.moduleAdminNodejs',
 
     _init: function () {
-      if (!EXPORTS.isNodejs) {
+      if (!state.isNodejs) {
         return;
       }
-      /* init module */
-      EXPORTS.moduleInit(module, local);
-      /* jslint */
-      EXPORTS.jsLint('admin.html', local._adminHtml);
+      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
     },
 
-    _adminHtml: '<!DOCTYPE html><html><head>\n'
-      + '<link href="/assets/rollup.css" rel="stylesheet"/>\n'
-      + '<style>\n'
-      + '</style></head><body>\n'
-      + '<input id="inputAdminUpload" type="file"/>\n'
-      + '<script src="/assets/rollup.js"></script>\n'
-      + '<script src="/assets/utility2.js"></script>\n'
-      + '<script>\n'
-      + '/*jslint browser: true, indent: 2*/\n'
-      + '</script>\n'
-      + '</body></html>',
-
-    _ajaxAdminDebug: function (script, onEventError) {
-      EXPORTS.ajaxLocal({ data: script, url: '/admin/admin.debug' }, onEventError);
+    'routerSecurityDict_/admin': function (request, response, next) {
+      /*
+        this function handles admin security
+      */
+      if (EXPORTS.securityBasicAuthValidate(request)) {
+        next();
+        return;
+      }
+      EXPORTS.serverRespondDefault(response, 303, 'text/plain', '/signin?redirect='
+        + encodeURIComponent(request.url));
     },
 
-    _ajaxAdminShell: function (script, onEventError) {
-      EXPORTS.ajaxLocal({ data: script, url: '/admin/admin.shell' }, onEventError);
-    },
-
-    '_routesDict_/admin/admin.debug': function (request, response, next) {
-      EXPORTS.cacheWriteStream(request, {}, function (error, tmp) {
+    'routerDict_/admin/admin.debug': function (request, response, next) {
+      /*
+        this function runs admin debug code
+      */
+      EXPORTS.fsCacheWritestream(request, null, function (error, tmp) {
         if (error) {
           next(error);
           return;
@@ -2711,12 +3575,13 @@ add db indexing
             next(error);
             return;
           }
-          EXPORTS.jsEvalOnEventError(data, tmp, function (error, data) {
+          EXPORTS.jsEvalOnEventError(tmp, data, function (error, data) {
             if (error) {
               next(error);
               return;
             }
-            if (EXPORTS.isError(data = EXPORTS.jsonStringifyOrError(data))) {
+            data = EXPORTS.jsonStringifyOrError(data);
+            if (EXPORTS.isError(data)) {
               next(data);
               return;
             }
@@ -2726,37 +3591,47 @@ add db indexing
       });
     },
 
-    '_routesDict_/admin/admin.html': function (request, response) {
-      EXPORTS.serverRespondDefault(response, 200, 'text/html', local._adminHtml);
+    'routerDict_/admin/admin.exit': function () {
+      /*
+        this function causes the application to exit
+      */
+      process.exit();
     },
 
-    '_routesDict_/admin/admin.shell': function (request, response, next) {
-      EXPORTS.cacheWriteStream(request, {}, function (error, tmp) {
+    'routerDict_/admin/admin.shell': function (request, response, next) {
+      /*
+        this function runs shell scripts
+      */
+      EXPORTS.fsCacheWritestream(request, null, function (error, tmp) {
         if (error) {
           next(error);
           return;
         }
-        var _onEventData, proc;
+        var child, _onEventData;
         _onEventData = function (chunk) {
           process.stdout.write(chunk);
           response.write(chunk);
         };
-        proc = required.child_process.spawn('/bin/sh', [tmp])
+        child = required.child_process.spawn('/bin/sh', [tmp])
           .on('close', function (exitCode) {
             response.end('exit code: ' + exitCode);
-          }).on('error', next);
-        proc.stderr.on('data', _onEventData);
-        proc.stdout.on('data', _onEventData);
+          })
+          .on('error', next);
+        child.stderr.on('data', _onEventData);
+        child.stdout.on('data', _onEventData);
       });
     },
 
-    '_routesDict_/admin/admin.upload': function (request, response, next) {
-      EXPORTS.cacheWriteStream(request, {}, function (error, tmp) {
+    'routerDict_/admin/admin.upload': function (request, response, next) {
+      /*
+        this function uploads a file into the ./tmp/upload/ directory by default
+      */
+      EXPORTS.fsCacheWritestream(request, null, function (error, tmp) {
         if (error) {
           next(error);
           return;
         }
-        EXPORTS.fsRename(tmp, EXPORTS.tmpDir + '/upload/' + request.headers['upload-filename']
+        EXPORTS.fsRename(tmp, state.tmpDir + '/upload/' + request.headers['upload-filename']
           || '', function (error) {
             if (error) {
               next(error);
@@ -2767,9 +3642,25 @@ add db indexing
       });
     },
 
+    'routerAssetsDict_/admin/admin.html': function (request, response) {
+      /*
+        this function serves the admin.html asset file
+      */
+      EXPORTS.serverRespondDefault(response, 200, 'text/html', local._adminHtml);
+    },
+
+    _adminHtml: '<!DOCTYPE html><html><head>\n'
+      + '<link href="/public/assets/external.rollup.auto.css" rel="stylesheet"/>\n'
+      + '<style>\n'
+      + '</style></head><body>\n'
+      + '<input id="inputAdminUpload" type="file"/>\n'
+      + '<script src="/public/assets/external.rollup.auto.js"></script>\n'
+      + '<script src="/public/assets/utility2.js"></script>\n'
+      + '</body></html>',
+
   };
   local._init();
-}(global));
+}());
 
 
 
@@ -2778,105 +3669,114 @@ add db indexing
     this nodejs module implements an asynchronous, b-tree, records / fields data store
   */
   'use strict';
-  var EXPORTS = global.EXPORTS = global.EXPORTS || {},
-    required = EXPORTS.required = EXPORTS.required || {},
-    local;
-  local = {
+  var local = {
 
     _name: 'utility2.moduleDbNodejs',
 
     _init: function () {
-      if (EXPORTS.isBrowser) {
+      if (!state.isNodejs) {
         return;
       }
-      /* init module */
-      EXPORTS.moduleInit(module, local);
+      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
       /* exports */
-      EXPORTS.dbDir = EXPORTS.dbDir || EXPORTS.tmpDir + '/db/tables';
+      state.dbDir = state.dbDir || state.tmpDir + '/db/tables';
       EXPORTS.dbTables = EXPORTS.dbTables || {};
       /* read all current databases */
-      required.fs.readdir(EXPORTS.dbDir, function (error, files) {
+      required.fs.readdir(state.dbDir, function (error, files) {
         (files || []).forEach(local._dbTable);
       });
       local._dirMaxDepth = 4;
     },
 
-    _test_db: function (onEventError) {
-      var self = EXPORTS.createDb('table test ' + EXPORTS.dateAndSalt()), sorted;
-      EXPORTS.ioChain([function (data, onEventError) {
-        EXPORTS.serverResume(function (error) {
-          onEventError(error ? 'skip' : null);
-        });
-      /* delete stale table */
-      }, function (data, onEventError) {
-        self.tableDelete(onEventError);
-      /* test tableOptionsUpdateAndGet */
-      }, function (data, onEventError) {
-        self.tableOptionsUpdateAndGet(null, function (error, data) {
-          if (error) {
-            onEventError(new Error('test failed - tableOptionsUpdateAndGet'));
-          }
-          if (JSON.parse(data).dirMaxFiles !== 1024) {
-            onEventError(new Error('test failed - tableOptionsUpdateAndGet'));
-          } else {
-            onEventError();
-          }
-        });
-      }, function (data, onEventError) {
-        self.tableOptionsUpdateAndGet({ 'dirMaxFiles': 16 }, function (error, data) {
-          if (error) {
-            onEventError(new Error('test failed - tableOptionsUpdateAndGet'));
-          }
-          if (JSON.parse(data).dirMaxFiles !== 16) {
-            onEventError(new Error('test failed - tableOptionsUpdateAndGet'));
-          } else {
-            onEventError();
-          }
-        });
-      /* test tableUpdateRandom */
-      }, function (data, onEventError) {
-        self.tableUpdateRandom(64, onEventError);
-      /* test tableScanForward */
-      }, function (data, onEventError) {
-        self.tableScanForward('record ', 0, function (error, data) {
-          if (error) {
-            onEventError(new Error('test failed - tableScanForward'));
-          }
-          if (JSON.parse(data).length !== 64) {
-            onEventError(new Error('test failed - tableUpdateRandom'));
-          } else if ((sorted = JSON.stringify(JSON.parse(data).sort())) !== data) {
-            onEventError(new Error('test failed - tableScanForward'));
-          } else {
-            onEventError();
-          }
-        });
-      /* test tableScanBackward */
-      }, function (data, onEventError) {
-        self.tableScanBackward('record z', 0, function (error, data) {
-          if (error) {
-            onEventError(new Error('test failed - tableScanBackward'));
-          }
-          if (JSON.stringify(JSON.parse(data).reverse()) !== sorted) {
-            onEventError(new Error('test failed - tableScanBackward'));
-          } else {
-            onEventError();
-          }
-        });
-      }], function (error) {
-        if (error === 'skip') {
-          onEventError('skip');
+    'routerDict_/db/db.ajax': function (request, response, next) {
+      var _onEventError, options = EXPORTS.urlSearchParse(request.url).params, self;
+      /* security - filter options */
+      options = {
+        action: options.action || '',
+        field: options.field || '',
+        limit: options.limit || '',
+        onEventData: function (chunk) {
+          response.write(chunk);
+        },
+        record: options.record || '',
+        table: options.table || ''
+      };
+      /* get table */
+      if (!options.table) {
+        next(new Error('invalid table'));
+        return;
+      }
+      self = local._dbTable(options.table);
+      _onEventError = function (error) {
+        /* rebalance directories if there are no active actions */
+        if (self.rebalanceDepth && !self.actionLock) {
+          /* pause db actions while re-balancing */
+          self.actionResume('pause');
+          local._dirRebalance(self);
+        }
+        if (error) {
+          next(error);
           return;
         }
-        /* clean up table */
-        self.tableDelete(function (_error) {
-          onEventError(error || _error);
+        response.end();
+      };
+      /* file upload */
+      if (options.action === 'fileUpload') {
+        EXPORTS.fsCacheWritestream(request, null, function (error, tmp) {
+          if (error) {
+            _onEventError(error);
+            return;
+          }
+          options.tmp = tmp;
+          local._dbAction(self, options, _onEventError);
         });
+        return;
+      }
+      /* get options.json */
+      if (request.method.toUpperCase() === 'POST') {
+        EXPORTS.streamReadOnEventError(request, function (error, data) {
+          if (error) {
+            _onEventError(error);
+            return;
+          }
+          options.json = EXPORTS.jsonParseOrError(data);
+          if (EXPORTS.isError(options.json)) {
+            _onEventError(options.json);
+            return;
+          }
+          /* en-queue action if db is re-balancing */
+          self.actionResume(function (error) {
+            if (error) {
+              _onEventError(error);
+              return;
+            }
+            local._dbAction(self, options, _onEventError);
+          });
+        });
+        return;
+      }
+      /* en-queue action if db is re-balancing */
+      self.actionResume(function (error) {
+        if (error) {
+          _onEventError(error);
+          return;
+        }
+        local._dbAction(self, options, _onEventError);
       });
+    },
+
+    'routerAssetsDict_/db/db.html': function (request, response) {
+      /*
+        this function serves the db.html asset file
+      */
+      response.setHeader('content-type', 'text/html');
+      response.end(local._dbHtml);
     },
 
     _dbAction: function (self, options, onEventError) {
       var error, mode, _onEventError;
-      if (EXPORTS.isError(error = local._dbOptionsValidate(options))) {
+      error = local._dbOptionsValidate(options);
+      if (EXPORTS.isError(error)) {
         onEventError(error);
         return;
       }
@@ -2900,7 +3800,7 @@ add db indexing
       case 'tableOptionsUpdateAndGet':
       case 'tableScanBackward':
       case 'tableUpdate':
-        local._dbActionDict[options.action](self, options, _onEventError);
+        state.dbActionDict[options.action](self, options, _onEventError);
         return;
       case 'tableScanForward':
         if (options.mode === 'backward' && !options.record) {
@@ -2910,7 +3810,7 @@ add db indexing
       }
       /* optimization - cached directory */
       if (options.dir) {
-        local._dbActionDict[options.action](self, options, _onEventError);
+        state.dbActionDict[options.action](self, options, _onEventError);
         return;
       }
       local._dirWithRecord(self, options, mode, function (error) {
@@ -2919,23 +3819,21 @@ add db indexing
           return;
         }
         options.dir = options.parents[0].dir + '/' + encodeURIComponent(options.record);
-        local._dbActionDict[options.action](self, options, _onEventError);
+        state.dbActionDict[options.action](self, options, _onEventError);
       });
 
     },
 
-    _dbActionDict: {},
-
-    _dbActionDict_fieldAppend: function (self, options, onEventError) {
+    dbActionDict_fieldAppend: function (self, options, onEventError) {
       EXPORTS.fsAppendFile(options.dir + '/' + encodeURIComponent(options.field),
         ',' + encodeURIComponent(JSON.stringify(options.JSON)), onEventError);
     },
 
-    _dbActionDict_fieldDelete: function (self, options, onEventError) {
+    dbActionDict_fieldDelete: function (self, options, onEventError) {
       EXPORTS.fsRmrAtomic(options.dir + '/' + encodeURIComponent(options.field), onEventError);
     },
 
-    _dbActionDict_fieldGet: function (self, options, onEventError) {
+    dbActionDict_fieldGet: function (self, options, onEventError) {
       var file = options.dir + '/' + encodeURIComponent(options.field);
       required.fs.readFile(file, function (error, data) {
         if (error) {
@@ -2947,11 +3845,19 @@ add db indexing
           return;
         }
         /* appended data */
-        if (data[0] === ','
-            && EXPORTS.isError(data = EXPORTS.urlDecodeOrError('[' + data.slice(1) + ']'))) {
-          onEventError(data);
-          return;
+        if (data[0] === ',') {
+          data = EXPORTS.urlDecodeOrError('[' + data.slice(1) + ']');
+          if (EXPORTS.isError(data)) {
+            onEventError(data);
+            return;
+          }
         }
+        // /* appended data */
+        // if (data[0] === ','
+            // && EXPORTS.isError(data = EXPORTS.urlDecodeOrError('[' + data.slice(1) + ']'))) {
+          // onEventError(data);
+          // return;
+        // }
         if (EXPORTS.isError(EXPORTS.jsonParseOrError(data))) {
           local._onEventErrorCorruptFile(file, onEventError);
           return;
@@ -2961,26 +3867,17 @@ add db indexing
       });
     },
 
-    _dbActionDict_fileDownload: function (self, options, onEventError) {
-      required.fs.createReadStream(options.dir + '/file').on('data', options.onEventData)
-        .on('end', onEventError).on('error', onEventError);
-    },
-
-    _dbActionDict_fileUpload: function (self, options, onEventError) {
-      EXPORTS.fsRename(options.tmp, options.dir + '/file', onEventError);
-    },
-
-    _dbActionDict_recordDelete: function (self, options, onEventError) {
+    dbActionDict_recordDelete: function (self, options, onEventError) {
       EXPORTS.fsRmrAtomic(options.dir, local._dbOnEventError2(self, options, onEventError));
     },
 
-    _dbActionDict_recordDeleteAndUpdate: function (self, options, onEventError) {
+    dbActionDict_recordDeleteAndUpdate: function (self, options, onEventError) {
       options.action = 'recordDelete';
       options.action2 = 'recordUpdate';
       local._dbAction(self, options, onEventError);
     },
 
-    _dbActionDict_recordGet: function (self, options, onEventError) {
+    dbActionDict_recordGet: function (self, options, onEventError) {
       required.fs.readdir(options.dir, function (error, files) {
         if (error) {
           if (error.code === 'ENOENT') {
@@ -3041,7 +3938,7 @@ add db indexing
       });
     },
 
-    _dbActionDict_recordUpdate: function (self, options, onEventError) {
+    dbActionDict_recordUpdate: function (self, options, onEventError) {
       var _onEventError, remaining = 0;
       _onEventError = function (error) {
         if (remaining < 0) {
@@ -3069,12 +3966,12 @@ add db indexing
           }
           remaining += 1;
           EXPORTS.fsWriteFileAtomic(options.dir + '/' + encodeURIComponent(field),
-            JSON.stringify(options.json[field]), {}, _onEventError);
+            JSON.stringify(options.json[field]), null, _onEventError);
         });
       });
     },
 
-    _dbActionDict_recordsDelete: function (self, options, onEventError) {
+    dbActionDict_recordsDelete: function (self, options, onEventError) {
       var _onEventError, remaining = 0;
       _onEventError = function (error) {
         if (remaining < 0) {
@@ -3102,13 +3999,13 @@ add db indexing
       });
     },
 
-    _dbActionDict_recordsDeleteAndUpdate: function (self, options, onEventError) {
+    dbActionDict_recordsDeleteAndUpdate: function (self, options, onEventError) {
       options.action = 'recordsDelete';
       options.action2 = 'recordsUpdate';
       local._dbAction(self, options, onEventError);
     },
 
-    _dbActionDict_recordsGet: function (self, options, onEventError) {
+    dbActionDict_recordsGet: function (self, options, onEventError) {
       var remaining = 0;
       options.onEventData('{');
       Object.keys(options.json).forEach(function (record) {
@@ -3141,29 +4038,30 @@ add db indexing
       });
     },
 
-    _dbActionDict_recordsUpdate: function (self, options, onEventError) {
+    dbActionDict_recordsUpdate: function (self, options, onEventError) {
       options.action = 'recordsUpdate';
       local._dbAction(self, options, onEventError);
     },
 
-    _dbActionDict_tableDelete: function (self, options, onEventError) {
+    dbActionDict_tableDelete: function (self, options, onEventError) {
       EXPORTS.fsRmrAtomic(self.dir, local._dbOnEventError2(self, options, onEventError));
     },
 
-    _dbActionDict_tableDeleteAndUpdate: function (self, options, onEventError) {
+    dbActionDict_tableDeleteAndUpdate: function (self, options, onEventError) {
       options.action = 'tableDelete';
       options.action2 = 'tableUpdate';
       local._dbAction(self, options, onEventError);
     },
 
-    _dbActionDict_tableOptionsUpdateAndGet: function (self, options, onEventError) {
+    dbActionDict_tableOptionsUpdateAndGet: function (self, options, onEventError) {
+      var data;
       /* update table options */
       Object.keys(options.json || {}).forEach(function (key) {
         self[key] = options.json[key];
       });
       /* get table options */
-      var data;
-      if (EXPORTS.isError(data = EXPORTS.jsonStringifyOrError(self))) {
+      data = EXPORTS.jsonStringifyOrError(self);
+      if (EXPORTS.isError(data)) {
         onEventError(data);
         return;
       }
@@ -3171,13 +4069,13 @@ add db indexing
       onEventError();
     },
 
-    _dbActionDict_tableScanBackward: function (self, options, onEventError) {
+    dbActionDict_tableScanBackward: function (self, options, onEventError) {
       options.action = 'tableScanForward';
       options.mode = 'backward';
       local._dbAction(self, options, onEventError);
     },
 
-    _dbActionDict_tableScanForward: function (self, options, onEventError) {
+    dbActionDict_tableScanForward: function (self, options, onEventError) {
       var file = encodeURIComponent(options.record),
         _onEventError,
         remaining = Math.min(Number(options.limit) || 1024, 1024),
@@ -3241,7 +4139,7 @@ add db indexing
       _onEventError();
     },
 
-    _dbActionDict_tableUpdate: function (self, options, onEventError) {
+    dbActionDict_tableUpdate: function (self, options, onEventError) {
       var _onEventError, remaining = 0;
       _onEventError = function (error) {
         if (remaining < 0) {
@@ -3285,7 +4183,7 @@ add db indexing
 
     _dbOptionsValidate: function (options) {
       /* validate action */
-      if (!local._dbActionDict[options.action]) {
+      if (!state.dbActionDict[options.action]) {
         return new Error('unknown action ' + [options.action]);
       }
       switch ((/[a-z]+/).exec(options.action)[0]) {
@@ -3307,7 +4205,6 @@ add db indexing
         switch (options.action) {
         case 'fieldDelete':
         case 'fieldGet':
-        case 'fileDownload':
         case 'recordDelete':
         case 'recordGet':
         case 'tableDelete':
@@ -3346,7 +4243,7 @@ add db indexing
         return new Error('invalid data type ' + [typeof options.json]);
       }
       /* empty options.json */
-      if (!EXPORTS.dictIsEmpty(options.json)) {
+      if (!underscore.isEmpty(options.json)) {
         return;
       }
       switch (options.action) {
@@ -3362,7 +4259,7 @@ add db indexing
         this function creates a database with the given name
       */
       return (EXPORTS.dbTables[name] = EXPORTS.dbTables[name] || {
-        dir: EXPORTS.dbDir + '/' + encodeURIComponent(name),
+        dir: state.dbDir + '/' + encodeURIComponent(name),
         /* the default dirMaxFiles allows a table to reasonably handle one quadrillion records,
            assuming adequate disk space */
         dirMaxFiles: 1024,
@@ -3374,8 +4271,9 @@ add db indexing
 
     _dirNext: function (self, options, mode, onEventError) {
       var parent = options.parents[0];
-      if ((mode === 'backward' && (parent.ii -= 1) >= 0)
-          || (mode !== 'backward' && (parent.ii += 1) < parent.files.length)) {
+      parent.ii += mode === 'backward' ? -1 : 1;
+      if ((mode === 'backward' && parent.ii >= 0)
+          || (mode !== 'backward' && parent.ii < parent.files.length)) {
         options.parents.unshift({ dir: parent.dir + '/' + parent.files[parent.ii] });
         local._dirWithRecord(self, options, mode, onEventError);
         return;
@@ -3432,7 +4330,7 @@ add db indexing
       /*
         this function returns a database directory's depth
       */
-      return dir.slice(EXPORTS.dbDir.length).split('/').length - 2;
+      return dir.slice(state.dbDir.length).split('/').length - 2;
     },
 
     _dirRead: function (self, dir, onEventError) {
@@ -3504,7 +4402,7 @@ add db indexing
 
     _dirRebalanceDepth: function (self, onEventError) {
       /* optimization - cached callback */
-      if (EXPORTS.debug) {
+      if (state.debugFlag) {
         console.log([ 'db rebalance', self.rebalanceDepth, self.marked ]);
       }
       var marked = {}, _onEventError, remaining = 0;
@@ -3564,7 +4462,7 @@ add db indexing
           }
           /* split directory into two */
           if (files.length > self.dirMaxFiles) {
-            if (EXPORTS.debug) {
+            if (state.debugFlag) {
               console.log([ 'db rebalance split', self.rebalanceDepth, dir ]);
             }
             /*jslint bitwise: true*/
@@ -3577,7 +4475,7 @@ add db indexing
             local._dirTransfer(dir, dir2, files, _onEventError);
           /* join directory with previous directory */
           } else if (4 * files.length < self.dirMaxFiles) {
-            if (EXPORTS.debug) {
+            if (state.debugFlag) {
               console.log([ 'db rebalance join', self.rebalanceDepth, dir ]);
             }
             local._dirRead(self, EXPORTS.fsDirname(dir), _join);
@@ -3594,7 +4492,7 @@ add db indexing
 
     _dirTimestamp: function (dir, onEventError) {
       EXPORTS.fsWriteFileAtomic(dir + '/timestamp',
-        new Date().getTime().toString().slice(0, -3), {}, onEventError);
+        new Date().getTime().toString().slice(0, -3), null, onEventError);
     },
 
     _dirTransfer: function (dir1, dir2, files, onEventError) {
@@ -3627,90 +4525,9 @@ add db indexing
       EXPORTS.fsRmrAtomic(file, EXPORTS.nop);
     },
 
-    '_routesDict_/db/db.html': function (request, response) {
-      response.setHeader('content-type', 'text/html');
-      response.end(local._dbHtml);
-    },
-
-    '_routesDict_/db/db.ajax': function (request, response, next) {
-      var _onEventError, options = EXPORTS.urlSearchParse(request.url).params, self;
-      /* security - filter options */
-      options = {
-        action: options.action || '',
-        field: options.field || '',
-        limit: options.limit || '',
-        onEventData: function (chunk) {
-          response.write(chunk);
-        },
-        record: options.record || '',
-        table: options.table || ''
-      };
-      /* get table */
-      if (!options.table) {
-        next(new Error('invalid table'));
-        return;
-      }
-      self = local._dbTable(options.table);
-      _onEventError = function (error) {
-        /* rebalance directories if there are no active actions */
-        if (self.rebalanceDepth && !self.actionLock) {
-          /* pause db actions while re-balancing */
-          self.actionResume('pause');
-          local._dirRebalance(self);
-        }
-        if (error) {
-          next(error);
-          return;
-        }
-        response.end();
-      };
-      /* file upload */
-      if (options.action === 'fileUpload') {
-        EXPORTS.cacheWriteStream(request, {}, function (error, tmp) {
-          if (error) {
-            _onEventError(error);
-            return;
-          }
-          options.tmp = tmp;
-          local._dbAction(self, options, _onEventError);
-        });
-        return;
-      }
-      /* get options.json */
-      if (request.method.toUpperCase() === 'POST') {
-        EXPORTS.streamReadOnEventError(request, function (error, data) {
-          if (error) {
-            _onEventError(error);
-            return;
-          }
-          if (EXPORTS.isError(options.json = EXPORTS.jsonParseOrError(data))) {
-            _onEventError(options.json);
-            return;
-          }
-          /* en-queue action if db is re-balancing */
-          self.actionResume(function (error) {
-            if (error) {
-              _onEventError(error);
-              return;
-            }
-            local._dbAction(self, options, _onEventError);
-          });
-        });
-        return;
-      }
-      /* en-queue action if db is re-balancing */
-      self.actionResume(function (error) {
-        if (error) {
-          _onEventError(error);
-          return;
-        }
-        local._dbAction(self, options, _onEventError);
-      });
-    },
-
     _dbHtml: '<!DOCTYPE html><html><head>\n'
       + [
-        '/assets/rollup.css'
+        '/public/assets/external.rollup.auto.css'
       ].map(function (url) {
         return '<link href="' + url + '" rel="stylesheet" />\n';
       }).join('')
@@ -3719,8 +4536,8 @@ add db indexing
       + '</style></head><body>\n'
 
       + [
-        '/assets/rollup.js',
-        '/assets/utility2.js',
+        '/public/assets/external.rollup.auto.js',
+        '/public/assets/utility2.js',
       ].map(function (url) {
         return '<script src="' + url + '"></script>\n';
       }).join('')
@@ -3728,60 +4545,62 @@ add db indexing
 
   };
   local._init();
-}(global));
+}());
 
 
 
-(function modulePhantomjsShared(global) {
+(function moduleTestServerShared() {
+  /*
+    this shared module exports server-dependent tests
+  */
+  'use strict';
+  var local = {
+
+    _name: 'utility2.moduleTestServerShared',
+
+    _init: function () {
+      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
+    },
+
+    ajaxLocal_test: function (onEventError) {
+      EXPORTS.ajaxLocal({ url: '/test/test.echo' }, onEventError);
+    },
+
+  };
+  local._init();
+}());
+
+
+
+(function modulePhantomjsShared() {
   /*
     this nodejs / phantomjs module runs a phantomjs server
   */
   'use strict';
-  var EXPORTS = global.EXPORTS = global.EXPORTS || {},
-    required = EXPORTS.required = EXPORTS.required || {},
-    local;
-  local = {
+  var local = {
 
     _name: 'utility2.modulePhantomjsShared',
 
     _init: function () {
-      if (!(EXPORTS.isNodejs || EXPORTS.isPhantomjs)) {
-        return;
+      if (state.isNodejs) {
+        state.serverResume(function (error) {
+          if (error) {
+            EXPORTS.onEventErrorDefault(error);
+            return;
+          }
+          EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
+        });
+      } else if (state.isPhantomjs) {
+        EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
       }
-      /* init module */
-      EXPORTS.moduleInit(module, local);
     },
 
     _initOnce: function () {
       /* nodejs */
-      if (EXPORTS.isNodejs) {
-        EXPORTS.phantomjsResume = EXPORTS.phantomjsResume || EXPORTS.onEventResume('pause');
-        required.utility2_phantomjsPort
-          = parseInt('f' + Math.random().toString(16).slice(-3), 16);
-        EXPORTS.serverResume(function (error) {
-          if (error) {
-            EXPORTS.phantomjsResume(error);
-            return;
-          }
-          var interval = setInterval(function () {
-            local._phantomjsTest('/test/timeout', function (error) {
-              if (error) {
-                return;
-              }
-              EXPORTS.phantomjsResume('resume');
-              clearInterval(interval);
-            }, 1000);
-          });
-          /* spawn phantomjs process */
-          EXPORTS.shell('phantomjs ' + required.utility2.file + ' '
-            + EXPORTS.serverPort + ' ' + required.utility2_phantomjsPort)
-            .on('close', function (exitCode) {
-              EXPORTS.phantomjsResume(new Error(exitCode));
-              clearInterval(interval);
-            });
-        });
+      if (state.isNodejs) {
+        EXPORTS.phantomjsSpawn();
       /* phantomjs */
-      } else if (EXPORTS.isPhantomjs) {
+      } else if (state.isPhantomjs) {
         /* require */
         required.webpage = require('webpage');
         required.webserver = require('webserver');
@@ -3800,7 +4619,7 @@ add db indexing
             /* page timeout */
             setTimeout(function () {
               page.close();
-            }, EXPORTS.timeoutDefault);
+            }, state.timeoutDefault);
           } catch (error) {
             EXPORTS.onEventErrorDefault(error);
           }
@@ -3809,8 +4628,43 @@ add db indexing
       }
     },
 
+    phantomjsSpawn: function () {
+      /* start a new phantomjsResume for every spawn */
+      state.phantomjsResume = EXPORTS.onEventResume('pause');
+      state.phantomjsPort = state.phantomjsPort || EXPORTS.serverPortRandom();
+      var timeout;
+      /* check every second to see if phantomjs spawn is ready */
+      EXPORTS.clearCallSetInterval('phantomjsSpawn', function () {
+        local._phantomjsTest('/favicon.ico', function (error) {
+          if (error) {
+            return;
+          }
+          state.phantomjsResume('resume');
+          clearInterval(state.setIntervalDict.phantomjsSpawn);
+          clearTimeout(timeout);
+        }, 1000);
+      });
+      /* phantomjs spawn timeout */
+      timeout = setTimeout(function () {
+        state.phantomjsResume(new Error('phantomjs spawn timeout'));
+        clearInterval(state.setIntervalDict.phantomjsSpawn);
+        clearTimeout(timeout);
+      }, 10 * 1000);
+      /* spawn phantomjs process */
+      try {
+        EXPORTS.shell('phantomjs ' + required.utility2.file + ' '
+          + state.serverPort + ' ' + state.phantomjsPort)
+          .on('close', function (exitCode) {
+            state.phantomjsResume(new Error(exitCode));
+            clearInterval(state.setIntervalDict.phantomjsSpawn);
+          });
+      } catch (errorPhantomjs) {
+        state.phantomjsResume(errorPhantomjs);
+      }
+    },
+
     phantomjsTest: function (url, onEventError) {
-      EXPORTS.phantomjsResume(function (error) {
+      state.phantomjsResume(function (error) {
         if (error) {
           onEventError(error);
           return;
@@ -3821,19 +4675,20 @@ add db indexing
 
     _phantomjsTest: function (url, onEventError) {
       if (url.slice(0, 4) !== 'http') {
-        url = 'http://localhost:' + EXPORTS.serverPort + url;
+        url = 'http://localhost:' + state.serverPort + url;
       }
       url = EXPORTS.urlSearchSetItem(url, 'testOnce', '1', '#');
       EXPORTS.ajaxNodejs({
         data: url,
+        /* bug - headers are case-sensitive in phantomjs */
         headers: { 'Content-Length': Buffer.byteLength(url) },
         method: 'POST',
-        url: 'http://localhost:' + required.utility2_phantomjsPort
+        url: 'http://localhost:' + state.phantomjsPort
       }, onEventError);
     },
 
-    _test_phantomjsTest: function (onEventError) {
-      EXPORTS.phantomjsResume(function (error) {
+    phantomjsTest_test: function (onEventError) {
+      state.phantomjsResume(function (error) {
         if (error) {
           onEventError('skip');
           return;
@@ -3844,4 +4699,4 @@ add db indexing
 
   };
   local._init();
-}(global));
+}());
