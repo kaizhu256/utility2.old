@@ -4,16 +4,21 @@
     "email": "kaizhu@yahoo-inc.com"
   }],
   "dependencies": {
-    "csslint": "*",
     "express": "*",
     "graceful-fs": "*",
-    "jslint": "*",
-    "istanbul": "*",
     "mime": "*",
+    "moment": "*",
     "nopt": "*",
-    "uglify-js": "*"
+    "underscore": "*"
   },
   "description": "common, shared nodejs utilities",
+  "devDependencies": {
+    "csslint": "*",
+    "cssmin": "*",
+    "istanbul": "*",
+    "jslint": "*",
+    "uglify-js": "*"
+  },
   "main": "utility2.js",
   "name": "utility2",
   "scripts": {
