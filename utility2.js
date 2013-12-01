@@ -23,6 +23,7 @@ add db indexing
     this shared module performs initialization before the below modules are loaded
   */
   'use strict';
+  var local;
   try {
     window.global = window.global || window;
   } catch (ignore) {
@@ -30,7 +31,7 @@ add db indexing
   global.EXPORTS = global.EXPORTS || {};
   global.required = EXPORTS.required = EXPORTS.required || global.required || {};
   global.state = EXPORTS.state = EXPORTS.state || global.state || {};
-  var local = {
+  local = {
 
     _name: 'utility2.moduleInitializeFirstShared',
 
@@ -87,7 +88,8 @@ add db indexing
     this shared module exports common, shared utilities
   */
   'use strict';
-  var local = {
+  var local;
+  local = {
 
     _name: 'utility2.moduleCommonShared',
 
@@ -120,7 +122,7 @@ add db indexing
 
     _initOnceBrowser: function () {
       /*
-        this function runs browser initialization code
+        this function runs browser initialization code once
       */
       if (!state.isBrowser) {
         return;
@@ -173,14 +175,15 @@ add db indexing
       });
     },
 
-    ajaxLocalMulti2: function (options, onEventError) {
+    ajaxLocalMulti: function (options, onEventError) {
       /*
         this function makes multiple ajax calls for multiple params
       */
+      var _onEventError, params, remaining, urlParsed;
       onEventError = onEventError || EXPORTS.onEventErrorDefault;
-      var _onEventError, params, remaining = 0,
-        /* remove hash-tag from url */
-        urlParsed = (/[^#]*/).exec(options.url)[0].split('?');
+      remaining = 0;
+      /* remove hash-tag from url */
+      urlParsed = (/[^#]*/).exec(options.url)[0].split('?');
       _onEventError = function (error, data) {
         if (remaining < 0) {
           return;
@@ -209,7 +212,8 @@ add db indexing
         }
       });
       params.forEach(function (dict) {
-        var options2 = EXPORTS.objectCopyDeep(options);
+        var options2;
+        options2 = EXPORTS.objectCopyDeep(options);
         options2.url = urlParsed[0] + '?' + Object.keys(dict).sort().map(function (key) {
           return key + '=' + dict[key];
         }).join('&');
@@ -223,11 +227,15 @@ add db indexing
       }
     },
 
-    ajaxLocalMulti2_test: function (onEventError) {
+    ajaxLocalMulti_test: function (onEventError) {
+      /*
+        this function tests EXPORTS.ajaxLocalMulti
+      */
       /* null case */
       EXPORTS.ioAggregate([function (onEventError) {
-        var remaining = 1;
-        EXPORTS.ajaxLocalMulti2({
+        var remaining;
+        remaining = 1;
+        EXPORTS.ajaxLocalMulti({
           url: '/test/test.echo'
         }, function (error, data, _remaining) {
           remaining -= 1;
@@ -240,8 +248,9 @@ add db indexing
           }
         });
       }, function (onEventError) {
-        var remaining = 4;
-        EXPORTS.ajaxLocalMulti2({
+        var remaining;
+        remaining = 4;
+        EXPORTS.ajaxLocalMulti({
           url: '/test/test.echo?aa=1&aa=2&bb=3&bb=4&cc=5#dd=6'
         }, function (error, data, _remaining) {
           if (!(/^GET \/test\/test\.echo\?aa=.&bb=.&cc=. /).test(data)) {
@@ -267,10 +276,16 @@ add db indexing
     },
 
     base64Decode: function (text) {
+      /*
+        this function base64 decodes text that was encoded in a uri-friendly format
+      */
       return global.atob(text.replace((/-/g), '+').replace((/_/g), '/'));
     },
 
     base64Encode: function (text) {
+      /*
+        this function base64 encodes text in a uri-friendly manner
+      */
       return global.btoa(text).replace((/\+/g), '-').replace((/\//g), '_')
         .replace((/\=+/g), '');
     },
@@ -297,7 +312,8 @@ add db indexing
       /*
         this function creates a new timeout error
       */
-      var error = new Error(message);
+      var error;
+      error = new Error(message);
       error.code = error.errno = 'ETIMEDOUT';
       return error;
     },
@@ -306,7 +322,8 @@ add db indexing
       /*
         this function parses the argument into a date object, assuming UTC timezone
       */
-      var time = arg;
+      var time;
+      time = arg;
       /* no arguments */
       if (!arguments.length) {
         return new Date();
@@ -327,6 +344,9 @@ add db indexing
     },
 
     createUtc_test: function (onEventError) {
+      /*
+        this function test EXPORTS.createUtc
+      */
       try {
         console.assert(EXPORTS.createUtc().toISOString() === new Date().toISOString());
         console.assert(EXPORTS.createUtc('oct 10 2010').toISOString().slice(0, 19)
@@ -362,6 +382,9 @@ add db indexing
     },
 
     dateAndSalt_test: function (onEventError) {
+      /*
+        this function tests EXPORTS.dateAndSalt
+      */
       /* assert each call returns incrementing result */
       onEventError(!(EXPORTS.dateAndSalt(1) < EXPORTS.dateAndSalt(2)
         /* assert call can be converted to date */
@@ -380,7 +403,8 @@ add db indexing
         this function aggregates the result from a list of async callbacks of the form
         function (onEventError)
       */
-      var _onEventError, remaining = callbacks.length;
+      var _onEventError, remaining;
+      remaining = callbacks.length;
       if (!remaining) {
         onEventError();
         return;
@@ -401,7 +425,11 @@ add db indexing
     },
 
     ioAggregate_test: function (onEventError) {
-      var result = 0;
+      /*
+        this function test EXPORTS.ioAggregate
+      */
+      var result;
+      result = 0;
       EXPORTS.ioAggregate([function (onEventError) {
         setTimeout(function () {
           result += 1;
@@ -425,8 +453,10 @@ add db indexing
       /*
         this function synchronizes a chain of asynchronous io calls
       */
+      var next, _onEventError;
       onEventError = onEventError || EXPORTS.onEventErrorDefault;
-      var next = 0, _onEventError = function (error) {
+      next = 0;
+      _onEventError = function (error) {
         next += 1;
         if (error || next === callbacks.length) {
           onEventError(error);
@@ -438,7 +468,11 @@ add db indexing
     },
 
     ioChain_test: function (onEventError) {
-      var data = 0;
+      /*
+        this function tests EXPORTS.ioChain
+      */
+      var data;
+      data = 0;
       EXPORTS.ioChain([function (next) {
         setTimeout(function () {
           data += 1;
@@ -525,6 +559,9 @@ add db indexing
     },
 
     mimeLookup: function (file) {
+      /*
+        this function returns the mime-type for a given filename
+      */
       if (required.mime) {
         return required.mime.lookup(file);
       }
@@ -545,6 +582,9 @@ add db indexing
     },
 
     moduleInit: function (module, local2) {
+      /*
+        this function initializes a module with the provided local2 dictionary
+      */
       var exports, name;
       /* assert local2._name */
       console.assert(local2._name, [local2._name]);
@@ -583,8 +623,8 @@ add db indexing
           local2._initOnce();
         }
         /* require once */
-        if (module && required.utility2._moduleRequireOnce) {
-          required.utility2._moduleRequireOnce(module, local2, exports);
+        if (module && required.utility2._moduleInitOnceNodejs) {
+          required.utility2._moduleInitOnceNodejs(module, local2, exports);
         }
         /* init document ready once */
         if (state.isBrowser && local2._initReadyOnce) {
@@ -605,9 +645,16 @@ add db indexing
     },
 
     nop_test: function (onEventError) {
-      var error = !(EXPORTS.nop() === undefined
-        && EXPORTS.nop(1, 2) === undefined);
-      onEventError(error);
+      /*
+        this function test EXPORTS.nop
+      */
+      try {
+        console.assert(EXPORTS.nop() === undefined);
+      } catch (error) {
+        onEventError(error);
+        return;
+      }
+      onEventError();
     },
 
     objectCopyDeep: function (object) {
@@ -636,7 +683,8 @@ add db indexing
     },
 
     onEventResume: function (mode) {
-      var _error, paused, queue = [], _resume, self;
+      var _error, paused, queue, _resume, self;
+      queue = [];
       _resume = function () {
         paused = false;
         queue.forEach(function (onEventResume) {
@@ -667,7 +715,9 @@ add db indexing
     },
 
     onEventResume_test: function (onEventError) {
-      var _onEventResume = EXPORTS.onEventResume('pause'), tmp = 0;
+      var _onEventResume, tmp;
+      _onEventResume = EXPORTS.onEventResume('pause');
+      tmp = 0;
       _onEventResume(function () {
         if (tmp === 1) {
           onEventError();
@@ -682,7 +732,9 @@ add db indexing
     },
 
     onEventResume_error_test: function (onEventError) {
-      var _onEventResume = EXPORTS.onEventResume('pause'), tmp = new Error();
+      var _onEventResume, tmp;
+      _onEventResume = EXPORTS.onEventResume('pause');
+      tmp = new Error();
       _onEventResume(function (error) {
         if (error === tmp) {
           onEventError();
@@ -2159,6 +2211,9 @@ add db indexing
     },
 
     _ajaxSocks5: function (options, onEventError) {
+      /*
+        this function hooks the socks5 proxy protocol into EXPORTS.ajaxNodejs
+      */
       var chunks = new Buffer(0),
         hostname = new Buffer(options.hostname),
         _onEventData,
@@ -2409,7 +2464,10 @@ add db indexing
       return result.toString();
     },
 
-    _moduleRequireOnce: function (module, local2, exports) {
+    _moduleInitOnceNodejs: function (module, local2, exports) {
+      /*
+        this function performs extra nodejs initialization on the module
+      */
       if (exports.file) {
         return;
       }
@@ -2501,10 +2559,11 @@ add db indexing
       /*jslint stupid: true*/
       /* exports */
       state.tmpDir = required.path.resolve(state.tmpDir || process.cwd() + '/tmp');
-      /* create cache directory */
       try {
+        /* create cache dir */
         state.cacheDir = state.tmpDir + '/cache';
         EXPORTS.fsMkdirpSync(state.cacheDir);
+        /* create pid dir */
         state.pidDir = state.tmpDir + '/pid';
         EXPORTS.fsMkdirpSync(state.pidDir);
         /* kill stale pid's from previous process */
@@ -4217,7 +4276,7 @@ add db indexing
           return new Error('required data missing');
         }
       }
-      var ii, key, tmp;
+      var tmp;
       switch (options.action) {
       case 'fieldAppend':
         if (options.json === undefined) {
@@ -4230,12 +4289,12 @@ add db indexing
         if (Array.isArray(options.json)) {
           tmp = options.json;
           options.json = {};
-          for (ii = 0; ii < tmp.length; ii += 1) {
+          tmp.forEach(function (key) {
             if (typeof key !== 'string') {
               return new Error('invalid key');
             }
             options.json[key] = null;
-          }
+          });
         }
         break;
       }
@@ -4258,7 +4317,7 @@ add db indexing
       /*
         this function creates a database with the given name
       */
-      return (EXPORTS.dbTables[name] = EXPORTS.dbTables[name] || {
+      EXPORTS.dbTables[name] = EXPORTS.dbTables[name] || {
         dir: state.dbDir + '/' + encodeURIComponent(name),
         /* the default dirMaxFiles allows a table to reasonably handle one quadrillion records,
            assuming adequate disk space */
@@ -4266,7 +4325,8 @@ add db indexing
         marked: {},
         actionLock: 0,
         actionResume: EXPORTS.onEventResume('resume'),
-      });
+      };
+      return EXPORTS.dbTables[name];
     },
 
     _dirNext: function (self, options, mode, onEventError) {
@@ -4425,7 +4485,9 @@ add db indexing
         marked[dir] = true;
         self.rebalanceDepthRepeat = true;
         local._dirRead(self, dir, function (error, files) {
-          var dir2, _join = function (error, dirs) {
+          var _join, tmp;
+          _join = function (error, dirs) {
+            var dir2, index, parent;
             if (remaining < 0) {
               return;
             }
@@ -4440,9 +4502,9 @@ add db indexing
             }
             /* select previous directory */
             dirs.sort();
-            var parent = EXPORTS.fsDirname(dir),
-              index = dirs.indexOf(dir.slice(parent.length + 1)) - 1,
-              dir2 = parent + '/' + dirs[index];
+            parent = EXPORTS.fsDirname(dir);
+            index = dirs.indexOf(dir.slice(parent.length + 1)) - 1;
+            dir2 = parent + '/' + dirs[index];
             /* transfer contents from current directory to previous directory */
             if (index >= 0 && !marked[dir2]) {
               /* recurse */
@@ -4467,12 +4529,12 @@ add db indexing
             }
             /*jslint bitwise: true*/
             files = files.slice(files.length >> 1);
-            dir2 = EXPORTS.fsDirname(dir) + '/' + files[0];
+            tmp = EXPORTS.fsDirname(dir) + '/' + files[0];
             /* recurse */
             if (files.length > self.dirMaxFiles) {
-              self.marked[dir2] = true;
+              self.marked[tmp] = true;
             }
-            local._dirTransfer(dir, dir2, files, _onEventError);
+            local._dirTransfer(dir, tmp, files, _onEventError);
           /* join directory with previous directory */
           } else if (4 * files.length < self.dirMaxFiles) {
             if (state.debugFlag) {
