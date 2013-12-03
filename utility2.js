@@ -172,7 +172,7 @@ add db indexing
       });
     },
 
-    ajaxLocal_timeout_test: function (onEventError) {
+    _ajaxLocal_timeout_test: function (onEventError) {
       /*
         this function tests EXPORTS.ajaxLocal's timeout behavior
       */
@@ -232,7 +232,7 @@ add db indexing
       });
     },
 
-    ajaxLocalMulti_multi_test: function (onEventError) {
+    _ajaxLocalMulti_multi_test: function (onEventError) {
       /*
         this function tests EXPORTS.ajaxLocalMulti's multi ajax requests
       */
@@ -246,7 +246,7 @@ add db indexing
       });
     },
 
-    ajaxLocalMulti_multiError_test: function (onEventError) {
+    _ajaxLocalMulti_multiError_test: function (onEventError) {
       /*
         this function tests EXPORTS.ajaxLocalMulti's multi ajax requests with error
       */
@@ -259,7 +259,7 @@ add db indexing
       });
     },
 
-    ajaxLocalMulti_nullCase_test: function (onEventError) {
+    _ajaxLocalMulti_nullCase_test: function (onEventError) {
       /*
         this function tests EXPORTS.ajaxLocalMulti's null case
       */
@@ -318,7 +318,7 @@ add db indexing
       var time;
       time = arg;
       /* no arguments */
-      if (!arguments.length) {
+      if (!arg) {
         return new Date();
       }
       /* ISO format */
@@ -336,7 +336,7 @@ add db indexing
       return time;
     },
 
-    createUtc_test: function (onEventError) {
+    _createUtc_default_test: function (onEventError) {
       /*
         this function test EXPORTS.createUtc
       */
@@ -371,7 +371,7 @@ add db indexing
         .slice(0, 29);
     },
 
-    dateAndSalt_test: function (onEventError) {
+    _dateAndSalt_default_test: function (onEventError) {
       /*
         this function tests EXPORTS.dateAndSalt
       */
@@ -414,7 +414,7 @@ add db indexing
       });
     },
 
-    ioAggregate_test: function (onEventError) {
+    _ioAggregate_default_test: function (onEventError) {
       /*
         this function test EXPORTS.ioAggregate
       */
@@ -457,7 +457,7 @@ add db indexing
       callbacks[next](_onEventError);
     },
 
-    ioChain_test: function (onEventError) {
+    _ioChain_default_test: function (onEventError) {
       /*
         this function tests EXPORTS.ioChain
       */
@@ -500,19 +500,37 @@ add db indexing
       /*
         this function evals a script with auto error-handling
       */
-      var data;
-      file = file || '';
-      try {
+      EXPORTS.tryCatchOnEventError(function () {
         /*jslint evil: true*/
-        data = state.isNodejs ? required.vm.runInThisContext(script, file) : eval(script);
-      } catch (error) {
-        /* debug */
-        state.error = error;
-        console.error(file);
-        onEventError(error);
-        return;
-      }
-      onEventError(null, data);
+        return state.isNodejs ? required.vm.runInThisContext(script, file) : eval(script);
+      }, function (error, data) {
+        if (error) {
+          /* debug */
+          state.error = error;
+          console.error(file);
+          onEventError(error);
+          return;
+        }
+        onEventError(null, data);
+      });
+    },
+
+    _jsEvalOnEventError_default_test: function (onEventError) {
+      /*
+        this function tests EXPORTS.jsEvalOnEventError's default behavior
+      */
+      EXPORTS.jsEvalOnEventError('', 'null', onEventError);
+    },
+
+    _jsEvalOnEventError_syntaxError_test: function (onEventError) {
+      /*
+        this function tests EXPORTS.jsEvalOnEventError's syntax error behavior
+      */
+      EXPORTS.jsEvalOnEventError('', 'syntax error', function (error) {
+        EXPORTS.tryCatchOnEventError(function () {
+          console.assert(EXPORTS.isError(error));
+        }, onEventError);
+      });
     },
 
     jsonParseOrError: function (data) {
@@ -526,7 +544,7 @@ add db indexing
       }
     },
 
-    jsonParseOrError_syntaxError_test: function (onEventError) {
+    _jsonParseOrError_syntaxError_test: function (onEventError) {
       /*
         this function tests EXPORTS.jsonParseOrError's syntax error behavior
       */
@@ -548,7 +566,7 @@ add db indexing
       }
     },
 
-    jsonStringifyOrError_recursionError_test: function (onEventError) {
+    _jsonStringifyOrError_recursionError_test: function (onEventError) {
       /*
         this function tests EXPORTS.jsonStringifyOrError's recursion error behavior
       */
@@ -584,8 +602,13 @@ add db indexing
       }
     },
 
-    mimeLookup_test: function (onEventError) {
+    _mimeLookup_default_test: function (onEventError) {
       console.assert(EXPORTS.mimeLookup('css') === 'text/css');
+      console.assert(EXPORTS.mimeLookup('html') === 'text/html');
+      console.assert(EXPORTS.mimeLookup('js') === 'application/javascript');
+      console.assert(EXPORTS.mimeLookup('json') === 'application/json');
+      console.assert(EXPORTS.mimeLookup('txt') === 'text/plain');
+      console.assert(EXPORTS.mimeLookup('') === 'application/octet-stream');
       onEventError();
     },
 
@@ -652,7 +675,7 @@ add db indexing
       return;
     },
 
-    nop_test: function (onEventError) {
+    _nop_default_test: function (onEventError) {
       /*
         this function test EXPORTS.nop
       */
@@ -717,7 +740,7 @@ add db indexing
       return self;
     },
 
-    onEventResume_test: function (onEventError) {
+    _onEventResume_default_test: function (onEventError) {
       var _onEventResume, tmp;
       _onEventResume = EXPORTS.onEventResume('pause');
       tmp = 0;
@@ -734,7 +757,7 @@ add db indexing
       }, 1);
     },
 
-    onEventResume_error_test: function (onEventError) {
+    _onEventResume_error_test: function (onEventError) {
       var _onEventResume, tmp;
       _onEventResume = EXPORTS.onEventResume('pause');
       tmp = new Error();
@@ -781,7 +804,7 @@ add db indexing
       return options;
     },
 
-    setOptionsDefaults_test: function (onEventError) {
+    _setOptionsDefaults_default_test: function (onEventError) {
       var options = EXPORTS.setOptionsDefaults({ aa: 1, bb: {}, cc: [] },
         { aa: 2, bb: { cc: 2 }, cc: [1, 2] });
       onEventError(options.aa === 1
@@ -800,7 +823,7 @@ add db indexing
       });
     },
 
-    stringToCamelCase_test: function (onEventError) {
+    _stringToCamelCase_default_test: function (onEventError) {
       try {
         console.assert(EXPORTS.stringToCamelCase('') === '');
         console.assert(EXPORTS.stringToCamelCase('aa-bb-cc') === 'aaBbCc');
@@ -817,7 +840,7 @@ add db indexing
       });
     },
 
-    templateFormat_test: function (onEventError) {
+    _templateFormat_default_test: function (onEventError) {
       if (EXPORTS.templateFormat('{{aa}}', { aa: 1 }) === '{{aa}}'
           && EXPORTS.templateFormat('{{aa}}', { aa: 'bb' }) === 'bb') {
         onEventError();
@@ -940,7 +963,7 @@ add db indexing
 
     testAssert: function (test, onEventError) {
       /*
-        this function helps achieve 100% code coverage in test code
+        this function helps achieve 100% code coverage
       */
       return function (error, data) {
         if (error) {
@@ -985,10 +1008,12 @@ add db indexing
       state.testSuites.length = 0;
     },
 
-    tryOnEventError: function (callback, onEventError) {
+    tryCatchOnEventError: function (callback, onEventError) {
+      /*
+        this function helps achieve 100% code coverage
+      */
       try {
-        callback();
-        onEventError();
+        onEventError(null, callback());
       } catch (error) {
         onEventError(error);
       }
@@ -1022,7 +1047,7 @@ add db indexing
       return EXPORTS.urlSearchParse(url, delimiter).params[key] || '';
     },
 
-    urlSearchGetItem_test: function (onEventError) {
+    _urlSearchGetItem_default_test: function (onEventError) {
       onEventError(EXPORTS.urlSearchGetItem('/aa#bb=cc%2B', 'bb', '#') === 'cc+' ? null
         : new Error('test failed - urlSearchGetItem'));
     },
@@ -1085,7 +1110,7 @@ add db indexing
       return EXPORTS.urlSearchParsedJoin(parsed, delimiter);
     },
 
-    urlSearchSetItem_test: function (onEventError) {
+    _urlSearchSetItem_default_test: function (onEventError) {
       onEventError(EXPORTS.urlSearchSetItem('/aa#bb=1', 'cc', 'dd+', '#')
         === '/aa#bb=1&cc=dd%2B' ? null : new Error('test failed - urlSearchSetItem'));
     },
@@ -1299,7 +1324,7 @@ add db indexing
       return result;
     },
 
-    Fts_test: function (onEventError) {
+    _Fts_default_test: function (onEventError) {
       try {
         var result, self = EXPORTS.createFts();
         self.addData([[1, 'ab cc'], [2, 'aa bb- Cc aa'], [3, 'aBc']]);
@@ -1836,7 +1861,7 @@ add db indexing
       this.ajax({ action: 'recordsDeleteAndUpdate', data: records }, onEventError);
     },
 
-    Db_recordsDeleteAndUpdate_test: function (onEventError) {
+    _Db_recordsDeleteAndUpdate_default_test: function (onEventError) {
       var self = EXPORTS.createDbRandom();
       EXPORTS.dbTestChain(self, [function (next) {
         self.recordsDeleteAndUpdate('{}', EXPORTS.testAssert(function (data) {
@@ -1849,7 +1874,7 @@ add db indexing
       this.ajax({ action: 'recordsGet', data: records }, onEventError);
     },
 
-    Db_recordsGet_test: function (onEventError) {
+    _Db_recordsGet_default_test: function (onEventError) {
       var self = EXPORTS.createDbRandom();
       EXPORTS.dbTestChain(self, [function (next) {
         self.recordsGet('{}', EXPORTS.testAssert(function (data) {
@@ -1878,7 +1903,7 @@ add db indexing
       this.ajax({ action: 'tableOptionsUpdateAndGet', data: JSON.stringify(options) }, onEventError);
     },
 
-    Db_tableOptionsUpdateAndGet_test: function (onEventError) {
+    _Db_tableOptionsUpdateAndGet_default_test: function (onEventError) {
       var self = EXPORTS.createDbRandom();
       EXPORTS.dbTestChain(self, [function (next) {
         self.tableOptionsUpdateAndGet(null, EXPORTS.testAssert(function (data) {
@@ -2065,7 +2090,7 @@ add db indexing
       }
     },
 
-    ajaxLocalServerResumeError_test: function (onEventError) {
+    _ajaxLocal_serverResumeError_test: function (onEventError) {
       /*
         this function tests EXPORTS.ajaxLocal's server resume on error behavior
       */
@@ -2332,7 +2357,7 @@ add db indexing
       }).on('error', _onEventError).on('data', _onEventData);
     },
 
-    ajaxSocks5_test: function (onEventError) {
+    _ajaxSocks5_default_test: function (onEventError) {
       /*
         this function tests ajax requests through socks5
       */
@@ -2968,7 +2993,7 @@ add db indexing
       }
       state.repl = required.repl.start({ eval: function (script, context, file,
         onEventError) {
-        EXPORTS.jsEvalOnEventError(null, required.utility2._replParse(script), onEventError);
+        EXPORTS.jsEvalOnEventError('', required.utility2._replParse(script), onEventError);
       }, useGlobal: true });
       state.repl.context.EXPORTS = EXPORTS;
       state.repl.context.required = required;
@@ -3159,7 +3184,7 @@ add db indexing
       });
     },
 
-    cssRollup_test: function (onEventError) {
+    _cssRollup_default_test: function (onEventError) {
       var file = state.tmpDir + '/test.rollup.css';
       required.fs.exists(file, function (exists) {
         /* skip test */
@@ -3171,7 +3196,7 @@ add db indexing
       });
     },
 
-    jsRollup_test: function (onEventError) {
+    _jsRollup_default_test: function (onEventError) {
       var file = state.tmpDir + '/test.rollup.js';
       required.fs.exists(file, function (exists) {
         /* skip test */
@@ -4685,7 +4710,7 @@ add db indexing
       EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
     },
 
-    ajaxLocal_test: function (onEventError) {
+    _ajaxLocal_default_test: function (onEventError) {
       EXPORTS.ajaxLocal({ url: '/test/test.echo' }, onEventError);
     },
 
@@ -4807,7 +4832,7 @@ add db indexing
       }, onEventError);
     },
 
-    phantomjsTest_testOnce_test: function (onEventError) {
+    _phantomjsTest_testOnce_test: function (onEventError) {
       /*
         this function tests EXPORTS.phantomjsTest's testOnce behavior
       */
