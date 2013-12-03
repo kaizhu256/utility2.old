@@ -6,6 +6,7 @@ utility2.js
 common, shared utilities for both browser and nodejs
 
 todo:
+add phantomjs code coverage
 integrate forever-webui
 db add admin webui
 db auto-heal incorrectly indexed b-trees
@@ -52,6 +53,8 @@ add db indexing
         console._log.apply(console, arguments);
         return arg;
       };
+      /* code coverage for debugPrint */
+      global.debugPrint();
       /* underscore */
       global.underscore = global.underscore || global._;
       if (global.process && process.versions) {
@@ -63,9 +66,7 @@ add db indexing
           global.underscore = global.underscore || require('underscore');
         }
         /* node-webkit */
-        if (process.versions['node-webkit']) {
-          state.isNodeWebkit = true;
-        }
+        state.isNodeWebkit = process.versions['node-webkit'];
       }
       /* phantomjs */
       if (global.phantom) {
@@ -146,22 +147,18 @@ add db indexing
         state.isBrowserTest = 'once';
         return;
       }
-      /* browser phantomjs flag */
-      if (state.isPhantomjs) {
-        state.isBrowserTest = 'phantomjs';
-      }
     },
 
     ajaxLocal: function (options, onEventError) {
       /*
-        this convenience function makes an ajax request on the localhost server
+        this function makes an ajax request on the localhost server
       */
       onEventError = onEventError || EXPORTS.onEventErrorDefault;
       if (options.data) {
         options.method = options.type = options.method || options.type || 'POST';
       }
       /* browser */
-      if (state.isBrowser || state.isPhantomjs) {
+      if (state.isBrowser) {
         EXPORTS.ajaxProgressOnEventError(options, onEventError);
         return;
       }
@@ -172,6 +169,19 @@ add db indexing
           return;
         }
         EXPORTS.ajaxNodejs(options, onEventError);
+      });
+    },
+
+    ajaxLocal_timeout_test: function (onEventError) {
+      /*
+        this function tests EXPORTS.ajaxLocal's timeout behavior
+      */
+      EXPORTS.ajaxLocal({
+        timeout: 1,
+        url: '/test/test.timeout'
+      }, function (error) {
+        console.assert(EXPORTS.isErrorTimeout(error));
+        onEventError();
       });
     },
 
@@ -220,59 +230,42 @@ add db indexing
         remaining += 1;
         EXPORTS.ajaxLocal(options2, _onEventError);
       });
-      /* null case */
-      if (remaining === 0) {
-        remaining = 1;
-        EXPORTS.ajaxLocal(options, _onEventError);
-      }
     },
 
-    ajaxLocalMulti_test: function (onEventError) {
+    ajaxLocalMulti_multi_test: function (onEventError) {
       /*
-        this function tests EXPORTS.ajaxLocalMulti
+        this function tests EXPORTS.ajaxLocalMulti's multi ajax requests
       */
-      /* null case */
-      EXPORTS.ioAggregate([function (onEventError) {
-        var remaining;
-        remaining = 1;
-        EXPORTS.ajaxLocalMulti({
-          url: '/test/test.echo'
-        }, function (error, data, _remaining) {
-          remaining -= 1;
-          if (_remaining === 0) {
-            if (remaining !== 0) {
-              onEventError(new Error(remaining));
-              return;
-            }
-            onEventError();
-          }
-        });
-      }, function (onEventError) {
-        var remaining;
-        remaining = 4;
-        EXPORTS.ajaxLocalMulti({
-          url: '/test/test.echo?aa=1&aa=2&bb=3&bb=4&cc=5#dd=6'
-        }, function (error, data, _remaining) {
-          if (!(/^GET \/test\/test\.echo\?aa=.&bb=.&cc=. /).test(data)) {
-            onEventError(new Error(data));
-            return;
-          }
-          remaining -= 1;
-          if (_remaining === 0) {
-            if (remaining !== 0) {
-              onEventError(new Error(remaining));
-              return;
-            }
-            onEventError();
-          }
-        });
-      }], function (error) {
-        if (error) {
-          onEventError(error);
-          return;
+      EXPORTS.ajaxLocalMulti({
+        url: '/test/test.echo?aa=1&aa=2&bb=3&bb=4&cc=5#dd=6'
+      }, function (error, data, _remaining) {
+        console.assert((/^GET \/test\/test\.echo\?aa=.&bb=.&cc=. /).test(data));
+        if (_remaining === 0) {
+          onEventError();
         }
-        onEventError();
       });
+    },
+
+    ajaxLocalMulti_multiError_test: function (onEventError) {
+      /*
+        this function tests EXPORTS.ajaxLocalMulti's multi ajax requests with error
+      */
+      EXPORTS.ajaxLocalMulti({
+        url: '/test/test.error?aa=1&aa=2&bb=3&bb=4&cc=5#dd=6'
+      }, function (error) {
+        if (error) {
+          onEventError();
+        }
+      });
+    },
+
+    ajaxLocalMulti_nullCase_test: function (onEventError) {
+      /*
+        this function tests EXPORTS.ajaxLocalMulti's null case
+      */
+      EXPORTS.ajaxLocalMulti({
+        url: '/test/test.echo'
+      }, onEventError);
     },
 
     base64Decode: function (text) {
@@ -347,20 +340,17 @@ add db indexing
       /*
         this function test EXPORTS.createUtc
       */
-      try {
-        console.assert(EXPORTS.createUtc().toISOString() === new Date().toISOString());
-        console.assert(EXPORTS.createUtc('oct 10 2010').toISOString().slice(0, 19)
-          === '2010-10-10T00:00:00');
-        console.assert(EXPORTS.createUtc('2010-10-10').toISOString().slice(0, 19)
-          === '2010-10-10T00:00:00');
-        console.assert(EXPORTS.createUtc('2010-10-10 00:00:00').toISOString().slice(0, 19)
-          === '2010-10-10T00:00:00');
-        console.assert(EXPORTS.createUtc('2010-10-10T00:00:00Z').toISOString().slice(0, 19)
-          === '2010-10-10T00:00:00');
-        onEventError();
-      } catch (error) {
-        onEventError(error);
-      }
+      console.assert(EXPORTS.createUtc().toISOString().slice(0, 19)
+        === new Date().toISOString().slice(0, 19));
+      console.assert(EXPORTS.createUtc('oct 10 2010').toISOString().slice(0, 19)
+        === '2010-10-10T00:00:00');
+      console.assert(EXPORTS.createUtc('2010-10-10').toISOString().slice(0, 19)
+        === '2010-10-10T00:00:00');
+      console.assert(EXPORTS.createUtc('2010-10-10 00:00:00').toISOString().slice(0, 19)
+        === '2010-10-10T00:00:00');
+      console.assert(EXPORTS.createUtc('2010-10-10T00:00:00Z').toISOString().slice(0, 19)
+        === '2010-10-10T00:00:00');
+      onEventError();
     },
 
     dateAndSalt: function () {
@@ -507,6 +497,9 @@ add db indexing
     },
 
     jsEvalOnEventError: function (file, script, onEventError) {
+      /*
+        this function evals a script with auto error-handling
+      */
       var data;
       file = file || '';
       try {
@@ -533,6 +526,17 @@ add db indexing
       }
     },
 
+    jsonParseOrError_syntaxError_test: function (onEventError) {
+      /*
+        this function tests EXPORTS.jsonParseOrError's syntax error behavior
+      */
+      var error;
+      error = EXPORTS.jsonParseOrError('syntax error!');
+      if (EXPORTS.isError(error)) {
+        onEventError();
+      }
+    },
+
     jsonStringifyOrError: function (data) {
       /*
         this function returns JSON.stringify(data) or error
@@ -544,17 +548,16 @@ add db indexing
       }
     },
 
-    listShuffle: function (list) {
+    jsonStringifyOrError_recursionError_test: function (onEventError) {
       /*
-        this function inplace shuffles elements in a list
+        this function tests EXPORTS.jsonStringifyOrError's recursion error behavior
       */
-      var ii, random, swap;
-      for (ii = 1; ii <= list.length; ii += 1) {
-        /* optimization - Fisher-Yates algorithm */
-        random = Math.floor(Math.random() * ii);
-        swap = list[ii];
-        list[ii] = list[random];
-        list[random] = swap;
+      var error;
+      error = {};
+      error.error = error;
+      error = EXPORTS.jsonStringifyOrError(error);
+      if (EXPORTS.isError(error)) {
+        onEventError();
       }
     },
 
@@ -579,6 +582,11 @@ add db indexing
       default:
         return 'application/octet-stream';
       }
+    },
+
+    mimeLookup_test: function (onEventError) {
+      console.assert(EXPORTS.mimeLookup('css') === 'text/css');
+      onEventError();
     },
 
     moduleInit: function (module, local2) {
@@ -648,12 +656,7 @@ add db indexing
       /*
         this function test EXPORTS.nop
       */
-      try {
-        console.assert(EXPORTS.nop() === undefined);
-      } catch (error) {
-        onEventError(error);
-        return;
-      }
+      EXPORTS.nop();
       onEventError();
     },
 
@@ -683,28 +686,28 @@ add db indexing
     },
 
     onEventResume: function (mode) {
-      var _error, paused, queue, _resume, self;
+      var paused, queue, _resume, self;
       queue = [];
       _resume = function () {
         paused = false;
         queue.forEach(function (onEventResume) {
-          onEventResume(_error);
+          onEventResume(self.error);
         });
         queue.length = 0;
       };
       self = function (error) {
         if (error === 'pause') {
-          paused = !_error;
+          paused = !self.error;
         } else if (error === 'resume') {
           _resume();
         } else if (EXPORTS.isError(error)) {
-          _error = error;
+          self.error = error;
           _resume();
         } else if (typeof error === 'function') {
           if (paused) {
             queue.push(error);
           } else {
-            error(_error);
+            error(self.error);
           }
         } else {
           throw new Error('unknown error ' + [error]);
@@ -841,6 +844,35 @@ add db indexing
         time: 0,
       };
       _onEventTest = function (test, mode) {
+        var _onEventError;
+        _onEventError = function (error) {
+          if (test.finished) {
+            error = new Error('test callback used multiple times');
+          } else {
+            remaining -= 1;
+            test.finished = true;
+            test.time = (new Date().getTime() - test.time) / 1000;
+          }
+          /* test skipped */
+          if (error === 'skip') {
+            testSuite.skipped += 1;
+            test.skipped = 'skipped';
+          /* test failed */
+          } else if (error) {
+            testSuite.failures += 1;
+            console.error('\n' + testSuite.environment, 'test failed -',
+              local2._name + '.' + test.name);
+            EXPORTS.onEventErrorDefault(error);
+            test.failure = error.stack || error.message || error;
+          /* test passed */
+          } else {
+            testSuite.passed += 1;
+          }
+          /* finished testing */
+          if (!remaining) {
+            _onEventTest(null, 'finish');
+          }
+        };
         if (remaining < 0) {
           if (testSuite.testCases.hasOwnProperty(test)) {
             test = testSuite.testCases[test];
@@ -875,35 +907,13 @@ add db indexing
           return;
         /* start test */
         case 'start':
-          local2[test.name](function (error) {
-            if (test.finished) {
-              error = new Error('test callback used multiple times');
-            } else {
-              remaining -= 1;
-              test.finished = true;
-              test.time = (new Date().getTime() - test.time) / 1000;
-            }
-            /* test skipped */
-            if (error === 'skip') {
-              testSuite.skipped += 1;
-              test.skipped = 'skipped';
-            /* test failed */
-            } else if (error) {
-              testSuite.failures += 1;
-              console.error('\n' + testSuite.environment, 'test failed -',
-                local2._name + '.' + test.name);
-              EXPORTS.onEventErrorDefault(error);
-              test.failure = error.stack || error.message || error;
-            /* test passed */
-            } else {
-              testSuite.passed += 1;
-            }
-            /* finished testing */
-            if (!remaining) {
-              _onEventTest(null, 'finish');
-            }
-          });
+          try {
+            local2[test.name](_onEventError);
+          } catch (error) {
+            _onEventError(error);
+          }
           return;
+        /* run single test */
         default:
           if (test.slice(-5) !== '_test') {
             return;
@@ -930,7 +940,7 @@ add db indexing
 
     testAssert: function (test, onEventError) {
       /*
-        this convenience function when used, helps achieve 100% code coverage in test code
+        this function helps achieve 100% code coverage in test code
       */
       return function (error, data) {
         if (error) {
@@ -941,7 +951,9 @@ add db indexing
           test(data);
         } catch (errorAssert) {
           onEventError(errorAssert);
+          return;
         }
+        onEventError();
       };
     },
 
@@ -1553,7 +1565,7 @@ add db indexing
       if (options.debugFlag || state.debugFlag) {
         console.log(options);
       }
-      return $.ajax(options).done(function (data, textStatus, xhr) {
+      $.ajax(options).done(function (data, textStatus, xhr) {
         global.xhr = xhr;
         switch (options.dataType) {
         case 'statusCode':
@@ -1829,7 +1841,6 @@ add db indexing
       EXPORTS.dbTestChain(self, [function (next) {
         self.recordsDeleteAndUpdate('{}', EXPORTS.testAssert(function (data) {
           console.assert(data === '');
-          next();
         }, next));
       }], onEventError);
     },
@@ -1843,7 +1854,6 @@ add db indexing
       EXPORTS.dbTestChain(self, [function (next) {
         self.recordsGet('{}', EXPORTS.testAssert(function (data) {
           console.assert(data === '{}');
-          next();
         }, next));
       }], onEventError);
     },
@@ -1873,13 +1883,11 @@ add db indexing
       EXPORTS.dbTestChain(self, [function (next) {
         self.tableOptionsUpdateAndGet(null, EXPORTS.testAssert(function (data) {
           console.assert(JSON.parse(data).dirMaxFiles === 1024);
-          next();
         }, next));
       }, function (next) {
         self.tableOptionsUpdateAndGet({ 'dirMaxFiles': 16 },
           EXPORTS.testAssert(function (data) {
             console.assert(JSON.parse(data).dirMaxFiles === 16);
-            next();
           }, next));
       }], onEventError);
     },
@@ -2048,16 +2056,32 @@ add db indexing
       }
       if (state.isTest) {
         /* set test server port */
-        state.serverPort = EXPORTS.serverPortRandom();
-        setTimeout(EXPORTS.serverStart, 1);
+        setTimeout(function () {
+          EXPORTS.serverStart('random');
+        }, 1);
         /* set test timeout */
         setTimeout(process.exit, state.timeoutDefault);
       }
     },
 
+    ajaxLocalServerResumeError_test: function (onEventError) {
+      /*
+        this function tests EXPORTS.ajaxLocal's server resume on error behavior
+      */
+      state.serverResume('resume');
+      state.serverResume(new Error());
+      EXPORTS.ajaxLocal({
+        url: '/test/test.echo'
+      }, function (error) {
+        state.serverResume.error = null;
+        state.serverResume('resume');
+        onEventError(error ? null : new Error());
+      });
+    },
+
     ajaxNodejs: function (options, onEventError) {
       /*
-        this convenience function automatically concatenates the response stream
+        this function automatically concatenates the response stream
         as utf8 text, and passes the concatenated result to the callback
       */
       onEventError = onEventError || EXPORTS.onEventErrorDefault;
@@ -2497,7 +2521,7 @@ add db indexing
 
     shell: function (options) {
       /*
-        this convenience function provides a quick and dirty way to execute shell scripts
+        this function provides a quick and dirty way to execute shell scripts
       */
       if (options.verbose !== false) {
         console.log(['shell', options]);
@@ -2866,6 +2890,10 @@ add db indexing
         return;
       }
       EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
+      /* start repl */
+      if (state.isRepl) {
+        EXPORTS.replStart();
+      }
     },
 
     _replParse: function (script) {
@@ -3276,7 +3304,7 @@ add db indexing
 
     'routerDict_/test/test.echo': function (request, response) {
       /*
-        this convenience function echoes the request back to the response
+        this function echoes the request back to the response
       */
       var headers, name;
       if (!response.headersSent) {
@@ -3295,7 +3323,26 @@ add db indexing
       request.pipe(response);
     },
 
+    'routerDict_/test/test.error': function (request, response) {
+      /*
+        this function responds with default 500
+      */
+      EXPORTS.serverRespondDefault(response, 500);
+    },
+
+    'routerDict_/test/test.timeout': function (request, response) {
+      /*
+        this function responds after state.timeoutDefault milliseconds
+      */
+      setTimeout(function () {
+        response.end();
+      }, state.timeoutDefault);
+    },
+
     'routerDict_/test/test.upload': function (request, response, next) {
+      /*
+        this function receives and parses uploaded test objects
+      */
       EXPORTS.streamReadOnEventError(request, function (error, data) {
         error = error || EXPORTS.jsonParseOrError(data);
         if (EXPORTS.isError(error)) {
@@ -3479,7 +3526,7 @@ add db indexing
 
     serverRespondDefault: function (response, statusCode, contentType, data) {
       /*
-        this convenience function give an appropriate response for a given status code
+        this function handles an appropriate response for a given status code
       */
       statusCode = Number(statusCode);
       data = data || statusCode + ' '
@@ -3553,6 +3600,10 @@ add db indexing
       if (!state.serverPort) {
         return;
       }
+      /* optional random server port */
+      if (state.serverPort === 'random') {
+        state.serverPort = EXPORTS.serverPortRandom();
+      }
       /* setup localhost */
       state.localhost = state.localhost || 'http://localhost:' + state.serverPort;
       /* create server */
@@ -3577,6 +3628,7 @@ add db indexing
 
       + '<style>\n'
       + '</style></head><body>\n'
+      + '<div id="divTest"></div>\n'
 
       + [
         '/public/assets/external.rollup.auto.js',
@@ -4664,9 +4716,9 @@ add db indexing
       /* phantomjs */
       } else if (state.isPhantomjs) {
         /* require */
+        required.system = require('system');
         required.webpage = require('webpage');
         required.webserver = require('webserver');
-        required.system = require('system');
         /* phantomjs server */
         required.webserver.create().listen(required.system.args[2], function (request,
           response) {
@@ -4736,10 +4788,7 @@ add db indexing
     },
 
     _phantomjsTest: function (url, onEventError) {
-      if (url.slice(0, 4) !== 'http') {
-        url = 'http://localhost:' + state.serverPort + url;
-      }
-      url = EXPORTS.urlSearchSetItem(url, 'testOnce', '1', '#');
+      url = 'http://localhost:' + state.serverPort + url;
       EXPORTS.ajaxNodejs({
         data: url,
         /* bug - headers are case-sensitive in phantomjs */
@@ -4749,13 +4798,16 @@ add db indexing
       }, onEventError);
     },
 
-    phantomjsTest_test: function (onEventError) {
+    phantomjsTest_testOnce_test: function (onEventError) {
+      /*
+        this function tests EXPORTS.phantomjsTest's testOnce behavior
+      */
       state.phantomjsResume(function (error) {
         if (error) {
           onEventError('skip');
           return;
         }
-        EXPORTS.phantomjsTest("/test/test.html", onEventError);
+        EXPORTS.phantomjsTest("/test/test.html#testOnce=1", onEventError);
       });
     },
 

@@ -17,12 +17,13 @@
     "cssmin": "*",
     "istanbul": "*",
     "jslint": "*",
+    "phantomjs": "*",
     "uglify-js": "*"
   },
   "main": "utility2.js",
   "name": "utility2",
   "scripts": {
-    "test": "istanbul cover --dir ./tmp/coverage ./utility2.js -- --test"
+    "test": "rm -r tmp/coverage; istanbul cover --dir ./tmp/coverage ./utility2.js -- --repl --test --timeoutDefault 8000"
   },
   "version": "0.0.1"
 }
