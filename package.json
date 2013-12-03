@@ -13,6 +13,7 @@
     "mime": "*",
     "moment": "*",
     "nopt": "*",
+    "phantomjs": "*",
     "uglify-js": "*",
     "underscore": "*",
     "utility2-external": "*"
@@ -21,7 +22,7 @@
   "main": "utility2.js",
   "name": "utility2",
   "scripts": {
-    "test": "rm -r tmp/test_coverage; istanbul cover --dir ./tmp/test_coverage ./utility2.js -- --repl --test --timeoutDefault 8000"
+    "test": "rm -r tmp/test_coverage 2>/dev/null; istanbul cover --dir ./tmp/test_coverage ./utility2.js -- --repl --test --timeoutDefault 8000"
   },
-  "version": "2013.12.02"
+  "version": "2013.12.02-1"
 }
