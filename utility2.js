@@ -1989,7 +1989,8 @@ add db indexing
         'moment',
         'nopt',
         'sqlite3',
-        'uglify-js'
+        'uglify-js',
+        'utility2-external'
       ].forEach(function (module) {
         var module2 = module.replace((/\W/g), '_');
         try {
@@ -3401,6 +3402,14 @@ add db indexing
       EXPORTS.serverRespondFile(response, process.cwd() + request.urlPathNormalized, next);
     },
 
+    'routerAssetsDict_/public/assets/utility2-external': function (request, response, next) {
+      /*
+        this function serves public, external asset files
+      */
+      EXPORTS.serverRespondFile(response, required.utility2_external.__dirname
+        + request.urlPathNormalized.replace('/utility2-external', ''), next);
+    },
+
     'routerAssetsDict_/public/assets/utility2.js': function (request, response) {
       /*
         this function serves the utility2.js asset file
@@ -3621,7 +3630,7 @@ add db indexing
 
     _testHtml: '<!DOCTYPE html><html><head>\n'
       + [
-        '/public/assets/external.rollup.auto.css'
+        '/public/assets/utility2-external/external.rollup.auto.css'
       ].map(function (url) {
         return '<link href="' + url + '" rel="stylesheet" />\n';
       }).join('')
@@ -3631,7 +3640,7 @@ add db indexing
       + '<div id="divTest"></div>\n'
 
       + [
-        '/public/assets/external.rollup.auto.js',
+        '/public/assets/utility2-external/external.rollup.auto.js',
         '/public/assets/utility2.js',
       ].map(function (url) {
         return '<script src="' + url + '"></script>\n';
@@ -3761,11 +3770,11 @@ add db indexing
     },
 
     _adminHtml: '<!DOCTYPE html><html><head>\n'
-      + '<link href="/public/assets/external.rollup.auto.css" rel="stylesheet"/>\n'
+      + '<link href="/public/assets/utility2-external/external.rollup.auto.css" rel="stylesheet"/>\n'
       + '<style>\n'
       + '</style></head><body>\n'
       + '<input id="inputAdminUpload" type="file"/>\n'
-      + '<script src="/public/assets/external.rollup.auto.js"></script>\n'
+      + '<script src="/public/assets/utility2-external/external.rollup.auto.js"></script>\n'
       + '<script src="/public/assets/utility2.js"></script>\n'
       + '</body></html>',
 
@@ -4641,7 +4650,7 @@ add db indexing
 
     _dbHtml: '<!DOCTYPE html><html><head>\n'
       + [
-        '/public/assets/external.rollup.auto.css'
+        '/public/assets/utility2-external/external.rollup.auto.css'
       ].map(function (url) {
         return '<link href="' + url + '" rel="stylesheet" />\n';
       }).join('')
@@ -4650,7 +4659,7 @@ add db indexing
       + '</style></head><body>\n'
 
       + [
-        '/public/assets/external.rollup.auto.js',
+        '/public/assets/utility2-external/external.rollup.auto.js',
         '/public/assets/utility2.js',
       ].map(function (url) {
         return '<script src="' + url + '"></script>\n';

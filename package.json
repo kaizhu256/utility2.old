@@ -1,29 +1,27 @@
 {
   "contributors": [{
     "name": "kai zhu",
-    "email": "kaizhu@yahoo-inc.com"
+    "email": "kaizhu256@gmail.com"
   }],
   "dependencies": {
+    "csslint": "*",
+    "cssmin": "*",
     "express": "*",
     "graceful-fs": "*",
+    "istanbul": "*",
+    "jslint": "*",
     "mime": "*",
     "moment": "*",
     "nopt": "*",
-    "underscore": "*"
+    "uglify-js": "*",
+    "underscore": "*",
+    "utility2-external": "*"
   },
   "description": "common, shared nodejs utilities",
-  "devDependencies": {
-    "csslint": "*",
-    "cssmin": "*",
-    "istanbul": "*",
-    "jslint": "*",
-    "phantomjs": "*",
-    "uglify-js": "*"
-  },
   "main": "utility2.js",
   "name": "utility2",
   "scripts": {
     "test": "rm -r tmp/coverage; istanbul cover --dir ./tmp/coverage ./utility2.js -- --repl --test --timeoutDefault 8000"
   },
-  "version": "0.0.1"
+  "version": "2013.12.02"
 }
