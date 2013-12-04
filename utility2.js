@@ -62,17 +62,17 @@ add db indexing
         if (process.versions.node) {
           state.isNodejs = true;
           EXPORTS.require = EXPORTS.require || require;
-          /* underscore */
+          /* nodejs underscore */
           global.underscore = global.underscore || require('underscore');
         }
-        /* node-webkit */
+        /* nodejs node-webkit */
         state.isNodeWebkit = process.versions['node-webkit'];
       }
       /* phantomjs */
       if (global.phantom) {
         state.isPhantomjs = true;
         EXPORTS.state.serverPort = require('system').args[1];
-      /* browser */
+      /* browser - requires jquery */
       } else if (global.document && global.jQuery) {
         state.isBrowser = true;
       }
@@ -110,7 +110,10 @@ add db indexing
       /* create object deferring code that requires server initialization first */
       state.serverResume = state.serverResume || EXPORTS.onEventResume('pause');
       /* misc ascii reference */
-      state.string256 = '\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\b\t\n\u000b\f\r\u000e\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c\u001d\u001e\u001f !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~';
+      state.string256 = '\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\b\t\n\u000b\f\r\u000e'
+        + '\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c'
+        + '\u001d\u001e\u001f !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_'
+        + '`abcdefghijklmnopqrstuvwxyz{|}~';
       /* global default timeout */
       state.timeoutDefault = state.timeoutDefault || 30 * 1000;
       if (!state.isNodejs) {
@@ -174,7 +177,7 @@ add db indexing
 
     _ajaxLocal_timeout_test: function (onEventError) {
       /*
-        this function tests EXPORTS.ajaxLocal's timeout behavior
+        this function tests ajaxLocal's timeout behavior
       */
       EXPORTS.ajaxLocal({
         timeout: 1,
@@ -232,9 +235,22 @@ add db indexing
       });
     },
 
+    _ajaxLocalMulti_error_test: function (onEventError) {
+      /*
+        this function tests ajaxLocalMulti's error-handling behavior
+      */
+      EXPORTS.ajaxLocalMulti({
+        url: '/test/test.error'
+      }, function (error) {
+        if (error) {
+          onEventError();
+        }
+      });
+    },
+
     _ajaxLocalMulti_multi_test: function (onEventError) {
       /*
-        this function tests EXPORTS.ajaxLocalMulti's multi ajax requests
+        this function tests ajaxLocalMulti's multi-ajax requests behavior
       */
       EXPORTS.ajaxLocalMulti({
         url: '/test/test.echo?aa=1&aa=2&bb=3&bb=4&cc=5#dd=6'
@@ -248,7 +264,7 @@ add db indexing
 
     _ajaxLocalMulti_multiError_test: function (onEventError) {
       /*
-        this function tests EXPORTS.ajaxLocalMulti's multi ajax requests with error
+        this function tests ajaxLocalMulti's multi error-handling behavior
       */
       EXPORTS.ajaxLocalMulti({
         url: '/test/test.error?aa=1&aa=2&bb=3&bb=4&cc=5#dd=6'
@@ -261,7 +277,7 @@ add db indexing
 
     _ajaxLocalMulti_nullCase_test: function (onEventError) {
       /*
-        this function tests EXPORTS.ajaxLocalMulti's null case
+        this function tests ajaxLocalMulti's null-case behavior
       */
       EXPORTS.ajaxLocalMulti({
         url: '/test/test.echo'
@@ -275,12 +291,33 @@ add db indexing
       return global.atob(text.replace((/-/g), '+').replace((/_/g), '/'));
     },
 
+    base64Decode_default_test: function (onEventError) {
+      /*
+        this function tests base64Decode's default behavior
+      */
+      console.assert(EXPORTS.base64Decode('') === '');
+      console.assert(EXPORTS.base64Encode('state.string256') === 'c3RhdGUuc3RyaW5nMjU2');
+      onEventError();
+    },
+
     base64Encode: function (text) {
       /*
         this function base64 encodes text in a uri-friendly manner
       */
       return global.btoa(text).replace((/\+/g), '-').replace((/\//g), '_')
         .replace((/\=+/g), '');
+    },
+
+    base64Encode_default_test: function (onEventError) {
+      /*
+        this function tests base64Encode's default behavior
+      */
+      console.assert(EXPORTS.base64Encode('') === '');
+      console.assert(EXPORTS.base64Encode(state.string256)
+        === 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD'
+          + '0-P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6'
+          + 'e3x9fg');
+      onEventError();
     },
 
     clearCallSetInterval: function (key, callback, interval) {
@@ -338,7 +375,7 @@ add db indexing
 
     _createUtc_default_test: function (onEventError) {
       /*
-        this function test EXPORTS.createUtc
+        this function tests createUtc's default behavior
       */
       console.assert(EXPORTS.createUtc().toISOString().slice(0, 19)
         === new Date().toISOString().slice(0, 19));
@@ -373,7 +410,7 @@ add db indexing
 
     _dateAndSalt_default_test: function (onEventError) {
       /*
-        this function tests EXPORTS.dateAndSalt
+        this function tests dateAndSalt
       */
       /* assert each call returns incrementing result */
       onEventError(!(EXPORTS.dateAndSalt(1) < EXPORTS.dateAndSalt(2)
@@ -390,8 +427,8 @@ add db indexing
 
     ioAggregate: function (callbacks, onEventError) {
       /*
-        this function aggregates the result from a list of async callbacks of the form
-        function (onEventError)
+        this function aggregates the result from a list of async callbacks of the form:
+        function (onEventError) {...}
       */
       var _onEventError, remaining;
       remaining = callbacks.length;
@@ -409,14 +446,14 @@ add db indexing
           onEventError(error);
         }
       };
-      callbacks.forEach(function (io) {
-        io(_onEventError);
+      callbacks.forEach(function (callback) {
+        callback(_onEventError);
       });
     },
 
     _ioAggregate_default_test: function (onEventError) {
       /*
-        this function test EXPORTS.ioAggregate
+        this function tests ioAggregate's default behavior
       */
       var result;
       result = 0;
@@ -459,7 +496,7 @@ add db indexing
 
     _ioChain_default_test: function (onEventError) {
       /*
-        this function tests EXPORTS.ioChain
+        this function tests ioChain
       */
       var data;
       data = 0;
@@ -517,14 +554,14 @@ add db indexing
 
     _jsEvalOnEventError_default_test: function (onEventError) {
       /*
-        this function tests EXPORTS.jsEvalOnEventError's default behavior
+        this function tests jsEvalOnEventError's default behavior
       */
       EXPORTS.jsEvalOnEventError('', 'null', onEventError);
     },
 
     _jsEvalOnEventError_syntaxError_test: function (onEventError) {
       /*
-        this function tests EXPORTS.jsEvalOnEventError's syntax error behavior
+        this function tests jsEvalOnEventError's syntax error behavior
       */
       EXPORTS.jsEvalOnEventError('', 'syntax error', function (error) {
         EXPORTS.tryCatchOnEventError(function () {
@@ -546,7 +583,7 @@ add db indexing
 
     _jsonParseOrError_syntaxError_test: function (onEventError) {
       /*
-        this function tests EXPORTS.jsonParseOrError's syntax error behavior
+        this function tests jsonParseOrError's syntax error behavior
       */
       var error;
       error = EXPORTS.jsonParseOrError('syntax error!');
@@ -568,7 +605,7 @@ add db indexing
 
     _jsonStringifyOrError_recursionError_test: function (onEventError) {
       /*
-        this function tests EXPORTS.jsonStringifyOrError's recursion error behavior
+        this function tests jsonStringifyOrError's recursion error behavior
       */
       var error;
       error = {};
@@ -677,7 +714,7 @@ add db indexing
 
     _nop_default_test: function (onEventError) {
       /*
-        this function test EXPORTS.nop
+        this function tests nop's default behavior
       */
       EXPORTS.nop();
       onEventError();
@@ -2092,7 +2129,7 @@ add db indexing
 
     _ajaxLocal_serverResumeError_test: function (onEventError) {
       /*
-        this function tests EXPORTS.ajaxLocal's server resume on error behavior
+        this function tests ajaxLocal's server resume on error behavior
       */
       state.serverResume('resume');
       state.serverResume(new Error());
@@ -3234,20 +3271,24 @@ add db indexing
       /* security - basic auth */
       state.securityBasicAuthSecret = state.securityBasicAuthSecret
         || Math.random().toString(36).slice(2);
-      /* middleware */
-      state.middleware = state.middleware
-        || local._createMiddleware(state.routerDict);
-      state.middlewareLogger = state.middlewareLogger || function (request, response, next) {
-        next();
-      };
-      state.middlewareAssets = state.middlewareAssets
-        || local._createMiddleware(state.routerAssetsDict);
+      /* 1. middleware pre-logger */
       state.middlewarePrelogger = state.middlewarePrelogger
         || local._createMiddleware(state.routerPreloggerDict);
-      state.middlewareProxy = state.middlewareProxy
-        || local._createMiddleware(state.routerProxyDict);
+      /* 2. middleware logger */
+      state.middlewareLogger = state.middlewareLogger || required.express.logger('dev');
+      /* 3. middleware security */
       state.middlewareSecurity = state.middlewareSecurity
         || local._createMiddleware(state.routerSecurityDict);
+      /* 4. middleware proxy */
+      state.middlewareProxy = state.middlewareProxy
+        || local._createMiddleware(state.routerProxyDict);
+      /* 5. middleware backend */
+      state.middleware = state.middleware || local._createMiddleware(state.routerDict);
+      /* 6. middleware assets */
+      state.middlewareAssets = state.middlewareAssets
+        || local._createMiddleware(state.routerAssetsDict);
+      /* start server */
+      EXPORTS.serverStart();
     },
 
     'routerPreloggerDict_/favicon.ico': function (request, response, next) {
@@ -3353,7 +3394,7 @@ add db indexing
       /*
         this function responds with default 500
       */
-      EXPORTS.serverRespondDefault(response, 500);
+      EXPORTS.serverRespondDefault(response, 500, null, 'testing server error');
     },
 
     'routerDict_/test/test.timeout': function (request, response) {
@@ -3520,7 +3561,7 @@ add db indexing
               if (_onEventError(error)) {
                 return;
               }
-              /* call backend proxy middleware */
+              /* call backend middleware */
               state.middleware(request, response, function (error) {
                 if (_onEventError(error)) {
                   return;
@@ -4747,33 +4788,32 @@ add db indexing
       /* nodejs */
       if (state.isNodejs) {
         EXPORTS.phantomjsSpawn();
-      /* phantomjs */
-      } else if (state.isPhantomjs) {
-        /* require */
-        required.system = require('system');
-        required.webpage = require('webpage');
-        required.webserver = require('webserver');
-        /* phantomjs server */
-        required.webserver.create().listen(required.system.args[2], function (request,
-          response) {
-          response.write('200');
-          response.close();
-          try {
-            var page = required.webpage.create(), url = request.post;
-            page.onConsoleMessage = console.log;
-            page.open(url, function (status) {
-              console.log('phantomjs open -', status, '-', url);
-            });
-            /* page timeout */
-            setTimeout(function () {
-              page.close();
-            }, state.timeoutDefault);
-          } catch (error) {
-            EXPORTS.onEventErrorDefault(error);
-          }
-        });
-        console.log('phantomjs server started on port ' + required.system.args[1]);
       }
+      /* phantomjs */
+      if (!state.isPhantomjs) {
+        return;
+      }
+      /* require */
+      required.system = require('system');
+      required.webpage = require('webpage');
+      required.webserver = require('webserver');
+      /* phantomjs server */
+      required.webserver.create().listen(required.system.args[2], function (request, response) {
+        response.write('200');
+        response.close();
+        EXPORTS.tryCatchOnEventError(function () {
+          var page = required.webpage.create(), url = request.post;
+          page.onConsoleMessage = console.log;
+          page.open(url, function (status) {
+            console.log('phantomjs open -', status, '-', url);
+          });
+          /* page timeout */
+          setTimeout(function () {
+            page.close();
+          }, state.timeoutDefault);
+        }, EXPORTS.onEventErrorDefault);
+      });
+      console.log('phantomjs server started on port ' + required.system.args[1]);
     },
 
     phantomjsSpawn: function () {
@@ -4822,7 +4862,7 @@ add db indexing
     },
 
     _phantomjsTest: function (url, onEventError) {
-      url = 'http://localhost:' + state.serverPort + url;
+      url = state.localhost + url;
       EXPORTS.ajaxNodejs({
         data: url,
         /* bug - headers are case-sensitive in phantomjs */
@@ -4834,7 +4874,7 @@ add db indexing
 
     _phantomjsTest_testOnce_test: function (onEventError) {
       /*
-        this function tests EXPORTS.phantomjsTest's testOnce behavior
+        this function tests phantomjsTest's testOnce behavior
       */
       state.phantomjsResume(function (error) {
         if (error) {
