@@ -21,9 +21,13 @@
   "description": "common, shared nodejs utilities",
   "main": "utility2.js",
   "name": "utility2",
+  "repository" : {
+    "type" : "git",
+    "url" : "https://github.com/kaizhu256/utility2"
+  },
   "scripts": {
     "start": "./utility2.js --repl --serverPort random",
     "test": "rm -r tmp/test_coverage 2>/dev/null; istanbul cover --dir ./tmp/test_coverage ./utility2.js -- --repl --test --timeoutDefault 8000"
   },
-  "version": "2013.12.02-1"
+  "version": "2013.12.03-1"
 }

@@ -6,8 +6,6 @@ utility2.js
 common, shared utilities for both browser and nodejs
 
 todo:
-npm WARN package.json utility2@2013.12.02-1 No repository field.
-npm WARN package.json utility2@2013.12.02-1 No README data
 add phantomjs code coverage
 integrate forever-webui
 db add admin webui
