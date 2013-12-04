@@ -6,6 +6,8 @@ utility2.js
 common, shared utilities for both browser and nodejs
 
 todo:
+add ajaxNodejsMaster
+add heroku dynamic config server
 add phantomjs code coverage
 integrate forever-webui
 db add admin webui
@@ -816,6 +818,9 @@ add db indexing
     },
 
     serverPortRandom: function () {
+      /*
+        this function generates a random port number from 32768-65535
+      */
       /*jslint bitwise: true*/
       return (Math.random() * 0xffff) | 0x8000;
     },
@@ -826,7 +831,8 @@ add db indexing
         and sets default values for unset leaf nodes
       */
       underscore.each(defaults, function (valueDefault, key) {
-        var value = options[key];
+        var value;
+        value = options[key];
         /* set default value */
         if (value === undefined) {
           options[key] = valueDefault;
@@ -842,7 +848,8 @@ add db indexing
     },
 
     _setOptionsDefaults_default_test: function (onEventError) {
-      var options = EXPORTS.setOptionsDefaults({ aa: 1, bb: {}, cc: [] },
+      var options;
+      options = EXPORTS.setOptionsDefaults({ aa: 1, bb: {}, cc: [] },
         { aa: 2, bb: { cc: 2 }, cc: [1, 2] });
       onEventError(options.aa === 1
           && options.bb.cc === 2
@@ -872,7 +879,8 @@ add db indexing
 
     templateFormat: function (template, dict) {
       return template.replace((/\{\{\w+\}\}/g), function (key) {
-        var value = dict[key.slice(2, -2)];
+        var value;
+        value = dict[key.slice(2, -2)];
         return typeof value === 'string' ? value : key;
       });
     },
@@ -891,8 +899,9 @@ add db indexing
       if (state.isPhantomjs || (state.isBrowser && !state.isBrowserTest)) {
         return;
       }
-      var environment, _onEventTest, remaining = 0, testSuite;
+      var environment, _onEventTest, remaining, testSuite;
       environment = state.isBrowser ? 'browser' : 'nodejs';
+      remaining = 0;
       testSuite = {
         environment: environment,
         failures: 0,
@@ -1018,7 +1027,8 @@ add db indexing
     },
 
     testReport: function () {
-      var result = '\n';
+      var result;
+      result = '\n';
       state.testSuites.forEach(function (testSuite) {
         result += [testSuite.environment, 'tests -', testSuite.failures, 'failed /',
           testSuite.skipped, 'skipped /', testSuite.passed, 'passed in', testSuite.name]
@@ -1090,13 +1100,11 @@ add db indexing
     },
 
     urlSearchParse: function (url, delimiter) {
+      var key, match, params, regexp, search, value;
       delimiter = delimiter || '?';
-      var key,
-        match = url.indexOf(delimiter),
-        params = {},
-        regexp = (/([^&]+)=([^&]+)/g),
-        search,
-        value;
+      match = url.indexOf(delimiter);
+      params = {};
+      regexp = (/([^&]+)=([^&]+)/g);
       if (match < 0) {
         return { params: params, path: url };
       }
@@ -1119,7 +1127,8 @@ add db indexing
     },
 
     urlSearchParsedJoin: function (parsed, delimiter) {
-      var path = parsed.path;
+      var path;
+      path = parsed.path;
       delimiter = delimiter || '?';
       if (path.indexOf(delimiter) < 0) {
         path += delimiter;
@@ -1136,13 +1145,15 @@ add db indexing
     },
 
     urlSearchRemoveItem: function (url, key, delimiter) {
-      var parsed = EXPORTS.urlSearchParse(url, delimiter);
+      var parsed;
+      parsed = EXPORTS.urlSearchParse(url, delimiter);
       parsed.params[key] = null;
       return EXPORTS.urlSearchParsedJoin(parsed, delimiter);
     },
 
     urlSearchSetItem: function (url, key, value, delimiter) {
-      var parsed = EXPORTS.urlSearchParse(url, delimiter);
+      var parsed;
+      parsed = EXPORTS.urlSearchParse(url, delimiter);
       parsed.params[key] = value;
       return EXPORTS.urlSearchParsedJoin(parsed, delimiter);
     },
@@ -1157,7 +1168,8 @@ add db indexing
         this function returns uuid4 string of form xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
       */
       /*jslint bitwise: true*/
-      var id = '', ii;
+      var id, ii;
+      id = '';
       for (ii = 0; ii < 32; ii += 1) {
         switch (ii) {
         case 8:
@@ -1191,7 +1203,8 @@ add db indexing
     this browser module exports common, shared utilities
    */
   'use strict';
-  var local = {
+  var local;
+  local = {
 
     _name: 'utility2.moduleCommonBrowser',
 
@@ -1229,7 +1242,8 @@ add db indexing
     this browser module exports fts api
    */
   'use strict';
-  var local = {
+  var local;
+  local = {
 
     _name: 'utility2.moduleFtsShared',
 
@@ -1267,13 +1281,16 @@ add db indexing
     },
 
     createFts: function () {
-      var self = new local._Fts();
+      var self;
+      self = new local._Fts();
       self.data = { prefixTable: {}, tokenTable: {} };
       return self;
     },
 
     _Fts_prototype_addData: function (data) {
-      var self = this.data, _prefixTable = {}, id, ii, key;
+      var _prefixTable, self, id, ii, key;
+      _prefixTable = {};
+      self = this.data;
       /* break data into smaller chunks if too big*/
       if (data.length > 256) {
         for (ii = 0; ii < data.length; ii += 256) {
@@ -1303,16 +1320,14 @@ add db indexing
     },
 
     _Fts_prototype_query: function (query) {
-      var self = this.data,
-        list,
-        lists = [],
-        match,
-        prefixes = [],
-        /* optimization - 2 letter prefix */
-        regexp = (/[^\s]{2,}/g),
-        result = [],
-        shortestList;
+      var list, lists, match, prefixes, regexp, result, self, shortestList;
+      lists = [];
+      prefixes = [];
       query = query.trim().toLowerCase();
+      /* optimization - 2 letter prefix */
+      regexp = (/[^\s]{2,}/g);
+      result = [];
+      self = this.data;
       while (true) {
         match = regexp.exec(query);
         if (!match) {
@@ -1338,7 +1353,8 @@ add db indexing
         return [];
       }
       shortestList.forEach(function (id) {
-        var ii, tokens = self.tokenTable[id];
+        var ii, tokens;
+        tokens = self.tokenTable[id];
         for (ii = 0; ii < lists.length; ii += 1) {
           if (lists[ii].indexOf(id) < 0) {
             return;
@@ -1363,7 +1379,8 @@ add db indexing
 
     _Fts_default_test: function (onEventError) {
       try {
-        var result, self = EXPORTS.createFts();
+        var result, self;
+        self = EXPORTS.createFts();
         self.addData([[1, 'ab cc'], [2, 'aa bb- Cc aa'], [3, 'aBc']]);
         result = JSON.stringify(self.query('aa cc'));
         if (result !== '[["2"," aa bb cc aa "]]') {
@@ -1387,7 +1404,8 @@ add db indexing
     this browser module handles the global state and syncs it with localStorage and permalink
    */
   'use strict';
-  var local = {
+  var local;
+  local = {
 
     _name: 'utility2.moduleStateBrowser',
 
@@ -1445,7 +1463,9 @@ add db indexing
     },
 
     stateRestoreInput: function (target) {
-      var key = target.attr('data-state'), parent = target.parent(), value;
+      var key, parent, value;
+      key = target.attr('data-state');
+      parent = target.parent();
       if (localStorage.hasOwnProperty(key)) {
         value = localStorage[key];
         switch (target.prop('tagName').toLowerCase()) {
@@ -1489,7 +1509,8 @@ add db indexing
     },
 
     _onEventInputStateChange: function (event) {
-      var target = $(event.target);
+      var target;
+      target = $(event.target);
       switch (target.prop('tagName').toLowerCase()) {
       case 'input':
       case 'textarea':
@@ -1500,7 +1521,9 @@ add db indexing
     },
 
     _onEventDivSplitBtnDropdownRedraw: function (target) {
-      var children = target.children(), width = target.innerWidth();
+      var children, width;
+      children = target.children();
+      width = target.innerWidth();
       $(children[0]).outerWidth(width - 32);
       $(children[2]).outerWidth(width - 48);
     },
@@ -1512,12 +1535,13 @@ add db indexing
     },
 
     _onEventDivSplitBtnDropdownAClick: function (event) {
+      var target, parent, btn, key, value;
       event.preventDefault();
-      var target = $(event.target),
-        parent = target.parents('.divSplitBtnDropdown'),
-        btn = parent.children('button[data-state]'),
-        key = btn.attr('data-state'),
-        value = target.attr('data-value');
+      target = $(event.target);
+      parent = target.parents('.divSplitBtnDropdown');
+      btn = parent.children('button[data-state]');
+      key = btn.attr('data-state');
+      value = target.attr('data-value');
       /* save button state */
       if (key) {
         EXPORTS.stateSetItem(key, value);
@@ -1541,7 +1565,8 @@ add db indexing
     with an automatic progress meter
   */
   'use strict';
-  var local = {
+  var local;
+  local = {
 
     _name: 'utility2.moduleXhrProgressBrowser',
 
@@ -1651,15 +1676,19 @@ add db indexing
     },
 
     _ajaxProgressOnEventErrorFile: function (options, onEventError) {
+      /*
+        this function uploads a file
+      */
+      var reader;
       options.headers = options.headers || {};
       options.headers['upload-filename'] = options.file.name;
       options.processData = false;
-      var reader = new global.FileReader();
+      reader = new global.FileReader();
       reader.onload = function (event) {
         /*jslint bitwise: true*/
-        var data = event.target.result,
-          ii,
-          ui8a = new global.Uint8Array(data.length);
+        var data, ii, ui8a;
+        data = event.target.result;
+        ui8a = new global.Uint8Array(data.length);
         for (ii = 0; ii < data.length; ii += 1) {
           ui8a[ii] = data.charCodeAt(ii) & 0xff;
         }
@@ -1701,7 +1730,8 @@ add db indexing
     },
 
     _xhrProgress: function () {
-      var xhr = new XMLHttpRequest();
+      var xhr;
+      xhr = new XMLHttpRequest();
       /* event handling */
       function _onEvent(event) {
         switch (event.type) {
@@ -1782,7 +1812,8 @@ add db indexing
     this browser module exports the admin api
   */
   'use strict';
-  var local = {
+  var local;
+  local = {
 
     _name: 'utility2.moduleAdminBrowser',
 
@@ -1828,7 +1859,8 @@ add db indexing
     this shared module exports key / value data store
   */
   'use strict';
-  var local = {
+  var local;
+  local = {
 
     _name: 'utility2.moduleDbShared',
 
@@ -2009,7 +2041,8 @@ add db indexing
     this nodejs module exports common, nodejs utilities
   */
   'use strict';
-  var local = {
+  var local;
+  local = {
 
     _name: 'utility2.moduleCommonNodejs',
 
@@ -2050,6 +2083,7 @@ add db indexing
         'mime',
         'moment',
         'nopt',
+        'phantomjs',
         'sqlite3',
         'uglify-js',
         'utility2-external'
@@ -2627,7 +2661,8 @@ add db indexing
     this nodejs module exports filesystem api
   */
   'use strict';
-  var local = {
+  var local;
+  local = {
 
     _name: 'utility2.moduleFsNodejs',
 
@@ -2940,7 +2975,8 @@ add db indexing
     this nodejs module starts up an interactive console debugger
   */
   'use strict';
-  var local = {
+  var local;
+  local = {
 
     _name: 'utility2.moduleReplNodejs',
 
@@ -3043,7 +3079,8 @@ add db indexing
     this nodejs module exports rollup api
   */
   'use strict';
-  var local = {
+  var local;
+  local = {
 
     _name: 'utility2.moduleRollupNodejs',
 
@@ -3252,7 +3289,8 @@ add db indexing
     this nodejs module exports filesystem api
   */
   'use strict';
-  var local = {
+  var local;
+  local = {
 
     _name: 'utility2.moduleServerNodejs',
 
@@ -3332,14 +3370,14 @@ add db indexing
       next();
     },
 
-    'routerDict_/backend/backend.ajax': function (request, response, next) {
+    'routerProxyDict_/proxy/proxy.ajax': function (request, response, next) {
       /*
-        this function proxies frontend request to backend
+        this function proxies frontend request
       */
-      var headers = EXPORTS.objectCopyDeep(request.headers),
-        url = EXPORTS.templateFormat(request.url.replace('/backend/backend.ajax/', ''),
-          state.backendHostDict),
-        urlParsed = required.url.parse(url);
+      var headers, url, urlParsed;
+      headers = EXPORTS.objectCopyDeep(request.headers);
+      url = EXPORTS.templateFormat(request.url.replace('/proxy/proxy.ajax/', ''));
+      urlParsed = required.url.parse(url);
       headers.host = urlParsed.host;
       EXPORTS.ajaxNodejs({
         headers: headers,
@@ -3592,8 +3630,7 @@ add db indexing
       return (/^localhost\b/).test(request.headers.host)
         /* basic auth validation */
         || (/\S*$/).exec(request.headers.authorization || '')[0]
-        === state.securityBasicAuthSecret
-        || state.isDemo;
+        === state.securityBasicAuthSecret;
     },
 
     serverRespondDefault: function (response, statusCode, contentType, data) {
@@ -3721,7 +3758,8 @@ add db indexing
     this admin module exports the admin api
   */
   'use strict';
-  var local = {
+  var local;
+  local = {
 
     _name: 'utility2.moduleAdminNodejs',
 
@@ -3852,7 +3890,8 @@ add db indexing
     this nodejs module implements an asynchronous, b-tree, records / fields data store
   */
   'use strict';
-  var local = {
+  var local;
+  local = {
 
     _name: 'utility2.moduleDbNodejs',
 
@@ -4740,7 +4779,8 @@ add db indexing
     this shared module exports server-dependent tests
   */
   'use strict';
-  var local = {
+  var local;
+  local = {
 
     _name: 'utility2.moduleTestServerShared',
 
@@ -4763,7 +4803,8 @@ add db indexing
     this nodejs / phantomjs module runs a phantomjs server
   */
   'use strict';
-  var local = {
+  var local;
+  local = {
 
     _name: 'utility2.modulePhantomjsShared',
 
@@ -4837,7 +4878,7 @@ add db indexing
       }, 10 * 1000);
       /* spawn phantomjs process */
       try {
-        EXPORTS.shell('phantomjs ' + required.utility2.file + ' '
+        EXPORTS.shell(required.phantomjs.path + ' ' + required.utility2.file + ' '
           + state.serverPort + ' ' + state.phantomjsPort)
           .on('close', function (exitCode) {
             state.phantomjsResume(new Error(exitCode));
