@@ -2118,10 +2118,6 @@ add db indexing
         });
       }
       if (state.isTest) {
-        /* set test server port */
-        setTimeout(function () {
-          EXPORTS.serverStart('random');
-        }, 1);
         /* set test timeout */
         setTimeout(process.exit, state.timeoutDefault);
       }
@@ -3596,7 +3592,8 @@ add db indexing
       return (/^localhost\b/).test(request.headers.host)
         /* basic auth validation */
         || (/\S*$/).exec(request.headers.authorization || '')[0]
-        === state.securityBasicAuthSecret;
+        === state.securityBasicAuthSecret
+        || state.isDemo;
     },
 
     serverRespondDefault: function (response, statusCode, contentType, data) {
