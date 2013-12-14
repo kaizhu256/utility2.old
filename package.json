@@ -4,6 +4,7 @@
     "email": "kaizhu256@gmail.com"
   }],
   "dependencies": {
+    "coveralls": "*",
     "csslint": "*",
     "cssmin": "*",
     "express": "*",

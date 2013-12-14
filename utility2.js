@@ -2184,6 +2184,7 @@ add db indexing
         });
       }, 60 * 1000);
       if (state.isTest) {
+        EXPORTS.debugProcessOnce();
         /* set test timeout */
         setTimeout(process.exit, state.timeoutDefault);
       }
@@ -2475,6 +2476,20 @@ add db indexing
           quiet: true
         }));
       return script;
+    },
+
+    debugProcessOnce: function () {
+      /*
+        this function prints debug info about the current process once
+      */
+      if (state.debugProcessOnced) {
+        return;
+      }
+      state.debugProcessOnced = true;
+      console.log(['process.cwd()', process.cwd()]);
+      console.log(['process.pid', process.pid]);
+      console.log(['process.argv', process.argv]);
+      console.log(['process.env', process.env]);
     },
 
     fsWatch: function (file) {
