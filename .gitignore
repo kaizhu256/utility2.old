@@ -1,11 +1,7 @@
-/artifacts/
-/bower_components/
-/node_modules/
-/local_modules/sandbox.js
-/tmp/
 *.bak
 *.log
 *.min.*
+*.pid
 *.swp
 .DS_Store
 ._*
@@ -13,6 +9,12 @@
 .hg
 .lock-wscript
 .svn
+.vim
 .wafpickle-*
+/artifacts/
+/bower_components/
+/local_modules/sandbox.js
+/node_modules/
+/tmp/
 CVS
 npm-debug.log
