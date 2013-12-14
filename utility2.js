@@ -29,6 +29,7 @@ add db indexing
   var local;
   try {
     window.global = window.global || window;
+    window.module = window.module || null;
   } catch (ignore) {
   }
   global.EXPORTS = global.EXPORTS || {};
@@ -101,7 +102,7 @@ add db indexing
         this function initializes the module
       */
       EXPORTS.moduleInit = local.moduleInit;
-      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
+      EXPORTS.moduleInit(module, local);
     },
 
     _initOnce: function () {
@@ -172,6 +173,9 @@ add db indexing
         if (error) {
           onEventError(error);
           return;
+        }
+        if (options.url[0] === '/') {
+          options.url = state.localhost + options.url;
         }
         EXPORTS.ajaxNodejs(options, onEventError);
       });
@@ -830,8 +834,9 @@ add db indexing
         this function recursively walks through the options tree,
         and sets default values for unset leaf nodes
       */
-      underscore.each(defaults, function (valueDefault, key) {
-        var value;
+      Object.keys(defaults).forEach(function (key) {
+        var value, valueDefault;
+        valueDefault = defaults[key];
         value = options[key];
         /* set default value */
         if (value === undefined) {
@@ -1212,7 +1217,7 @@ add db indexing
       if (!state.isBrowser) {
         return;
       }
-      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
+      EXPORTS.moduleInit(module, local);
     },
 
     _initOnce: function () {
@@ -1248,7 +1253,7 @@ add db indexing
     _name: 'utility2.moduleFtsShared',
 
     _init: function () {
-      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
+      EXPORTS.moduleInit(module, local);
     },
 
     _ftsAddDatum: function (id, text, prefixTable) {
@@ -1413,7 +1418,7 @@ add db indexing
       if (!state.isBrowser) {
         return;
       }
-      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
+      EXPORTS.moduleInit(module, local);
     },
 
     _initOnce: function () {
@@ -1574,7 +1579,7 @@ add db indexing
       if (!state.isBrowser || state.divXhrProgress) {
         return;
       }
-      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
+      EXPORTS.moduleInit(module, local);
     },
 
     _initOnce: function () {
@@ -1821,7 +1826,7 @@ add db indexing
       if (!state.isBrowser) {
         return;
       }
-      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
+      EXPORTS.moduleInit(module, local);
     },
 
     _initOnce: function () {
@@ -1865,7 +1870,7 @@ add db indexing
     _name: 'utility2.moduleDbShared',
 
     _init: function () {
-      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
+      EXPORTS.moduleInit(module, local);
     },
 
     createDb: function (name) {
@@ -2050,7 +2055,7 @@ add db indexing
       if (!state.isNodejs) {
         return;
       }
-      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
+      EXPORTS.moduleInit(module, local);
     },
 
     _initOnce: function () {
@@ -2143,6 +2148,18 @@ add db indexing
           }
         }
       });
+      /* load default config file */
+      EXPORTS.tryCatchOnEventError(function () {
+        /*jslint stupid: true*/
+        state.configDefault = {};
+        state.configDefault = JSON.parse(required.fs.readFileSync(process.cwd()
+          + '/config_default.json'));
+        EXPORTS.setOptionsDefaults(state, EXPORTS.objectCopyDeep(state.configDefault));
+        state.configOverride = state.configOverride
+          || EXPORTS.objectCopyDeep(state.configDefault);
+        console.log('loaded config_default.json');
+      }, EXPORTS.nop);
+      /* socks5 proxy */
       if (state.socks5) {
         state.socks5LocalPort = EXPORTS.serverPortRandom();
         EXPORTS.shell({
@@ -2151,6 +2168,22 @@ add db indexing
           stdio: []
         });
       }
+      /* load dynamic config from external url every 60 seconds */
+      state.configOverrideUrl = state.configOverrideUrl || '/config/configOverride.json';
+      EXPORTS.clearCallSetInterval('configLoadOverride', function () {
+        EXPORTS.ajaxNodejs({
+          dataType: 'json',
+          url: state.configOverrideUrl
+        }, function (error, data) {
+          if (error) {
+            EXPORTS.onEventErrorDefault(error);
+            return;
+          }
+          state.configOverride = data;
+          underscore.extend(state, EXPORTS.objectCopyDeep(state.configOverride));
+          console.log('loaded override config from ' + state.configOverrideUrl);
+        });
+      }, 60 * 1000);
       if (state.isTest) {
         /* set test timeout */
         setTimeout(process.exit, state.timeoutDefault);
@@ -2183,7 +2216,8 @@ add db indexing
       }
       /* default to localhost if missing http://<host> prefix in url */
       if (options.url[0] === '/') {
-        options.url = state.localhost + options.url;
+        EXPORTS.ajaxLocal(options, onEventError);
+        return;
       }
       /* assert valid http / https url */
       console.assert(options.url && options.url.slice(0, 4) === 'http', [options.url]);
@@ -2670,7 +2704,7 @@ add db indexing
       if (!state.isNodejs) {
         return;
       }
-      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
+      EXPORTS.moduleInit(module, local);
     },
 
     _initOnce: function () {
@@ -2984,7 +3018,7 @@ add db indexing
       if (!state.isNodejs) {
         return;
       }
-      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
+      EXPORTS.moduleInit(module, local);
       /* start repl */
       if (state.isRepl) {
         EXPORTS.replStart();
@@ -3088,7 +3122,7 @@ add db indexing
       if (!state.isNodejs) {
         return;
       }
-      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
+      EXPORTS.moduleInit(module, local);
     },
 
     _initOnce: function () {
@@ -3298,13 +3332,13 @@ add db indexing
       if (!state.isNodejs) {
         return;
       }
-      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
+      EXPORTS.moduleInit(module, local);
     },
 
     _initOnce: function () {
       /* security - basic auth */
-      state.securityBasicAuthSecret = state.securityBasicAuthSecret
-        || Math.random().toString(36).slice(2);
+      // state.securityBasicAuthSecret = state.securityBasicAuthSecret
+        // || Math.random().toString(36).slice(2);
       /* 1. middleware pre-logger */
       state.middlewarePrelogger = state.middlewarePrelogger
         || local._createMiddleware(state.routerPreloggerDict);
@@ -3393,6 +3427,20 @@ add db indexing
       });
     },
 
+    'routerDict_/config/configDefault.json': function (request, response) {
+      /*
+        this function returns the current default config
+      */
+      response.end(JSON.stringify(state.configDefault));
+    },
+
+    'routerDict_/config/configOverride.json': function (request, response) {
+      /*
+        this function returns the current override config
+      */
+      response.end(JSON.stringify(state.configOverride));
+    },
+
     'routerDict_/eval/hashTag.html': function (request, response) {
       /*
         this function returns a script evaluating the hashtag
@@ -3407,18 +3455,14 @@ add db indexing
       /*
         this function echoes the request back to the response
       */
-      var headers, name;
       if (!response.headersSent) {
         response.writeHead(200, { 'content-type': 'text/plain' });
       }
       response.write(request.method + ' ' + request.url + ' http/' + request.httpVersion
         + '\n');
-      headers = request.headers;
-      for (name in headers) {
-        if (headers.hasOwnProperty(name)) {
-          response.write(name + ': ' + JSON.stringify(headers[name]) + '\n');
-        }
-      }
+      Object.keys(request.headers).forEach(function (name) {
+        response.write(name + ': ' + JSON.stringify(request.headers[name]) + '\n');
+      });
       response.write('\n');
       /* optimization - stream data */
       request.pipe(response);
@@ -3767,7 +3811,7 @@ add db indexing
       if (!state.isNodejs) {
         return;
       }
-      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
+      EXPORTS.moduleInit(module, local);
     },
 
     'routerSecurityDict_/admin': function (request, response, next) {
@@ -3899,7 +3943,7 @@ add db indexing
       if (!state.isNodejs) {
         return;
       }
-      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
+      EXPORTS.moduleInit(module, local);
       /* exports */
       state.dbDir = state.dbDir || state.tmpDir + '/db/tables';
       EXPORTS.dbTables = EXPORTS.dbTables || {};
@@ -4785,7 +4829,7 @@ add db indexing
     _name: 'utility2.moduleTestServerShared',
 
     _init: function () {
-      EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
+      EXPORTS.moduleInit(module, local);
     },
 
     _ajaxLocal_default_test: function (onEventError) {
@@ -4815,10 +4859,10 @@ add db indexing
             EXPORTS.onEventErrorDefault(error);
             return;
           }
-          EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
+          EXPORTS.moduleInit(module, local);
         });
       } else if (state.isPhantomjs) {
-        EXPORTS.moduleInit(typeof module === 'object' ? module : null, local);
+        EXPORTS.moduleInit(module, local);
       }
     },
 
