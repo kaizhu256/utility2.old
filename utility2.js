@@ -160,6 +160,10 @@ add db indexing
         this function makes an ajax request on the localhost server
       */
       onEventError = onEventError || EXPORTS.onEventErrorDefault;
+      if (typeof options === 'string') {
+        options = { url: options };
+      }
+      options.url0 = options.url0 || options.url;
       if (options.data) {
         options.method = options.type = options.method || options.type || 'POST';
       }
@@ -185,27 +189,13 @@ add db indexing
       });
     },
 
-    ajaxLocalMultiParams: function (options, onEventError) {
+    ajaxMultiParams: function (options, onEventError) {
       /*
         this function makes multiple ajax calls for multiple params
       */
-      var _onEventError, params, remaining, urlParsed;
-      onEventError = onEventError || EXPORTS.onEventErrorDefault;
-      remaining = 0;
+      var params, urlParsed;
       /* remove hash-tag from url */
       urlParsed = (/[^#]*/).exec(options.url)[0].split('?');
-      _onEventError = function (error, data, options) {
-        if (remaining < 0) {
-          return;
-        }
-        if (error) {
-          remaining = -1;
-          onEventError(error, null, options);
-          return;
-        }
-        remaining -= 1;
-        onEventError(null, data, options, remaining);
-      };
       params = [{}];
       (urlParsed[1] || '').split('&').forEach(function (value) {
         var dict, ii, key;
@@ -221,22 +211,19 @@ add db indexing
           dict[key] = value;
         }
       });
-      params.forEach(function (dict) {
-        var options2;
-        options2 = EXPORTS.objectCopyDeep(options);
-        options2.url = urlParsed[0] + '?' + Object.keys(dict).sort().map(function (key) {
+      options.urls = params.map(function (dict) {
+        return urlParsed[0] + '?' + Object.keys(dict).sort().map(function (key) {
           return key + '=' + dict[key];
         }).join('&');
-        remaining += 1;
-        EXPORTS.ajaxLocal(options2, _onEventError);
       });
+      EXPORTS.ajaxMultiUrls(options, onEventError);
     },
 
-    _ajaxLocalMultiParams_error_test: function (onEventError) {
+    _ajaxMultiParams_error_test: function (onEventError) {
       /*
-        this function tests ajaxLocalMultiParams's error-handling behavior
+        this function tests ajaxMultiParams's error-handling behavior
       */
-      EXPORTS.ajaxLocalMultiParams({
+      EXPORTS.ajaxMultiParams({
         url: '/test/test.error'
       }, function (error) {
         if (error) {
@@ -245,11 +232,11 @@ add db indexing
       });
     },
 
-    _ajaxLocalMultiParams_multi_test: function (onEventError) {
+    _ajaxMultiParams_multi_test: function (onEventError) {
       /*
-        this function tests ajaxLocalMultiParams's multi-ajax requests behavior
+        this function tests ajaxMultiParams's multi-ajax requests behavior
       */
-      EXPORTS.ajaxLocalMultiParams({
+      EXPORTS.ajaxMultiParams({
         url: '/test/test.echo?aa=1&aa=2&bb=3&bb=4&cc=5#dd=6'
       }, function (error, data, options, remaining) {
         console.assert((/^GET \/test\/test\.echo\?aa=.&bb=.&cc=. /).test(data));
@@ -259,11 +246,11 @@ add db indexing
       });
     },
 
-    _ajaxLocalMultiParams_multiError_test: function (onEventError) {
+    _ajaxMultiParams_multiError_test: function (onEventError) {
       /*
-        this function tests ajaxLocalMultiParams's multi error-handling behavior
+        this function tests ajaxMultiParams's multi error-handling behavior
       */
-      EXPORTS.ajaxLocalMultiParams({
+      EXPORTS.ajaxMultiParams({
         url: '/test/test.error?aa=1&aa=2&bb=3&bb=4&cc=5#dd=6'
       }, function (error) {
         if (error) {
@@ -272,13 +259,43 @@ add db indexing
       });
     },
 
-    _ajaxLocalMultiParams_nullCase_test: function (onEventError) {
+    _ajaxMultiParams_nullCase_test: function (onEventError) {
       /*
-        this function tests ajaxLocalMultiParams's null-case behavior
+        this function tests ajaxMultiParams's null-case behavior
       */
-      EXPORTS.ajaxLocalMultiParams({
+      EXPORTS.ajaxMultiParams({
         url: '/test/test.echo'
       }, onEventError);
+    },
+
+    ajaxMultiUrls: function (options, onEventError) {
+      /*
+        this function makes multiple ajax calls for multiple urls
+      */
+      var _onEventError, remaining;
+      onEventError = onEventError || EXPORTS.onEventErrorDefault;
+      _onEventError = function (error, data, options) {
+        if (remaining < 0) {
+          return;
+        }
+        if (error) {
+          remaining = -1;
+          onEventError(error, null, options);
+          return;
+        }
+        remaining.splice(remaining.indexOf(options.url0), 1);
+        /* debug remaining urls */
+        console.log('ajaxMultiUrls - received: ' + options.url0 + ', remaining: ['
+          + remaining.slice(0, 2) + (remaining.length ? ', ...]' : ']'));
+        onEventError(null, data, options, remaining.length);
+      };
+      remaining = EXPORTS.objectCopyDeep(options.urls);
+      options.urls.forEach(function (url) {
+        var options2;
+        options2 = EXPORTS.objectCopyDeep(options);
+        options2.url = url;
+        EXPORTS.ajaxLocal(options2, _onEventError);
+      });
     },
 
     base64Decode: function (text) {
@@ -2163,7 +2180,7 @@ add db indexing
         */
         setTimeout(function () {
           state.socks5Resume('resume');
-        }, 4000);
+        }, 8000);
       } else {
         state.socks5Resume('resume');
       }
@@ -2207,70 +2224,11 @@ add db indexing
       });
     },
 
-    ajaxLocalMultiUrls: function (options, onEventError) {
-      /*
-        this function makes multiple ajax calls for multiple urls
-      */
-      var _onEventError, remaining;
-      onEventError = onEventError || EXPORTS.onEventErrorDefault;
-      _onEventError = function (error, data, options) {
-        if (remaining < 0) {
-          return;
-        }
-        if (error) {
-          remaining = -1;
-          onEventError(error, null, options);
-          return;
-        }
-        remaining -= 1;
-        onEventError(null, data, options, remaining);
-      };
-      remaining = 0;
-      options.urls.forEach(function (url) {
-        var options2;
-        options2 = EXPORTS.objectCopyDeep(options);
-        options2.url = url;
-        remaining += 1;
-        EXPORTS.ajaxLocal(options2, _onEventError);
-      });
-    },
-
-    _ajaxLocalMultiUrls_error_test: function (onEventError) {
-      /*
-        this function tests ajaxLocalMultiUrls's error-handling behavior
-      */
-      EXPORTS.ajaxLocalMultiUrls({
-        urls: ['/test/test.error']
-      }, function (error) {
-        if (error) {
-          onEventError();
-        }
-      });
-    },
-
-    _ajaxLocalMultiUrls_multi_test: function (onEventError) {
-      /*
-        this function tests ajaxLocalMultiUrls's multi-ajax requests behavior
-      */
-      EXPORTS.ajaxLocalMultiUrls({
-        urls: ['/test/test.echo?aa=1', '/test/test.echo?aa=2']
-      }, function (error, data, options, remaining) {
-        console.assert((/^GET \/test\/test\.echo\?aa=./).test(data));
-        if (remaining === 0) {
-          onEventError();
-        }
-      });
-    },
-
     _ajaxNodejs: function (options, onEventError) {
       /*
         this function automatically concatenates the response stream
         as utf8 text, and passes the concatenated result to the callback
       */
-      onEventError = onEventError || EXPORTS.onEventErrorDefault;
-      if (typeof options === 'string') {
-        options = { url: options };
-      }
       /* localhost */
       if (options.url[0] === '/') {
         state.serverResume(function (error) {
@@ -2303,9 +2261,9 @@ add db indexing
       };
       _onEventProgress = options._onEventProgress || EXPORTS.nop;
       urlParsed = required.url.parse(options.proxy || options.url);
+      urlParsed.protocol = urlParsed.protocol || 'http:';
       options.hostname = urlParsed.hostname;
       options.path = options.proxy ? options.url : urlParsed.path;
-      options.protocol = urlParsed.protocol || 'http:';
       options.rejectUnauthorized = false;
       if (options.params) {
         options.path = EXPORTS.urlSearchParsedJoin({
@@ -2334,7 +2292,7 @@ add db indexing
         });
         return;
       }
-      request = required[options.protocol.slice(0, -1)].request(options, function (response) {
+      request = required[urlParsed.protocol.slice(0, -1)].request(options, function (response) {
         options.response = response;
         _onEventProgress();
         if (options.onEventResponse && options.onEventResponse(response)) {
@@ -2358,7 +2316,7 @@ add db indexing
             }
             options.url = response.headers.location;
             if (options.url[0] === '/') {
-              options.url = options.protocol + '//' + options.hostname + options.url;
+              options.url = urlParsed.protocol + '//' + options.hostname + options.url;
             }
             if (response.statusCode === 303) {
               options.data = null;
@@ -3232,115 +3190,111 @@ add db indexing
       /*
         this function performs additional css parsing
       */
-      var dict,
-        keys,
-        remaining = 0;
-      try {
-        dict = (/\/\* listing start \*\/\n([\S\s]+?\n)\/\* listing end \*\/\n/).exec(content);
-        EXPORTS.scriptLint('', (/\n\/\* (\{[\S\s]+?\n\}) \*\/\n/).exec(dict[1])[1]);
-        dict = JSON.parse((/\n\/\* (\{[\S\s]+?\n\}) \*\/\n/).exec(dict[1])[1]);
-        keys = Object.keys(dict).filter(function (regexp) {
-          regexp = new RegExp(regexp);
-          return regexp.test(content);
-        });
-        if (!keys.length) {
-          onEventError();
+      var dict;
+      dict = (/\/\* listing start \*\/\n([\S\s]+?\n)\/\* listing end \*\/\n/).exec(content);
+      EXPORTS.scriptLint('', (/\n\/\* (\{[\S\s]+?\n\}) \*\/\n/).exec(dict[1])[1]);
+      dict = JSON.parse((/\n\/\* (\{[\S\s]+?\n\}) \*\/\n/).exec(dict[1])[1]);
+      EXPORTS.ajaxMultiUrls({
+        dataType: 'binary',
+        urls: Object.keys(dict)
+      }, function (error, data, options, remaining) {
+        if (error) {
+          onEventError(error);
           return;
         }
-      } catch (errorContent) {
-        onEventError(errorContent);
-        return;
-      }
-      keys.forEach(function (regexp) {
-        var _onEventError = function (error, data) {
-          if (remaining < 0) {
-            return;
-          }
-          if (error) {
-            remaining = -1;
-            onEventError(error);
-            return;
-          }
+        dict[options.url0].forEach(function (regexp) {
           content = content.replace(new RegExp(regexp, 'g'), function (_, file) {
             return '\n"data:' + EXPORTS.mimeLookup(file) + ';base64,'
               + data.toString('base64') + '"\n';
           });
-          remaining -= 1;
-          if (remaining === 0) {
-            remaining = -1;
-            local._scriptRollupFile(file, content, onEventError);
-          }
-        };
-        remaining += 1;
-        EXPORTS.ajaxLocal({ dataType: 'binary', debugFlag: true, url: dict[regexp] },
-          _onEventError);
+        });
+        if (remaining === 0) {
+          local._scriptRollupFile(file, content, onEventError);
+        }
       });
     },
 
-    // scriptRollup: function (file, onEventError) {
-      // /*
-        // this function rolls up a css / js file
-      // */
-      // console.log('updating rollup file ... ' + file);
-      // required.fs.readFile(file, 'utf8', function (error, content) {
-        // if (error) {
-          // onEventError(error);
-          // return;
-        // }
-        // var dict = {},
-          // keys,
-          // remaining = 0;
-        // try {
-          // content = (/\/\* listing start \*\/\n([\S\s]+\n)\/\* listing end \*\/\n/).exec(content);
-          // keys = content[1].trim().split('\n');
-          // /* assert non-empty keys */
-          // console.assert(keys.length);
-          // content = content[0];
-        // } catch (errorContent) {
-          // onEventError(errorContent);
-          // return;
-        // }
-        // keys.forEach(function (key) {
-          // var _onEventError, url;
-          // _onEventError = function (error, data) {
-            // /* concat data to content */
-            // if (dict[error]) {
-              // content += '\n' + error + '\n' + dict[error] + '\n';
-              // return;
-            // }
-            // if (remaining < 0) {
-              // return;
-            // }
-            // if (error) {
-              // remaining = -1;
-              // onEventError(error);
-              // return;
-            // }
-            // dict[key] = data.replace((/^\ufeff/), '');
-            // console.log('remaining: ' + remaining);
-            // remaining -= 1;
-            // if (remaining === 0) {
-              // remaining = -1;
-              // /* concat data to content */
-              // keys.forEach(_onEventError);
-              // /* remove trailing whitespace */
-              // content = content.replace((/[ \t]+$/gm), '').trim();
-              // /* additional css parsing */
-              // if (file.slice(-4) === '.css') {
-                // local._cssRollupFile(file, content, onEventError);
-                // return;
-              // }
-              // local._scriptRollupFile(file, content, onEventError);
-            // }
-          // };
-          // url = (/[^"](https*:\/\/\S*)/).exec(key);
-          // if (url) {
-            // remaining += 1;
-            // EXPORTS.ajaxLocal({ debugFlag: true, url: url[1] }, _onEventError);
-          // }
-        // });
-      // });
-    // },
+    scriptRollup: function (file, onEventError) {
+      /*
+        this function rolls up a css / js file
+      */
+      console.log('updating rollup file ... ' + file);
+      required.fs.readFile(file, 'utf8', function (error, content) {
+        if (error) {
+          onEventError(error);
+          return;
+        }
+        var dict, urls;
+        content = (/\/\* listing start \*\/\n([\S\s]+\n)\/\* listing end \*\/\n/).exec(content);
+        dict = {};
+        urls = [];
+        content[1].trim().split('\n').forEach(function (key) {
+          var url;
+          url = (/[^"](https*:\/\/\S*)/).exec(key);
+          if (!url) {
+            return;
+          }
+          url = url[1];
+          urls.push(url);
+          dict[url] = key;
+        });
+        content = content[0];
+        EXPORTS.ajaxMultiUrls({
+          urls: urls
+        }, function (error, data, options, remaining) {
+          if (error) {
+            onEventError(error);
+            return;
+          }
+          dict[options.url0] = dict[options.url] + '\n' + data;
+          if (remaining === 0) {
+            /* concat data to content */
+            urls.forEach(function (url) {
+              content += '\n\n' + dict[url];
+            });
+            /* remove trailing whitespace */
+            content = content.replace((/[ \t]+$/gm), '').trim();
+            /* additional css parsing */
+            if (file.slice(-4) === '.css') {
+              local._cssRollupFile(file, content, onEventError);
+              return;
+            }
+            local._scriptRollupFile(file, content, onEventError);
+          }
+        });
+      });
+    },
+
+    _scriptRollup_cssRollup_test: function (onEventError) {
+      /*
+        this function tests scriptRollup's cssRollup behavior
+      */
+      var file = state.cacheDir + '/test.rollup.css';
+      required.fs.writeFile(file, '/* listing start */\n'
+        + '/* bootstrap.css - http://getbootstrap.com/dist/css/bootstrap.css */\n'
+        + '/* {\n'
+          + '"http://getbootstrap.com/dist/fonts/glyphicons-halflings-regular.eot": [\n'
+            + '"[\\\\\\"\'](\\\\.\\\\./fonts/glyphicons-halflings-regular\\\\.eot)[^\\\\\\"\']*'
+            + '[\\\\\\"\']"'
+          + ']\n'
+        + '} */\n'
+        + '/* listing end */\n', function () {
+          EXPORTS.scriptRollup(file, onEventError);
+        });
+    },
+
+    _scriptRollup_jsRollup_test: function (onEventError) {
+      /*
+        this function tests scriptRollup's jsRollup behavior
+      */
+      var file = state.cacheDir + '/test.rollup.js';
+      required.fs.writeFile(file, '/* listing start */\n'
+        + '/* jquery-2.0.3.min.js - http://cdnjs.cloudflare.com/ajax/libs/jquery/2.0.3/'
+        + 'jquery.min.js */\n'
+        + '/* listing end */\n', function () {
+          EXPORTS.scriptRollup(file, onEventError);
+        });
+    },
 
     _scriptRollupFile: function (file, content, onEventError) {
       /*
