@@ -6,7 +6,7 @@ utility2.js
 common, shared utilities for both browser and nodejs
 
 todo:
-add ajaxNodejsMaster
+add ajaxLocalMaster
 add heroku dynamic config server
 add phantomjs code coverage
 integrate forever-webui
@@ -29,10 +29,10 @@ add db indexing
   var local;
   try {
     window.global = window.global || window;
-    window.module = window.module || null;
   } catch (ignore) {
   }
   global.EXPORTS = global.EXPORTS || {};
+  global.module = global.module || null;
   global.required = EXPORTS.required = EXPORTS.required || global.required || {};
   global.state = EXPORTS.state = EXPORTS.state || global.state || {};
   local = {
@@ -169,16 +169,7 @@ add db indexing
         return;
       }
       /* nodejs */
-      state.serverResume(function (error) {
-        if (error) {
-          onEventError(error);
-          return;
-        }
-        if (options.url[0] === '/') {
-          options.url = state.localhost + options.url;
-        }
-        EXPORTS.ajaxNodejs(options, onEventError);
-      });
+      required.utility2._ajaxNodejs(options, onEventError);
     },
 
     _ajaxLocal_timeout_test: function (onEventError) {
@@ -194,7 +185,7 @@ add db indexing
       });
     },
 
-    ajaxLocalMulti: function (options, onEventError) {
+    ajaxLocalMultiParams: function (options, onEventError) {
       /*
         this function makes multiple ajax calls for multiple params
       */
@@ -203,17 +194,17 @@ add db indexing
       remaining = 0;
       /* remove hash-tag from url */
       urlParsed = (/[^#]*/).exec(options.url)[0].split('?');
-      _onEventError = function (error, data) {
+      _onEventError = function (error, data, options) {
         if (remaining < 0) {
           return;
         }
         if (error) {
           remaining = -1;
-          onEventError(error);
+          onEventError(error, null, options);
           return;
         }
         remaining -= 1;
-        onEventError(null, data, remaining);
+        onEventError(null, data, options, remaining);
       };
       params = [{}];
       (urlParsed[1] || '').split('&').forEach(function (value) {
@@ -241,11 +232,11 @@ add db indexing
       });
     },
 
-    _ajaxLocalMulti_error_test: function (onEventError) {
+    _ajaxLocalMultiParams_error_test: function (onEventError) {
       /*
-        this function tests ajaxLocalMulti's error-handling behavior
+        this function tests ajaxLocalMultiParams's error-handling behavior
       */
-      EXPORTS.ajaxLocalMulti({
+      EXPORTS.ajaxLocalMultiParams({
         url: '/test/test.error'
       }, function (error) {
         if (error) {
@@ -254,25 +245,25 @@ add db indexing
       });
     },
 
-    _ajaxLocalMulti_multi_test: function (onEventError) {
+    _ajaxLocalMultiParams_multi_test: function (onEventError) {
       /*
-        this function tests ajaxLocalMulti's multi-ajax requests behavior
+        this function tests ajaxLocalMultiParams's multi-ajax requests behavior
       */
-      EXPORTS.ajaxLocalMulti({
+      EXPORTS.ajaxLocalMultiParams({
         url: '/test/test.echo?aa=1&aa=2&bb=3&bb=4&cc=5#dd=6'
-      }, function (error, data, _remaining) {
+      }, function (error, data, options, remaining) {
         console.assert((/^GET \/test\/test\.echo\?aa=.&bb=.&cc=. /).test(data));
-        if (_remaining === 0) {
+        if (remaining === 0) {
           onEventError();
         }
       });
     },
 
-    _ajaxLocalMulti_multiError_test: function (onEventError) {
+    _ajaxLocalMultiParams_multiError_test: function (onEventError) {
       /*
-        this function tests ajaxLocalMulti's multi error-handling behavior
+        this function tests ajaxLocalMultiParams's multi error-handling behavior
       */
-      EXPORTS.ajaxLocalMulti({
+      EXPORTS.ajaxLocalMultiParams({
         url: '/test/test.error?aa=1&aa=2&bb=3&bb=4&cc=5#dd=6'
       }, function (error) {
         if (error) {
@@ -281,11 +272,11 @@ add db indexing
       });
     },
 
-    _ajaxLocalMulti_nullCase_test: function (onEventError) {
+    _ajaxLocalMultiParams_nullCase_test: function (onEventError) {
       /*
-        this function tests ajaxLocalMulti's null-case behavior
+        this function tests ajaxLocalMultiParams's null-case behavior
       */
-      EXPORTS.ajaxLocalMulti({
+      EXPORTS.ajaxLocalMultiParams({
         url: '/test/test.echo'
       }, onEventError);
     },
@@ -1661,22 +1652,22 @@ add db indexing
         global.xhr = xhr;
         switch (options.dataType) {
         case 'statusCode':
-          onEventError(null, xhr.status);
+          onEventError(null, xhr.status, options);
           return;
         }
-        onEventError(null, data);
+        onEventError(null, data, options);
       }).fail(function (xhr, textStatus, errorMessage) {
         switch (options.dataType) {
         case 'statusCode':
           /* ignore error, if all we want is the status code */
           if (xhr.status) {
-            onEventError(null, xhr.status);
+            onEventError(null, xhr.status, options);
             return;
           }
           break;
         }
         onEventError(new Error(xhr.status + ' ' + textStatus + ' - ' + options.url + '\n'
-          + (xhr.responseText || errorMessage)));
+          + (xhr.responseText || errorMessage)), null, options);
       });
     },
 
@@ -2157,19 +2148,30 @@ add db indexing
         console.log('loaded config_default.json');
       }, EXPORTS.nop);
       /* socks5 proxy */
+      state.socks5Resume = state.socks5Resume || EXPORTS.onEventResume('pause');
+      state.socks5 = process.env.SOCKS5 || state.socks5;
       if (state.socks5) {
         state.socks5LocalPort = EXPORTS.serverPortRandom();
         EXPORTS.shell({
           script: 'ssh -D ' + state.socks5LocalPort + ' -o StrictHostKeyChecking=no -p '
             + (state.socks5.split(':')[1] || '22') + ' ' + state.socks5.split(':')[0],
-          stdio: []
+          stdio: ['pipe', 'pipe', 'pipe']
         });
+        /*
+          hack - buggy, crude, setTimeout method used to ensure ssh connection established
+          before using using EXPORTS.ajaxLocal
+        */
+        setTimeout(function () {
+          state.socks5Resume('resume');
+        }, 4000);
+      } else {
+        state.socks5Resume('resume');
       }
       /* load dynamic config from external url every 60 seconds */
       state.configOverride = state.configOverride || {};
       state.configOverrideUrl = state.configOverrideUrl || '/config/configOverride.json';
       EXPORTS.clearCallSetInterval('configLoadOverride', function () {
-        EXPORTS.ajaxNodejs({
+        EXPORTS.ajaxLocal({
           dataType: 'json',
           headers: { authorization: 'Basic ' + state.securityBasicAuthSecret },
           url: state.configOverrideUrl
@@ -2205,7 +2207,62 @@ add db indexing
       });
     },
 
-    ajaxNodejs: function (options, onEventError) {
+    ajaxLocalMultiUrls: function (options, onEventError) {
+      /*
+        this function makes multiple ajax calls for multiple urls
+      */
+      var _onEventError, remaining;
+      onEventError = onEventError || EXPORTS.onEventErrorDefault;
+      _onEventError = function (error, data, options) {
+        if (remaining < 0) {
+          return;
+        }
+        if (error) {
+          remaining = -1;
+          onEventError(error, null, options);
+          return;
+        }
+        remaining -= 1;
+        onEventError(null, data, options, remaining);
+      };
+      remaining = 0;
+      options.urls.forEach(function (url) {
+        var options2;
+        options2 = EXPORTS.objectCopyDeep(options);
+        options2.url = url;
+        remaining += 1;
+        EXPORTS.ajaxLocal(options2, _onEventError);
+      });
+    },
+
+    _ajaxLocalMultiUrls_error_test: function (onEventError) {
+      /*
+        this function tests ajaxLocalMultiUrls's error-handling behavior
+      */
+      EXPORTS.ajaxLocalMultiUrls({
+        urls: ['/test/test.error']
+      }, function (error) {
+        if (error) {
+          onEventError();
+        }
+      });
+    },
+
+    _ajaxLocalMultiUrls_multi_test: function (onEventError) {
+      /*
+        this function tests ajaxLocalMultiUrls's multi-ajax requests behavior
+      */
+      EXPORTS.ajaxLocalMultiUrls({
+        urls: ['/test/test.echo?aa=1', '/test/test.echo?aa=2']
+      }, function (error, data, options, remaining) {
+        console.assert((/^GET \/test\/test\.echo\?aa=./).test(data));
+        if (remaining === 0) {
+          onEventError();
+        }
+      });
+    },
+
+    _ajaxNodejs: function (options, onEventError) {
       /*
         this function automatically concatenates the response stream
         as utf8 text, and passes the concatenated result to the callback
@@ -2214,9 +2271,16 @@ add db indexing
       if (typeof options === 'string') {
         options = { url: options };
       }
-      /* default to localhost if missing http://<host> prefix in url */
+      /* localhost */
       if (options.url[0] === '/') {
-        EXPORTS.ajaxLocal(options, onEventError);
+        state.serverResume(function (error) {
+          if (error) {
+            onEventError(error);
+            return;
+          }
+          options.url = state.localhost + options.url;
+          EXPORTS.ajaxLocal(options, onEventError);
+        });
         return;
       }
       /* assert valid http / https url */
@@ -2231,12 +2295,17 @@ add db indexing
           return;
         }
         clearTimeout(timeout);
-        onEventError(error, data);
+        if (options.debugFlag) {
+          console.log(['_ajaxNodejs', options.url,
+            options.response && options.response.headers]);
+        }
+        onEventError(error, data, options);
       };
       _onEventProgress = options._onEventProgress || EXPORTS.nop;
       urlParsed = required.url.parse(options.proxy || options.url);
       options.hostname = urlParsed.hostname;
       options.path = options.proxy ? options.url : urlParsed.path;
+      options.protocol = urlParsed.protocol || 'http:';
       options.rejectUnauthorized = false;
       if (options.params) {
         options.path = EXPORTS.urlSearchParsedJoin({
@@ -2248,22 +2317,25 @@ add db indexing
       _onEventProgress();
       /* simulate making ajax request and print debug info, but do not actually do anything */
       if (options.debugFlag === 'simulate') {
-        console.log(['ajaxNodejs', options]);
+        console.log(['_ajaxNodejs', options]);
         return;
       }
       /* set timeout */
       timeout = setTimeout(function () {
+        _onEventError(EXPORTS.createErrorTimeout());
         timeout = -1;
-        onEventError(EXPORTS.createErrorTimeout());
       }, options.timeout || state.timeoutDefault);
       /* socks5 */
       if ((options.socks5 || state.socks5) && options.socks5 !== false
-          && !options.createConnection && options.url.indexOf(state.localhost) !== 0) {
-        local._ajaxSocks5(options, _onEventError);
+          && !options.createConnection && options.url.indexOf(state.localhost) !== 0
+          && options.hostname !== state.socks5) {
+        state.socks5Resume(function () {
+          local._ajaxNodejsSocks5(options, _onEventError);
+        });
         return;
       }
-      request = ((urlParsed.protocol === 'https:') ? required.https
-        : required.http).request(options, function (response) {
+      request = required[options.protocol.slice(0, -1)].request(options, function (response) {
+        options.response = response;
         _onEventProgress();
         if (options.onEventResponse && options.onEventResponse(response)) {
           return;
@@ -2285,11 +2357,14 @@ add db indexing
               return;
             }
             options.url = response.headers.location;
+            if (options.url[0] === '/') {
+              options.url = options.protocol + '//' + options.hostname + options.url;
+            }
             if (response.statusCode === 303) {
               options.data = null;
               options.method = 'GET';
             }
-            EXPORTS.ajaxNodejs(options, _onEventError);
+            EXPORTS.ajaxLocal(options, _onEventError);
             return;
           }
         }
@@ -2352,13 +2427,13 @@ add db indexing
       }
       /* debug */
       if (options.debugFlag || state.debugFlag) {
-        console.log(['ajaxNodejs', options]);
+        console.log(['_ajaxNodejs', options]);
       }
     },
 
-    _ajaxSocks5: function (options, onEventError) {
+    _ajaxNodejsSocks5: function (options, onEventError) {
       /*
-        this function hooks the socks5 proxy protocol into EXPORTS.ajaxNodejs
+        this function hooks the socks5 proxy protocol into EXPORTS.ajaxLocal
       */
       var chunks = new Buffer(0),
         hostname = new Buffer(options.hostname),
@@ -2430,7 +2505,7 @@ add db indexing
         };
         /* disable socket pooling */
         options.agent = false;
-        EXPORTS.ajaxNodejs(options, onEventError);
+        EXPORTS.ajaxLocal(options, onEventError);
       };
       _onEventError = function (error) {
         onEventError(error);
@@ -2453,7 +2528,7 @@ add db indexing
       }).on('error', _onEventError).on('data', _onEventData);
     },
 
-    _ajaxSocks5_default_test: function (onEventError) {
+    _ajaxNodejsSocks5_default_test: function (onEventError) {
       /*
         this function tests ajax requests through socks5
       */
@@ -2461,7 +2536,7 @@ add db indexing
         onEventError('skip');
         return;
       }
-      EXPORTS.ajaxNodejs({ url: 'http://www.yahoo.com' }, onEventError);
+      EXPORTS.ajaxLocal({ url: 'http://www.yahoo.com' }, onEventError);
     },
 
     _cssLint: function (file, script) {
@@ -3197,74 +3272,75 @@ add db indexing
           }
         };
         remaining += 1;
-        EXPORTS.ajaxNodejs({ dataType: 'binary', debugFlag: true, url: dict[regexp] },
+        EXPORTS.ajaxLocal({ dataType: 'binary', debugFlag: true, url: dict[regexp] },
           _onEventError);
       });
     },
 
-    scriptRollup: function (file, onEventError) {
-      /*
-        this function rolls up a css / js file
-      */
-      console.log('updating rollup file ... ' + file);
-      required.fs.readFile(file, 'utf8', function (error, content) {
-        if (error) {
-          onEventError(error);
-          return;
-        }
-        var dict = {},
-          keys,
-          remaining = 0;
-        try {
-          content = (/\/\* listing start \*\/\n([\S\s]+\n)\/\* listing end \*\/\n/).exec(content);
-          keys = content[1].trim().split('\n');
-          /* assert non-empty keys */
-          console.assert(keys.length);
-          content = content[0];
-        } catch (errorContent) {
-          onEventError(errorContent);
-          return;
-        }
-        keys.forEach(function (key) {
-          var _onEventError, url;
-          _onEventError = function (error, data) {
-            /* concat data to content */
-            if (dict[error]) {
-              content += '\n' + error + '\n' + dict[error] + '\n';
-              return;
-            }
-            if (remaining < 0) {
-              return;
-            }
-            if (error) {
-              remaining = -1;
-              onEventError(error);
-              return;
-            }
-            dict[key] = data.replace((/^\ufeff/), '');
-            remaining -= 1;
-            if (remaining === 0) {
-              remaining = -1;
-              /* concat data to content */
-              keys.forEach(_onEventError);
-              /* remove trailing whitespace */
-              content = content.replace((/[ \t]+$/gm), '').trim();
-              /* additional css parsing */
-              if (file.slice(-4) === '.css') {
-                local._cssRollupFile(file, content, onEventError);
-                return;
-              }
-              local._scriptRollupFile(file, content, onEventError);
-            }
-          };
-          url = (/[^"](https*:\/\/\S*)/).exec(key);
-          if (url) {
-            remaining += 1;
-            EXPORTS.ajaxNodejs({ debugFlag: true, url: url[1] }, _onEventError);
-          }
-        });
-      });
-    },
+    // scriptRollup: function (file, onEventError) {
+      // /*
+        // this function rolls up a css / js file
+      // */
+      // console.log('updating rollup file ... ' + file);
+      // required.fs.readFile(file, 'utf8', function (error, content) {
+        // if (error) {
+          // onEventError(error);
+          // return;
+        // }
+        // var dict = {},
+          // keys,
+          // remaining = 0;
+        // try {
+          // content = (/\/\* listing start \*\/\n([\S\s]+\n)\/\* listing end \*\/\n/).exec(content);
+          // keys = content[1].trim().split('\n');
+          // /* assert non-empty keys */
+          // console.assert(keys.length);
+          // content = content[0];
+        // } catch (errorContent) {
+          // onEventError(errorContent);
+          // return;
+        // }
+        // keys.forEach(function (key) {
+          // var _onEventError, url;
+          // _onEventError = function (error, data) {
+            // /* concat data to content */
+            // if (dict[error]) {
+              // content += '\n' + error + '\n' + dict[error] + '\n';
+              // return;
+            // }
+            // if (remaining < 0) {
+              // return;
+            // }
+            // if (error) {
+              // remaining = -1;
+              // onEventError(error);
+              // return;
+            // }
+            // dict[key] = data.replace((/^\ufeff/), '');
+            // console.log('remaining: ' + remaining);
+            // remaining -= 1;
+            // if (remaining === 0) {
+              // remaining = -1;
+              // /* concat data to content */
+              // keys.forEach(_onEventError);
+              // /* remove trailing whitespace */
+              // content = content.replace((/[ \t]+$/gm), '').trim();
+              // /* additional css parsing */
+              // if (file.slice(-4) === '.css') {
+                // local._cssRollupFile(file, content, onEventError);
+                // return;
+              // }
+              // local._scriptRollupFile(file, content, onEventError);
+            // }
+          // };
+          // url = (/[^"](https*:\/\/\S*)/).exec(key);
+          // if (url) {
+            // remaining += 1;
+            // EXPORTS.ajaxLocal({ debugFlag: true, url: url[1] }, _onEventError);
+          // }
+        // });
+      // });
+    // },
 
     _scriptRollupFile: function (file, content, onEventError) {
       /*
@@ -3306,18 +3382,6 @@ add db indexing
           return;
         }
         local.cssRollup(file, onEventError);
-      });
-    },
-
-    _jsRollup_default_test: function (onEventError) {
-      var file = state.tmpDir + '/test.rollup.js';
-      required.fs.exists(file, function (exists) {
-        /* skip test */
-        if (!exists) {
-          onEventError('skip');
-          return;
-        }
-        EXPORTS.jsRollup(file, onEventError);
       });
     },
 
@@ -3422,7 +3486,7 @@ add db indexing
       url = EXPORTS.templateFormat(request.url.replace('/proxy/proxy.ajax/', ''));
       urlParsed = required.url.parse(url);
       headers.host = urlParsed.host;
-      EXPORTS.ajaxNodejs({
+      EXPORTS.ajaxLocal({
         headers: headers,
         onEventResponse: function (response2) {
           if (!response.headersSent) {
@@ -3743,7 +3807,7 @@ add db indexing
         urlParsed = required.url.parse(url);
       /* update host header with actual destination */
       headers.host = urlParsed.host;
-      EXPORTS.ajaxNodejs({
+      EXPORTS.ajaxLocal({
         headers: headers,
         onEventResponse: function (response2) {
           if (!response.headersSent) {
@@ -4842,7 +4906,7 @@ add db indexing
     },
 
     _ajaxLocal_default_test: function (onEventError) {
-      EXPORTS.ajaxLocal({ url: '/test/test.echo' }, onEventError);
+      EXPORTS.ajaxLocal({ debugFlag: true, url: '/test/test.echo' }, onEventError);
     },
 
   };
@@ -4954,7 +5018,7 @@ add db indexing
 
     _phantomjsTest: function (url, onEventError) {
       url = state.localhost + url;
-      EXPORTS.ajaxNodejs({
+      EXPORTS.ajaxLocal({
         data: url,
         /* bug - headers are case-sensitive in phantomjs */
         headers: { 'Content-Length': Buffer.byteLength(url) },
