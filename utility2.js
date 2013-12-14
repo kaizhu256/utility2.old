@@ -2166,8 +2166,7 @@ add db indexing
         });
       }
       /* load dynamic config from external url every 60 seconds */
-      state.configOverride = state.configOverride
-        || EXPORTS.objectCopyDeep(state.configDefault);
+      state.configOverride = state.configOverride || {};
       state.configOverrideUrl = state.configOverrideUrl || '/config/configOverride.json';
       EXPORTS.clearCallSetInterval('configLoadOverride', function () {
         EXPORTS.ajaxNodejs({
