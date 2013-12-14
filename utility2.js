@@ -2172,6 +2172,7 @@ add db indexing
       EXPORTS.clearCallSetInterval('configLoadOverride', function () {
         EXPORTS.ajaxNodejs({
           dataType: 'json',
+          headers: { authorization: 'Basic ' + state.securityBasicAuthSecret },
           url: state.configOverrideUrl
         }, function (error, data) {
           if (error) {
@@ -2221,10 +2222,10 @@ add db indexing
       /* assert valid http / https url */
       console.assert(options.url && options.url.slice(0, 4) === 'http', [options.url]);
       var _onEventError,
-        onEventProgress = options.onEventProgress || EXPORTS.nop,
+        _onEventProgress,
         request,
         timeout,
-        urlParsed = required.url.parse(options.proxy || options.url);
+        urlParsed;
       _onEventError = function (error, data) {
         if (timeout < 0) {
           return;
@@ -2232,6 +2233,8 @@ add db indexing
         clearTimeout(timeout);
         onEventError(error, data);
       };
+      _onEventProgress = options._onEventProgress || EXPORTS.nop;
+      urlParsed = required.url.parse(options.proxy || options.url);
       options.hostname = urlParsed.hostname;
       options.path = options.proxy ? options.url : urlParsed.path;
       options.rejectUnauthorized = false;
@@ -2242,14 +2245,7 @@ add db indexing
         });
       }
       options.port = urlParsed.port;
-      onEventProgress();
-      /* local ajax */
-      if (options.url.indexOf(state.localhost) === 0) {
-        /* basic auth */
-        options.headers = options.headers || {};
-        options.headers.authorization = options.headers.authorization
-          || 'Basic ' + state.securityBasicAuthSecret;
-      }
+      _onEventProgress();
       /* simulate making ajax request and print debug info, but do not actually do anything */
       if (options.debugFlag === 'simulate') {
         console.log(['ajaxNodejs', options]);
@@ -2268,7 +2264,7 @@ add db indexing
       }
       request = ((urlParsed.protocol === 'https:') ? required.https
         : required.http).request(options, function (response) {
-        onEventProgress();
+        _onEventProgress();
         if (options.onEventResponse && options.onEventResponse(response)) {
           return;
         }
@@ -2344,7 +2340,7 @@ add db indexing
             data = data.toString();
           }
           _onEventError(null, data);
-        }, onEventProgress);
+        }, _onEventProgress);
       }).on('error', _onEventError);
       if (options.file) {
         options.readStream = options.readStream || required.fs.createReadStream(options.file);
@@ -3336,8 +3332,8 @@ add db indexing
 
     _initOnce: function () {
       /* security - basic auth */
-      // state.securityBasicAuthSecret = state.securityBasicAuthSecret
-        // || Math.random().toString(36).slice(2);
+      state.securityBasicAuthSecret = state.securityBasicAuthSecret
+        || Math.random().toString(36).slice(2);
       /* 1. middleware pre-logger */
       state.middlewarePrelogger = state.middlewarePrelogger
         || local._createMiddleware(state.routerPreloggerDict);
