@@ -4,7 +4,7 @@
 script="pwd"
 nodeScript=${2-./utility2.js}
 serverPort=${3-random}
-timeoutDefault=${4-8000}
+timeoutDefault=${4-30000}
 case $1 in
 npmStart)
   script="$script; $nodeScript --repl --serverPort $serverPort"

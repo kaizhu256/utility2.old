@@ -26,7 +26,7 @@
   },
   "scripts": {
     "start": "./utility2.sh npmStart utility2.js random",
-    "test": "./utility2.sh npmTest utility2.js random"
+    "test": "./utility2.sh npmTest utility2.js random 8000"
   },
-  "version": "2013.12.03-1"
+  "version": "2013.12.13-1"
 }
