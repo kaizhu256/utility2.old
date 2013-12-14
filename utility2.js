@@ -2087,7 +2087,6 @@ add db indexing
         'jslint',
         'mime',
         'moment',
-        'nopt',
         'phantomjs',
         'sqlite3',
         'uglify-js',
@@ -2155,8 +2154,6 @@ add db indexing
         state.configDefault = JSON.parse(required.fs.readFileSync(process.cwd()
           + '/config_default.json'));
         EXPORTS.setOptionsDefaults(state, EXPORTS.objectCopyDeep(state.configDefault));
-        state.configOverride = state.configOverride
-          || EXPORTS.objectCopyDeep(state.configDefault);
         console.log('loaded config_default.json');
       }, EXPORTS.nop);
       /* socks5 proxy */
@@ -2169,6 +2166,8 @@ add db indexing
         });
       }
       /* load dynamic config from external url every 60 seconds */
+      state.configOverride = state.configOverride
+        || EXPORTS.objectCopyDeep(state.configDefault);
       state.configOverrideUrl = state.configOverrideUrl || '/config/configOverride.json';
       EXPORTS.clearCallSetInterval('configLoadOverride', function () {
         EXPORTS.ajaxNodejs({
