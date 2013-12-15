@@ -113,10 +113,10 @@ add db indexing
       /* create object deferring code that requires server initialization first */
       state.serverResume = state.serverResume || EXPORTS.onEventResume('pause');
       /* misc ascii reference */
-      state.string256 = '\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\b\t\n\u000b\f\r\u000e'
-        + '\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c'
-        + '\u001d\u001e\u001f !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_'
-        + '`abcdefghijklmnopqrstuvwxyz{|}~';
+      state.string256 = '\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\b\t\n\u000b\f\r' +
+        '\u000e\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b' +
+        '\u001c\u001d\u001e\u001f !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ' +
+        '[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~';
       /* global default timeout */
       state.timeoutDefault = state.timeoutDefault || 30 * 1000;
       if (!state.isNodejs) {
@@ -2164,23 +2164,29 @@ add db indexing
         EXPORTS.setOptionsDefaults(state, EXPORTS.objectCopyDeep(state.configDefault));
         console.log('loaded config_default.json');
       }, EXPORTS.nop);
-      /* socks5 proxy */
+      /* socks5 ssh proxy */
       state.socks5Resume = state.socks5Resume || EXPORTS.onEventResume('pause');
-      state.socks5 = process.env.SOCKS5 || state.socks5;
-      if (state.socks5) {
-        state.socks5LocalPort = EXPORTS.serverPortRandom();
-        EXPORTS.shell({
-          script: 'ssh -D ' + state.socks5LocalPort + ' -o StrictHostKeyChecking=no -p '
-            + (state.socks5.split(':')[1] || '22') + ' ' + state.socks5.split(':')[0],
-          stdio: ['pipe', 'pipe', 'pipe']
-        });
-        /*
-          hack - buggy, crude, setTimeout method used to ensure ssh connection established
-          before using using EXPORTS.ajaxLocal
-        */
-        setTimeout(function () {
+      state.socks5SshHost = process.env.SOCKS5_SSH_HOST || state.socks5SshHost;
+      if (state.socks5SshHost) {
+        state.socks5SshHostname = state.socks5SshHost.split(':')[0];
+        state.socks5SshPort = state.socks5SshHost.split(':')[1] || 22;
+        if (!state.socks5LocalPort) {
+          state.socks5LocalPort = state.socks5LocalPort || EXPORTS.serverPortRandom();
+          EXPORTS.shell({
+            script: 'ssh -D ' + state.socks5LocalPort + ' -o StrictHostKeyChecking=no -p '
+              + (state.socks5SshPort) + ' ' + state.socks5SshHostname,
+            stdio: ['pipe', 'pipe', 'pipe']
+          });
+          /*
+            hack - buggy, crude, setTimeout method used to ensure ssh connection established
+            before using using EXPORTS.ajaxLocal
+          */
+          setTimeout(function () {
+            state.socks5Resume('resume');
+          }, 8000);
+        } else {
           state.socks5Resume('resume');
-        }, 8000);
+        }
       } else {
         state.socks5Resume('resume');
       }
@@ -2284,9 +2290,8 @@ add db indexing
         timeout = -1;
       }, options.timeout || state.timeoutDefault);
       /* socks5 */
-      if ((options.socks5 || state.socks5) && options.socks5 !== false
-          && !options.createConnection && options.url.indexOf(state.localhost) !== 0
-          && options.hostname !== state.socks5) {
+      if (state.socks5LocalPort && options.hostname !== state.socks5SshHostname
+          && options.url.indexOf(state.localhost) !== 0 && !options.createConnection) {
         state.socks5Resume(function () {
           local._ajaxNodejsSocks5(options, _onEventError);
         });
@@ -3812,7 +3817,7 @@ add db indexing
 
       + [
         '/public/assets/utility2-external/external.rollup.auto.js',
-        '/public/assets/utility2.js',
+        '/public/assets/utility2.js'
       ].map(function (url) {
         return '<script src="' + url + '"></script>\n';
       }).join('')
