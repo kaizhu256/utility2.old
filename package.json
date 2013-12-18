@@ -26,6 +26,7 @@
     "url" : "https://github.com/kaizhu256/utility2"
   },
   "scripts": {
+    "postinstall": "./utility2.sh npmPostInstall utility2.js",
     "start": "./utility2.sh npmStart utility2.js random",
     "test": "./utility2.sh npmTest utility2.js random 8000"
   },

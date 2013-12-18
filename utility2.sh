@@ -11,9 +11,9 @@ npmStart)
   ;;
 npmTest)
   script="$script; rm -r tmp/test_coverage 2>/dev/null"
-  script="$script; istanbul cover --dir tmp/test_coverage -x **.min.** -x **.rollup.** -x **/git_modules/** -x **/tmp/** $nodeScript --"
+  script="$script; istanbul test --dir tmp/test_coverage -x **.min.** -x **.rollup.** -x **/git_modules/** -x **/tmp/** $nodeScript --"
   script="$script  --repl --serverPort $serverPort --test --timeoutDefault $timeoutDefault"
-  script="$script; cat tmp/test_coverage/lcov.info | node_modules/coveralls/bin/coveralls.js"
+  ## script="$script; cat tmp/test_coverage/lcov.info | node_modules/coveralls/bin/coveralls.js"
   ;;
 esac
 echo $script
