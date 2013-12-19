@@ -1341,6 +1341,30 @@ integrate forever-webui
           location.reload();
         });
       }
+      /*
+        bug - phantomjs - new Blob() throws error
+        https://github.com/ariya/phantomjs/issues/11013
+      */
+      try {
+        EXPORTS.nop(new global.Blob());
+      } catch (error) {
+        global.Blob = local._Blob;
+      }
+      global.Blob = local._Blob;
+    },
+
+    _Blob: function (aFileParts, options) {
+      /*
+        this function replaces the buggy phantomjs Blob class constructor
+      */
+      var BlobBuilder, oBuilder;
+      BlobBuilder = global.BlobBuilder || global.WebKitBlobBuilder || global.MozBlobBuilder
+        || global.MSBlobBuilder;
+      oBuilder = new BlobBuilder();
+      if (aFileParts) {
+        oBuilder.append(aFileParts[0]);
+      }
+      return options ? oBuilder.getBlob(options.type) : oBuilder.getBlob();
     },
 
   };
@@ -1460,6 +1484,20 @@ integrate forever-webui
         onEventError(new Error(xhr.status + ' ' + textStatus + ' - ' + options.url + '\n'
           + (xhr.responseText || errorMessage)), null, options);
       });
+    },
+
+    _ajaxProgressOnEventError_fileUpload_test: function (onEventError) {
+      /*
+        this function tests ajaxProgressOnEventError's file upload behavior
+      */
+      var blob;
+      blob = new global.Blob(['hello world']);
+      debugPrint(JSON.stringify(blob));
+      blob.name = 'test.txt';
+      EXPORTS.ajax({
+        file: blob,
+        url: '/admin/admin.upload'
+      }, onEventError);
     },
 
     _ajaxProgressOnEventErrorFile: function (options, onEventError) {
@@ -1932,13 +1970,12 @@ integrate forever-webui
       /*
         this function lints a css script for errors
       */
-      if (!required.csslint) {
-        return script;
+      if (required.csslint) {
+        console.log(required.csslint.CSSLint.getFormatter('text')
+          .formatResults(required.csslint.CSSLint.verify(script, { ignore: 'ids' }), file, {
+            quiet: true
+          }));
       }
-      console.log(required.csslint.CSSLint.getFormatter('text')
-        .formatResults(required.csslint.CSSLint.verify(script, { ignore: 'ids' }), file, {
-          quiet: true
-        }));
       return script;
     },
 
@@ -1947,15 +1984,7 @@ integrate forever-webui
         this function lints a js script for errors
       */
       var lint;
-      if (!required.jslint) {
-        return script;
-      }
-      /* do not lint if code coverage is enabled */
-      if (global.__coverage__) {
-        return script;
-      }
-      /* jslint */
-      if (required.jslint_linter) {
+      if (required.jslint_linter && !global.__coverage__) {
         lint = required.jslint_linter.lint(script, { maxerr: 8 });
         if (!lint.ok) {
           required.jslint_reporter.report(file, lint);
@@ -1974,6 +2003,26 @@ integrate forever-webui
       default:
         return local._lintJs(file, script);
       }
+    },
+
+    _lintScript_css_test: function (onEventError) {
+      /*
+        this function tests lintScript's css lint behavior
+      */
+      EXPORTS.lintScript('foo.css', '\n');
+      onEventError();
+    },
+
+    _lintScript_js_test: function (onEventError) {
+      /*
+        this function tests lintScript's js lint behavior
+      */
+      var coverage;
+      coverage = global.__coverage__;
+      global.__coverage__ = null;
+      EXPORTS.lintScript('foo.js', '\n');
+      global.__coverage__ = coverage;
+      onEventError();
     },
 
     _moduleInitOnceNodejs: function (module, local2, exports) {
@@ -2013,7 +2062,7 @@ integrate forever-webui
         options
       );
       /* log pid */
-      required.fs.writeFile(state.pidDir + '/' + child.pid, '', EXPORTS.onEventErrorDefault);
+      required.fs.writeFile(state.fsDirPid + '/' + child.pid, '', EXPORTS.onEventErrorDefault);
       return child;
     },
 
@@ -2427,21 +2476,21 @@ integrate forever-webui
     _initOnce: function () {
       /*jslint stupid: true*/
       /* exports */
-      state.tmpDir = required.path.resolve(state.tmpDir || process.cwd() + '/tmp');
+      state.fsDirTmp = required.path.resolve(state.fsDirTmp || process.cwd() + '/tmp');
       try {
         /* create cache dir */
-        state.cacheDir = state.tmpDir + '/cache';
-        EXPORTS.fsMkdirpSync(state.cacheDir);
+        state.fsDirCache = state.fsDirTmp + '/cache';
+        EXPORTS.fsMkdirpSync(state.fsDirCache);
         /* create pid dir */
-        state.pidDir = state.tmpDir + '/pid';
-        EXPORTS.fsMkdirpSync(state.pidDir);
+        state.fsDirPid = state.fsDirTmp + '/pid';
+        EXPORTS.fsMkdirpSync(state.fsDirPid);
         /* kill stale pid's from previous process */
-        required.fs.readdirSync(state.pidDir).forEach(function (file) {
+        required.fs.readdirSync(state.fsDirPid).forEach(function (file) {
           try {
             process.kill(file);
           } catch (ignore) {
           }
-          required.fs.unlink(state.pidDir + '/' + file, EXPORTS.nop);
+          required.fs.unlink(state.fsDirPid + '/' + file, EXPORTS.nop);
         });
       } catch (error) {
         EXPORTS.onEventErrorDefault(error);
@@ -2458,7 +2507,7 @@ integrate forever-webui
       /*
         this function creates a temp filename in the cache directory
       */
-      return state.cacheDir + '/' + EXPORTS.dateAndSalt();
+      return state.fsDirCache + '/' + EXPORTS.dateAndSalt();
     },
 
     fsAppendFile: function (file, data, onEventError) {
@@ -2493,10 +2542,10 @@ integrate forever-webui
       */
       /* remove files from cache directory */
       (state.cacheFiles || []).forEach(function (file) {
-        local._fsRmr(state.cacheDir + '/' + file, EXPORTS.onEventErrorDefault);
+        local._fsRmr(state.fsDirCache + '/' + file, EXPORTS.onEventErrorDefault);
       });
       /* get list of files to be removed for the next cycle */
-      required.fs.readdir(state.cacheDir, function (error, files) {
+      required.fs.readdir(state.fsDirCache, function (error, files) {
         state.cacheFiles = files;
       });
     },
@@ -2722,7 +2771,7 @@ integrate forever-webui
       });
       xml += '</testsuites>\n';
       /* write test report */
-      EXPORTS.fsWriteFileAtomic(state.tmpDir + '/test/' + EXPORTS.dateAndSalt()
+      EXPORTS.fsWriteFileAtomic(state.fsDirTmp + '/test/' + EXPORTS.dateAndSalt()
         + '.xml', xml, null, EXPORTS.onEventErrorDefault);
     },
 
@@ -3414,7 +3463,7 @@ integrate forever-webui
           next(error);
           return;
         }
-        EXPORTS.fsRename(tmp, state.tmpDir + '/upload/' + request.headers['upload-filename']
+        EXPORTS.fsRename(tmp, state.fsDirTmp + '/upload/' + request.headers['upload-filename']
           || '', function (error) {
             if (error) {
               next(error);
@@ -3525,7 +3574,7 @@ integrate forever-webui
       try {
         state.phantomjsPid = EXPORTS.shell(required.phantomjs.path + ' '
           + file + ' ' + EXPORTS.base64Encode(JSON.stringify({
-            cacheDir: state.cacheDir,
+            fsDirCache: state.fsDirCache,
             phantomjsCoverageFile: state.phantomjsCoverageFile,
             phantomjsPort: state.phantomjsPort,
             serverPort: state.serverPort,
