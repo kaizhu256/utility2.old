@@ -2027,6 +2027,7 @@ integrate forever-webui
           }
         }
       });
+      state.timeoutDefault = Number(state.timeoutDefault);
       /* process.exit */
       process._exit = process._exit || process.exit;
       process.exit = function () {
@@ -2068,8 +2069,8 @@ integrate forever-webui
         EXPORTS.debugProcessOnce();
       }
       /* exit on timeout */
-      if (state.exitTimeout) {
-        setTimeout(process.exit, state.exitTimeout);
+      if (state.timeoutExit) {
+        setTimeout(process.exit, state.timeoutExit);
       }
     },
 
@@ -2232,7 +2233,7 @@ integrate forever-webui
       }
       options.stdio = options.stdio || ['ignore', 1, 2];
       if (state.isMock) {
-        return;
+        return required.child_process.spawn('echo');
       }
       child = required.child_process.spawn(
         options.argv ? options.argv[0] : '/bin/sh',
@@ -3944,15 +3945,28 @@ integrate forever-webui
 
     _initOnce: function () {
       setTimeout(local._testNpm);
+      setTimeout(local._testCoveralls);
+    },
+
+    _testCoveralls: function () {
+      if (state.isCoveralls) {
+        if (process.env.TRAVIS) {
+          EXPORTS.shell('cat tmp/test_coverage/lcov.info'
+            + ' | node_modules/coveralls/bin/coveralls.js');
+        }
+      }
     },
 
     _testNpm: function () {
       /*
         this function runs npm test with code coverage
       */
+      var timeoutExit;
       if (!state.npmTest) {
         return;
       }
+      timeoutExit = state.timeoutDefault;
+      timeoutExit += 2000;
       EXPORTS.shell('rm -r tmp/test_coverage 2>/dev/null;'
         + 'istanbul cover --dir tmp/test_coverage'
         + ' -x **.min.**'
@@ -3960,16 +3974,14 @@ integrate forever-webui
         + ' -x **/git_modules/**'
         + ' -x **/tmp/**'
         + ' ' + state.npmTest + ' --'
-        + ' --exitTimeout ' + 1.25 * state.timeoutDefault
+        + ' --timeoutExit ' + timeoutExit
         + ' --repl'
         + ' --serverPort random'
         + ' --test'
-        + ' --timeoutDefault ' + state.timeoutDefault
-        + (process.env.TRAVIS
-          ? '; cat tmp/test_coverage/lcov.info | node_modules/coveralls/bin/coveralls.js'
-          : ''));
+        + ' --timeoutDefault ' + state.timeoutDefault);
       /* exit */
-      setTimeout(process.exit, state.timeoutDefault);
+      timeoutExit += 2000;
+      setTimeout(process.exit, timeoutExit);
     },
 
     _testNpm_default_test: function (onEventError) {
