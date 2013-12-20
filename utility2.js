@@ -3949,10 +3949,14 @@ integrate forever-webui
     },
 
     _testCoveralls: function () {
+      var script;
       if (state.isCoveralls) {
         if (process.env.TRAVIS) {
-          EXPORTS.shell('cat tmp/test_coverage/lcov.info'
-            + ' | node_modules/coveralls/bin/coveralls.js');
+          script = 'cat tmp/test_coverage/lcov.info | node_modules/coveralls/bin/coveralls.js';
+          EXPORTS.shell(script);
+          setTimeout(process.exit, state.timeoutDefault);
+        } else {
+          process.exit();
         }
       }
     },
@@ -3961,13 +3965,14 @@ integrate forever-webui
       /*
         this function runs npm test with code coverage
       */
-      var timeoutExit;
+      var script, timeoutExit;
       if (!state.npmTest) {
         return;
       }
       timeoutExit = state.timeoutDefault;
+      /* run test */
       timeoutExit += 2000;
-      EXPORTS.shell('rm -r tmp/test_coverage 2>/dev/null;'
+      script = 'rm -r tmp/test_coverage 2>/dev/null;'
         + 'istanbul cover --dir tmp/test_coverage'
         + ' -x **.min.**'
         + ' -x **.rollup.**'
@@ -3978,7 +3983,8 @@ integrate forever-webui
         + ' --repl'
         + ' --serverPort random'
         + ' --test'
-        + ' --timeoutDefault ' + state.timeoutDefault);
+        + ' --timeoutDefault ' + state.timeoutDefault;
+      EXPORTS.shell(script);
       /* exit */
       timeoutExit += 2000;
       setTimeout(process.exit, timeoutExit);

@@ -28,7 +28,7 @@
   },
   "scripts": {
     "start": "./utility2.js --repl --serverPort random --test",
-    "test": "./utility2.js --npm-test ./utility2.js --timeout-default 8000; ./utility2.js --coveralls --timeout-exit 4000"
+    "test": "./utility2.js --npm-test ./utility2.js --timeout-default 8000; sleep 2; utility2.js --coveralls"
   },
   "version": "2013.12.13-1"
 }
