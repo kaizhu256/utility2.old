@@ -26,9 +26,8 @@
     "url" : "https://github.com/kaizhu256/utility2"
   },
   "scripts": {
-    "postinstall": "./utility2.sh npmPostInstall utility2.js",
-    "start": "./utility2.sh npmStart utility2.js random",
-    "test": "./utility2.sh npmTest utility2.js random 8000"
+    "start": "./utility2.js --repl --serverPort random --test",
+    "test": "./utility2.js --npm-test ./utility2.js --timeout-default 8000"
   },
   "version": "2013.12.13-1"
 }

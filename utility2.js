@@ -6,7 +6,7 @@ utility2.js
 common, shared utilities for both browser and nodejs
 
 todo:
-merge utility2.sh with utility2.js
+add phantomjsEval
 fix failure of browser to send code coverage data on test failure
 revamp moduleRollup
 emulate localStorage
@@ -74,12 +74,12 @@ integrate forever-webui
         state.isBrowser = true;
       }
       /* init module */
-      local.moduleInit(module, local);
+      local.initModule(module, local);
     },
 
-    moduleInit: function (module, local2) {
+    initModule: function (module, local2) {
       /*
-        this function initializes a module with the provided local2 dictionary
+        this function inits a module with the provided local2 dictionary
       */
       var exports, name;
       /* assert local2._name */
@@ -125,13 +125,10 @@ integrate forever-webui
           required.utility2._moduleInitOnceNodejs(module, local2, exports);
         }
       }
-      if (state.isProduction) {
-        return;
-      }
       /* run tests */
       setTimeout(function () {
         EXPORTS.deferCallback('serverResume', 'defer', function () {
-          EXPORTS.testLocal(module, local2, exports);
+          EXPORTS.testModule(module, local2, exports);
         });
       });
     },
@@ -153,75 +150,7 @@ integrate forever-webui
     _name: 'utility2.moduleCommonShared',
 
     _init: function () {
-      EXPORTS.moduleInit(module, local);
-    },
-
-    _initOnce: function () {
-      /* exports */
-      /* misc ascii reference */
-      state.string256 = '\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\b\t\n\u000b\f\r\u000e'
-        + '\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c'
-        + '\u001d\u001e\u001f !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_'
-        + '`abcdefghijklmnopqrstuvwxyz{|}~';
-      /* global default timeout */
-      state.timeoutDefault = state.timeoutDefault || 30 * 1000;
-      if (!state.isNodejs) {
-        /* don't wait for server initialization, because it doesn't exist! */
-        EXPORTS.deferCallback('serverResume', 'resume');
-      }
-      /* browser initialization */
-      local._initOnceBrowser();
-      /* debug */
-      global.onEventError = EXPORTS.onEventErrorDefault;
-    },
-
-    _initOnceBrowser: function () {
-      /*
-        this function runs browser initialization code once
-      */
-      if (!state.isBrowser) {
-        return;
-      }
-      /* cache element id */
-      $('[id]').each(function (ii, target) {
-        state[target.id] = state[target.id] || $(target);
-      });
-      /* browser test flag */
-      state.isBrowserTest = (/\btestWatch=(\d+)\b/).exec(location.hash);
-      if (state.isBrowserTest) {
-        /* increment watch counter */
-        location.hash = EXPORTS.urlSearchSetItem(location.hash, 'testWatch',
-          (Number(state.isBrowserTest[1]) + 1).toString(), '#');
-        state.isBrowserTest = 'watch';
-        return;
-      }
-      /* browser test once flag */
-      state.isBrowserTest = (/\btestOnce=/).exec(location.hash);
-      if (state.isBrowserTest) {
-        state.isBrowserTest = 'once';
-        return;
-      }
-    },
-
-    assert: function (passed, message) {
-      /*
-        this function throws an error if the assertion fails
-      */
-      if (!passed) {
-        throw new Error(message ? 'assertion error - ' + message : 'assertion error');
-      }
-    },
-
-    _assert_fail_test: function (onEventError) {
-      /*
-        this function tests assert's fail behavior
-      */
-      EXPORTS.assert(true);
-      EXPORTS.tryCatchOnEventError(function () {
-        EXPORTS.assert(false);
-      }, function (error) {
-        onEventError(!error);
-      });
+      EXPORTS.initModule(module, local);
     },
 
     base64Decode: function (text) {
@@ -231,12 +160,14 @@ integrate forever-webui
       return global.atob(text.replace((/-/g), '+').replace((/_/g), '/'));
     },
 
-    base64Decode_default_test: function (onEventError) {
+    _base64Decode_default_test: function (onEventError) {
       /*
         this function tests base64Decode's default behavior
       */
       EXPORTS.assert(EXPORTS.base64Decode('') === '');
-      EXPORTS.assert(EXPORTS.base64Encode('state.string256') === 'c3RhdGUuc3RyaW5nMjU2');
+      EXPORTS.assert(EXPORTS.base64Decode('AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUm'
+        + 'JygpKissLS4vMDEyMzQ1Njc4OTo7PD0-P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2Rl'
+        + 'ZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fg') === EXPORTS.string256);
       onEventError();
     },
 
@@ -248,16 +179,23 @@ integrate forever-webui
         .replace((/\=+/g), ''); /**/
     },
 
-    base64Encode_default_test: function (onEventError) {
+    _base64Encode_default_test: function (onEventError) {
       /*
         this function tests base64Encode's default behavior
       */
       EXPORTS.assert(EXPORTS.base64Encode('') === '');
-      EXPORTS.assert(EXPORTS.base64Encode(state.string256)
+      EXPORTS.assert(EXPORTS.base64Encode(EXPORTS.string256)
         === 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD'
           + '0-P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6'
           + 'e3x9fg');
       onEventError();
+    },
+
+    callCallback: function (callback) {
+      /*
+        this function calls the callback
+      */
+      callback();
     },
 
     clearCallSetInterval: function (key, callback, interval, timeout) {
@@ -385,101 +323,6 @@ integrate forever-webui
       ));
     },
 
-    deferCallback: function (key, action, callback) {
-      /*
-        this function defers a callback until a resume event is fired
-      */
-      var self;
-      self = state.deferCallbackDict = state.deferCallbackDict || {};
-      self = self[key] = self[key] || { callbacks: [], pause: true };
-      switch (action) {
-      case 'delete':
-        delete state.deferCallbackDict[key];
-        break;
-      case 'defer':
-        self.callbacks.push(callback);
-        if (!self.pause) {
-          local._deferCallbackResume(self);
-        }
-        break;
-      case 'error':
-        self.error = callback;
-        local._deferCallbackResume(self);
-        break;
-      case 'mode':
-        return self.error ? 'error' : self.pause ? 'pause' : 'resume';
-      case 'pause':
-        self.pause = !self.error;
-        break;
-      case 'reset':
-        self.error = null;
-        self.pause = true;
-        break;
-      case 'resume':
-        local._deferCallbackResume(self);
-        break;
-      default:
-        throw new Error('unknown action - ' + action);
-      }
-    },
-
-    _deferCallbackResume: function (self) {
-      /*
-        this function resumes callbacks on the deferCallback object
-      */
-      self.pause = false;
-      while (self.callbacks.length) {
-        self.callbacks.shift()(self.error);
-      }
-    },
-
-    _deferCallback_default_test: function (onEventError) {
-      /*
-        this function tests deferCallback's default behavior
-      */
-      var key;
-      key = EXPORTS.uuid4();
-      EXPORTS.deferCallback(key, 'pause');
-      EXPORTS.assert(EXPORTS.deferCallback(key, 'mode') === 'pause');
-      EXPORTS.deferCallback(key, 'resume');
-      EXPORTS.assert(EXPORTS.deferCallback(key, 'mode') === 'resume');
-      EXPORTS.deferCallback(key, 'defer', function (error) {
-        onEventError(error);
-        EXPORTS.deferCallback(key, 'delete');
-      });
-    },
-
-    _deferCallback_error_test: function (onEventError) {
-      /*
-        this function tests deferCallback's error-handling behavior
-      */
-      var error, key;
-      key = EXPORTS.uuid4();
-      error = new Error();
-      EXPORTS.deferCallback(key, 'resume');
-      EXPORTS.deferCallback(key, 'error', error);
-      EXPORTS.deferCallback(key, 'reset');
-      EXPORTS.deferCallback(key, 'error', error);
-      EXPORTS.deferCallback(key, 'defer', function (error) {
-        onEventError(!error);
-        EXPORTS.deferCallback(key, 'delete');
-      });
-    },
-
-    _deferCallback_unknownAction_test: function (onEventError) {
-      /*
-        this function tests deferCallback's unknown action error-handling behavior
-      */
-      var key;
-      key = EXPORTS.uuid4();
-      try {
-        EXPORTS.deferCallback(key, 'unknown action');
-      } catch (error) {
-        onEventError(!error);
-        EXPORTS.deferCallback(key, 'delete');
-      }
-    },
-
     fsDirname: function (file) {
       /*
         this function returns a file name's parent directory
@@ -520,7 +363,7 @@ integrate forever-webui
       EXPORTS.jsEvalOnEventError('', 'null', onEventError);
     },
 
-    _jsEvalOnEventError_syntaxError_test: function (onEventError) {
+    _jsEvalOnEventError_syntaxErrorHandling_test: function (onEventError) {
       /*
         this function tests jsEvalOnEventError's syntax error-handling behavior
       */
@@ -542,7 +385,7 @@ integrate forever-webui
       }
     },
 
-    _jsonParseOrError_syntaxError_test: function (onEventError) {
+    _jsonParseOrError_syntaxErrorHandling_test: function (onEventError) {
       /*
         this function tests jsonParseOrError's syntax error-handling behavior
       */
@@ -678,13 +521,18 @@ integrate forever-webui
       console.log((global.Buffer && global.Buffer.isBuffer(data)) ? data.toString() : data);
     },
 
-    _onEventErrorDefault_error_test: function (onEventError) {
+    _onEventErrorDefault_errorHandling_test: function (onEventError) {
       /*
         this function tests onEventErrorDefault's error-handling behavior
       */
-      EXPORTS.onEventErrorDefault(
-        new Error("testing onEventErrorDefault's error-handling behavior")
-      );
+      var error;
+      /* mock state */
+      error = console.error;
+      console.error = EXPORTS.nop;
+      /* run test */
+      EXPORTS.onEventErrorDefault(new Error());
+      /* restore state */
+      console.error = error;
       onEventError();
     },
 
@@ -728,6 +576,11 @@ integrate forever-webui
           && JSON.stringify(options.cc) === '[]' ? null : new Error());
     },
 
+    string256: '\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\b\t\n\u000b\f\r\u000e'
+      + '\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c'
+      + '\u001d\u001e\u001f !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_'
+      + '`abcdefghijklmnopqrstuvwxyz{|}~',
+
     stringToCamelCase: function (text) {
       /*
         this function converts dashed names to camel-case
@@ -757,153 +610,6 @@ integrate forever-webui
       onEventError();
     },
 
-    testLocal: function (module, local2) {
-      /* browser-side testing */
-      if (state.isPhantomjs || (state.isBrowser && !state.isBrowserTest)) {
-        return;
-      }
-      var environment, _onEventTest, remaining, testSuite;
-      environment = state.isBrowser ? 'browser' : 'nodejs';
-      remaining = 0;
-      testSuite = {
-        environment: environment,
-        failures: 0,
-        name: environment + '.' + local2._name,
-        passed: 0,
-        skipped: 0,
-        testCases: {},
-        tests: 0,
-        time: 0,
-      };
-      _onEventTest = function (test, mode) {
-        var _onEventError;
-        _onEventError = function (error) {
-          if (test.finished) {
-            error = new Error('test callback used multiple times');
-          } else {
-            remaining -= 1;
-            test.finished = true;
-            test.time = (Date.now() - test.time) / 1000;
-          }
-          /* test skipped */
-          if (error === 'skip') {
-            testSuite.skipped += 1;
-            test.skipped = 'skipped';
-          /* test failed */
-          } else if (error) {
-            testSuite.failures += 1;
-            console.error('\n' + testSuite.environment, 'test failed -',
-              local2._name + '.' + test.name);
-            EXPORTS.onEventErrorDefault(error);
-            test.failure = error.stack || error.message || error;
-          /* test passed */
-          } else {
-            testSuite.passed += 1;
-          }
-          /* finished testing */
-          if (!remaining) {
-            _onEventTest(null, 'finish');
-          }
-        };
-        if (remaining < 0) {
-          if (testSuite.testCases.hasOwnProperty(test)) {
-            test = testSuite.testCases[test];
-            /* test timeout */
-            if (!test.finished) {
-              test.time = Date.now() - test.time;
-              testSuite.failures += 1;
-              testSuite.tests += 1;
-              console.error('\n' + testSuite.environment, 'test failed -',
-                local2._name + '.' + test.name);
-              test.failure = 'test timeout';
-              EXPORTS.onEventErrorDefault(new Error(test.failure));
-
-            }
-            testSuite.time += test.time;
-            return;
-          }
-          return;
-        }
-        switch (mode) {
-        /* finish test cases */
-        case 'finish':
-          remaining = -1;
-          state.testCounter -= 1;
-          /* timeout remaining tests */
-          Object.keys(testSuite.testCases).forEach(_onEventTest);
-          /* finish test suites */
-          if (state.testCounter <= 0) {
-            state.testCounter = 0;
-            EXPORTS.testReport();
-          }
-          return;
-        /* start test */
-        case 'start':
-          try {
-            local2[test.name](_onEventError);
-          } catch (error) {
-            _onEventError(error);
-          }
-          return;
-        /* run single test */
-        default:
-          if (test.slice(-5) !== '_test') {
-            return;
-          }
-          if (!remaining) {
-            state.testCounter = state.testCounter || 0;
-            state.testCounter += 1;
-          }
-          remaining += 1;
-          /* en-queue test */
-          testSuite.testCases[test] = { name: test, time: Date.now() };
-          setTimeout(_onEventTest, 1, testSuite.testCases[test], 'start');
-        }
-      };
-      Object.keys(local2).forEach(_onEventTest);
-      if (remaining) {
-        /* add test suite */
-        state.testSuites = state.testSuites || [];
-        state.testSuites.push(testSuite);
-        /* add timeout to test suite */
-        setTimeout(_onEventTest, state.timeoutDefault, null, 'finish');
-      }
-    },
-
-    // testLocal_default_test: function (onEventError) {
-      // /*
-        // this function tests testLocal's default behavior
-      // */
-      // onEventError();
-      // EXPORTS
-    // },
-
-    testReport: function () {
-      var result;
-      result = '\n';
-      state.testSuites.forEach(function (testSuite) {
-        result += [testSuite.environment, 'tests -', testSuite.failures, 'failed /',
-          testSuite.skipped, 'skipped /', testSuite.passed, 'passed in', testSuite.name]
-          .join(' ') + '\n';
-      });
-      console.log(result);
-      if (state.isBrowser) {
-        /* upload test report */
-        EXPORTS.ajax({
-          data: JSON.stringify({ coverage: global.__coverage__, testSuites: state.testSuites }),
-          url: '/test/test.upload'
-        });
-        /* reset code coverage */
-        if (global.__coverage__) {
-          global.__coverage__ = {};
-        }
-      } else {
-        required.utility2._testReport(state.testSuites);
-      }
-      /* reset test suites */
-      state.testSuites.length = 0;
-    },
-
     tryCatchOnEventError: function (callback, onEventError) {
       /*
         this function helps achieve 100% code coverage
@@ -913,6 +619,17 @@ integrate forever-webui
       } catch (error) {
         onEventError(error);
       }
+    },
+
+    _tryCatchOnEventError_errorHandling_test: function (onEventError) {
+      /*
+        this function tests tryCatchOnEventError's error-handling behavior
+      */
+      EXPORTS.tryCatchOnEventError(function () {
+        throw new Error();
+      }, function (error) {
+        onEventError(!error);
+      });
     },
 
     urlDecodeOrError: function (text) {
@@ -937,79 +654,6 @@ integrate forever-webui
         }
       }
       return new Error('invalid url');
-    },
-
-    urlSearchGetItem: function (url, key, delimiter) {
-      return EXPORTS.urlSearchParse(url, delimiter).params[key] || '';
-    },
-
-    _urlSearchGetItem_default_test: function (onEventError) {
-      onEventError(EXPORTS.urlSearchGetItem('/aa#bb=cc%2B', 'bb', '#') === 'cc+' ? null
-        : new Error());
-    },
-
-    urlSearchParse: function (url, delimiter) {
-      var key, match, params, regexp, search, value;
-      delimiter = delimiter || '?';
-      match = url.indexOf(delimiter);
-      params = {};
-      regexp = (/([^&]+)=([^&]+)/g);
-      if (match < 0) {
-        return { params: params, path: url };
-      }
-      search = url.slice(match + 1);
-      url = url.slice(0, match + 1);
-      while (true) {
-        match = regexp.exec(search);
-        if (!match) {
-          break;
-        }
-        /* validate key / value */
-        key = EXPORTS.urlDecodeOrError(match[1]);
-        value = EXPORTS.urlDecodeOrError(match[2]);
-        if (!((key instanceof Error)
-          || (value instanceof Error))) {
-          params[key] = value;
-        }
-      }
-      return { params: params, path: url };
-    },
-
-    urlSearchParsedJoin: function (parsed, delimiter) {
-      var path;
-      path = parsed.path;
-      delimiter = delimiter || '?';
-      if (path.indexOf(delimiter) < 0) {
-        path += delimiter;
-      }
-      Object.keys(parsed.params).sort().forEach(function (key, ii) {
-        if (typeof parsed.params[key] === 'string') {
-          if (ii || path.slice(-1) !== delimiter) {
-            path += '&';
-          }
-          path += encodeURIComponent(key) + '=' + encodeURIComponent(parsed.params[key]);
-        }
-      });
-      return path.replace('?&', '?');
-    },
-
-    urlSearchRemoveItem: function (url, key, delimiter) {
-      var parsed;
-      parsed = EXPORTS.urlSearchParse(url, delimiter);
-      parsed.params[key] = null;
-      return EXPORTS.urlSearchParsedJoin(parsed, delimiter);
-    },
-
-    urlSearchSetItem: function (url, key, value, delimiter) {
-      var parsed;
-      parsed = EXPORTS.urlSearchParse(url, delimiter);
-      parsed.params[key] = value;
-      return EXPORTS.urlSearchParsedJoin(parsed, delimiter);
-    },
-
-    _urlSearchSetItem_default_test: function (onEventError) {
-      onEventError(EXPORTS.urlSearchSetItem('/aa#bb=1', 'cc', 'dd+', '#')
-        === '/aa#bb=1&cc=dd%2B' ? null : new Error());
     },
 
     uuid4: function () {
@@ -1047,6 +691,198 @@ integrate forever-webui
 
 
 
+(function moduleAjaxShared() {
+  /*
+    this shared module exports the ajax api
+  */
+  'use strict';
+  var local;
+  local = {
+
+    _name: 'utility2.moduleAjaxShared',
+
+    _init: function () {
+      EXPORTS.initModule(module, local);
+    },
+
+    ajax: function (options, onEventError) {
+      /*
+        this function makes an ajax request, and auto-concats the response stream into utf8 text
+      */
+      onEventError = onEventError || EXPORTS.onEventErrorDefault;
+      options.url0 = options.url0 || options.url;
+      if (options.data) {
+        options.method = options.type = options.method || options.type || 'POST';
+      }
+      /* browser */
+      if (state.isBrowser) {
+        /* ajax xss via proxy */
+        if ((/^https*:/).test(options.url)) {
+          options.url = '/proxy/proxy.ajax/' + options.url;
+        }
+        EXPORTS.ajaxProgressOnEventError(options, onEventError);
+        return;
+      }
+      /* nodejs */
+      required.utility2._ajaxNodejs(options, onEventError);
+    },
+
+    ajaxMultiParams: function (options, onEventError) {
+      /*
+        this function makes multiple ajax calls for multiple params
+      */
+      var params, urlParsed;
+      /* remove hash-tag from url */
+      urlParsed = (/[^#]*/).exec(options.url)[0].split('?');
+      params = [{}];
+      (urlParsed[1] || '').split('&').forEach(function (value) {
+        var dict, ii, key;
+        value = value.split('=');
+        key = value[0];
+        value = value[1];
+        for (ii = params.length - 1; ii >= 0; ii -= 1) {
+          dict = params[ii];
+          if (dict[key] && !(options.unique && dict[key] === value)) {
+            dict = EXPORTS.objectCopyDeep(dict);
+            params.push(dict);
+          }
+          dict[key] = value;
+        }
+      });
+      options.urls = params.map(function (dict) {
+        return urlParsed[0] + '?' + Object.keys(dict).sort().map(function (key) {
+          return key + '=' + dict[key];
+        }).join('&');
+      });
+      EXPORTS.ajaxMultiUrls(options, onEventError);
+    },
+
+    _ajaxMultiParams_errorHandling_test: function (onEventError) {
+      /*
+        this function tests ajaxMultiParams's error-handling behavior
+      */
+      EXPORTS.ajaxMultiParams({
+        url: '/test/test.error'
+      }, function (error) {
+        if (error) {
+          onEventError();
+        }
+      });
+    },
+
+    _ajaxMultiParams_multi_test: function (onEventError) {
+      /*
+        this function tests ajaxMultiParams's multi-ajax requests behavior
+      */
+      EXPORTS.ajaxMultiParams({
+        url: '/test/test.echo?aa=1&aa=2&bb=3&bb=4&cc=5#dd=6'
+      }, function (error, data, options, remaining) {
+        EXPORTS.assert((/^GET \/test\/test\.echo\?aa=.&bb=.&cc=. /).test(data));
+        if (remaining === 0) {
+          onEventError();
+        }
+      });
+    },
+
+    _ajaxMultiParams_multiError_test: function (onEventError) {
+      /*
+        this function tests ajaxMultiParams's multi error-handling behavior
+      */
+      EXPORTS.ajaxMultiParams({
+        url: '/test/test.error?aa=1&aa=2&bb=3&bb=4&cc=5#dd=6'
+      }, function (error) {
+        if (error) {
+          onEventError();
+        }
+      });
+    },
+
+    _ajaxMultiParams_nullCase_test: function (onEventError) {
+      /*
+        this function tests ajaxMultiParams's null-case behavior
+      */
+      EXPORTS.ajaxMultiParams({
+        url: '/test/test.echo'
+      }, onEventError);
+    },
+
+    ajaxMultiUrls: function (options, onEventError) {
+      /*
+        this function makes multiple ajax calls for multiple urls
+      */
+      var _onEventError, remaining;
+      onEventError = onEventError || EXPORTS.onEventErrorDefault;
+      _onEventError = function (error, data, options) {
+        if (remaining < 0) {
+          return;
+        }
+        if (error) {
+          remaining = -1;
+          onEventError(error, null, options);
+          return;
+        }
+        remaining.splice(remaining.indexOf(options.url0), 1);
+        /* debug remaining urls */
+        console.log('ajaxMultiUrls - received: ' + options.url0 + ', remaining: ['
+          + remaining.slice(0, 2) + (remaining.length ? ', ...]' : ']'));
+        onEventError(null, data, options, remaining.length);
+      };
+      remaining = EXPORTS.objectCopyDeep(options.urls);
+      options.urls.forEach(function (url) {
+        var options2;
+        options2 = EXPORTS.objectCopyDeep(options);
+        options2.url = url;
+        EXPORTS.ajax(options2, _onEventError);
+      });
+    },
+
+  };
+  local._init();
+}());
+
+
+
+(function moduleAssertShared() {
+  /*
+    this shared module exports the assert api
+  */
+  'use strict';
+  var local;
+  local = {
+
+    _name: 'utility2.moduleAssertShared',
+
+    _init: function () {
+      EXPORTS.initModule(module, local);
+    },
+
+    assert: function (passed, message) {
+      /*
+        this function throws an error if the assertion fails
+      */
+      if (!passed) {
+        throw new Error(message ? 'assertion error - ' + message : 'assertion error');
+      }
+    },
+
+    _assert_default_test: function (onEventError) {
+      /*
+        this function tests assert's default behavior
+      */
+      EXPORTS.assert(true);
+      try {
+        EXPORTS.assert(false);
+      } catch (error) {
+        onEventError(!error);
+      }
+    },
+
+  };
+  local._init();
+}());
+
+
+
 (function moduleCacheShared() {
   /*
     this shared module exports the cache api
@@ -1058,7 +894,7 @@ integrate forever-webui
     _name: 'utility2.moduleCacheShared',
 
     _init: function () {
-      EXPORTS.moduleInit(module, local);
+      EXPORTS.initModule(module, local);
     },
 
     Cache: function (name, size) {
@@ -1166,149 +1002,113 @@ integrate forever-webui
 
 
 
-(function moduleAjaxShared() {
+(function moduleDeferCallbackShared() {
   /*
-    this shared module exports the ajax api
+    this shared module exports the deferCallback api
   */
   'use strict';
   var local;
   local = {
 
-    _name: 'utility2.moduleAjaxShared',
+    _name: 'utility2.moduleDeferCallbackShared',
 
     _init: function () {
-      EXPORTS.moduleInit(module, local);
+      EXPORTS.initModule(module, local);
     },
 
-    ajax: function (options, onEventError) {
+    deferCallback: function (key, action, callback) {
       /*
-        this function makes an ajax request, and auto-concats the response stream into utf8 text
+        this function defers a callback until a resume event is fired
       */
-      onEventError = onEventError || EXPORTS.onEventErrorDefault;
-      options.url0 = options.url0 || options.url;
-      if (options.data) {
-        options.method = options.type = options.method || options.type || 'POST';
+      var self;
+      self = state.deferCallbackDict = state.deferCallbackDict || {};
+      self = self[key] = self[key] || { callbacks: [], pause: true };
+      switch (action) {
+      case 'delete':
+        delete state.deferCallbackDict[key];
+        break;
+      case 'defer':
+        self.callbacks.push(callback);
+        if (!self.pause) {
+          local._deferCallbackResume(self);
+        }
+        break;
+      case 'error':
+        self.error = callback;
+        local._deferCallbackResume(self);
+        break;
+      case 'mode':
+        return self.error ? 'error' : self.pause ? 'pause' : 'resume';
+      case 'pause':
+        self.pause = !self.error;
+        break;
+      case 'reset':
+        self.error = null;
+        self.pause = true;
+        break;
+      case 'resume':
+        local._deferCallbackResume(self);
+        break;
+      default:
+        throw new Error('unknown action - ' + action);
       }
-      /* browser */
-      if (state.isBrowser) {
-        /* ajax xss via proxy */
-        if ((/^https*:/).test(options.url)) {
-          options.url = '/proxy/proxy.ajax/' + options.url;
-        }
-        EXPORTS.ajaxProgressOnEventError(options, onEventError);
-        return;
+    },
+
+    _deferCallbackResume: function (self) {
+      /*
+        this function resumes callbacks on the deferCallback object
+      */
+      self.pause = false;
+      while (self.callbacks.length) {
+        self.callbacks.shift()(self.error);
       }
-      /* nodejs */
-      required.utility2._ajaxNodejs(options, onEventError);
     },
 
-    ajaxMultiParams: function (options, onEventError) {
+    _deferCallback_default_test: function (onEventError) {
       /*
-        this function makes multiple ajax calls for multiple params
+        this function tests deferCallback's default behavior
       */
-      var params, urlParsed;
-      /* remove hash-tag from url */
-      urlParsed = (/[^#]*/).exec(options.url)[0].split('?');
-      params = [{}];
-      (urlParsed[1] || '').split('&').forEach(function (value) {
-        var dict, ii, key;
-        value = value.split('=');
-        key = value[0];
-        value = value[1];
-        for (ii = params.length - 1; ii >= 0; ii -= 1) {
-          dict = params[ii];
-          if (dict[key] && !(options.unique && dict[key] === value)) {
-            dict = EXPORTS.objectCopyDeep(dict);
-            params.push(dict);
-          }
-          dict[key] = value;
-        }
-      });
-      options.urls = params.map(function (dict) {
-        return urlParsed[0] + '?' + Object.keys(dict).sort().map(function (key) {
-          return key + '=' + dict[key];
-        }).join('&');
-      });
-      EXPORTS.ajaxMultiUrls(options, onEventError);
-    },
-
-    _ajaxMultiParams_error_test: function (onEventError) {
-      /*
-        this function tests ajaxMultiParams's error-handling behavior
-      */
-      EXPORTS.ajaxMultiParams({
-        url: '/test/test.error'
-      }, function (error) {
-        if (error) {
-          onEventError();
-        }
+      var key;
+      key = EXPORTS.uuid4();
+      EXPORTS.deferCallback(key, 'pause');
+      EXPORTS.assert(EXPORTS.deferCallback(key, 'mode') === 'pause');
+      EXPORTS.deferCallback(key, 'resume');
+      EXPORTS.assert(EXPORTS.deferCallback(key, 'mode') === 'resume');
+      EXPORTS.deferCallback(key, 'defer', function (error) {
+        onEventError(error);
+        EXPORTS.deferCallback(key, 'delete');
       });
     },
 
-    _ajaxMultiParams_multi_test: function (onEventError) {
+    _deferCallback_errorHandling_test: function (onEventError) {
       /*
-        this function tests ajaxMultiParams's multi-ajax requests behavior
+        this function tests deferCallback's error-handling behavior
       */
-      EXPORTS.ajaxMultiParams({
-        url: '/test/test.echo?aa=1&aa=2&bb=3&bb=4&cc=5#dd=6'
-      }, function (error, data, options, remaining) {
-        EXPORTS.assert((/^GET \/test\/test\.echo\?aa=.&bb=.&cc=. /).test(data));
-        if (remaining === 0) {
-          onEventError();
-        }
+      var error, key;
+      key = EXPORTS.uuid4();
+      error = new Error();
+      EXPORTS.deferCallback(key, 'resume');
+      EXPORTS.deferCallback(key, 'error', error);
+      EXPORTS.deferCallback(key, 'reset');
+      EXPORTS.deferCallback(key, 'error', error);
+      EXPORTS.deferCallback(key, 'defer', function (error) {
+        onEventError(!error);
+        EXPORTS.deferCallback(key, 'delete');
       });
     },
 
-    _ajaxMultiParams_multiError_test: function (onEventError) {
+    _deferCallback_unknownAction_test: function (onEventError) {
       /*
-        this function tests ajaxMultiParams's multi error-handling behavior
+        this function tests deferCallback's unknown action error-handling behavior
       */
-      EXPORTS.ajaxMultiParams({
-        url: '/test/test.error?aa=1&aa=2&bb=3&bb=4&cc=5#dd=6'
-      }, function (error) {
-        if (error) {
-          onEventError();
-        }
-      });
-    },
-
-    _ajaxMultiParams_nullCase_test: function (onEventError) {
-      /*
-        this function tests ajaxMultiParams's null-case behavior
-      */
-      EXPORTS.ajaxMultiParams({
-        url: '/test/test.echo'
-      }, onEventError);
-    },
-
-    ajaxMultiUrls: function (options, onEventError) {
-      /*
-        this function makes multiple ajax calls for multiple urls
-      */
-      var _onEventError, remaining;
-      onEventError = onEventError || EXPORTS.onEventErrorDefault;
-      _onEventError = function (error, data, options) {
-        if (remaining < 0) {
-          return;
-        }
-        if (error) {
-          remaining = -1;
-          onEventError(error, null, options);
-          return;
-        }
-        remaining.splice(remaining.indexOf(options.url0), 1);
-        /* debug remaining urls */
-        console.log('ajaxMultiUrls - received: ' + options.url0 + ', remaining: ['
-          + remaining.slice(0, 2) + (remaining.length ? ', ...]' : ']'));
-        onEventError(null, data, options, remaining.length);
-      };
-      remaining = EXPORTS.objectCopyDeep(options.urls);
-      options.urls.forEach(function (url) {
-        var options2;
-        options2 = EXPORTS.objectCopyDeep(options);
-        options2.url = url;
-        EXPORTS.ajax(options2, _onEventError);
-      });
+      var key;
+      key = EXPORTS.uuid4();
+      try {
+        EXPORTS.deferCallback(key, 'unknown action');
+      } catch (error) {
+        onEventError(!error);
+        EXPORTS.deferCallback(key, 'delete');
+      }
     },
 
   };
@@ -1317,30 +1117,341 @@ integrate forever-webui
 
 
 
-(function moduleCommonBrowser() {
+(function moduleTestShared() {
   /*
-    this browser module exports common, browser utilities
-   */
+    this shared module exports the test api
+  */
   'use strict';
   var local;
   local = {
 
-    _name: 'utility2.moduleCommonBrowser',
+    _name: 'utility2.moduleTestShared',
 
     _init: function () {
-      if (!state.isBrowser) {
+      EXPORTS.initModule(module, local);
+    },
+
+    testModule: function (module, local2) {
+      /*
+        this function runs tests on a module
+      */
+      var environment, _onEventTest, remaining, testSuite;
+      /* browser-side testing */
+      if (state.isPhantomjs
+          || (state.isBrowser && !state.isBrowserTest)
+          || (state.isNodejs && !state.isTest)) {
         return;
       }
-      EXPORTS.moduleInit(module, local);
+      environment = state.isBrowser ? 'browser' : 'nodejs';
+      remaining = 0;
+      testSuite = {
+        environment: environment,
+        failures: 0,
+        name: environment + '.' + local2._name,
+        passed: 0,
+        skipped: 0,
+        testCases: {},
+        tests: 0,
+        time: 0,
+      };
+      _onEventTest = function (test, mode) {
+        var _onEventError;
+        _onEventError = function (error) {
+          if (test.finished) {
+            error = new Error('test callback used multiple times');
+          } else {
+            remaining -= 1;
+            test.finished = true;
+            test.time = (Date.now() - test.time) / 1000;
+          }
+          /* test skipped */
+          if (error === 'skip') {
+            testSuite.skipped += 1;
+            test.skipped = 'skipped';
+          /* test failed */
+          } else if (error) {
+            testSuite.failures += 1;
+            console.error('\n' + testSuite.environment, 'test failed -',
+              local2._name + '.' + test.name);
+            EXPORTS.onEventErrorDefault(error);
+            test.failure = error.stack || error.message || error;
+          /* test passed */
+          } else {
+            testSuite.passed += 1;
+          }
+          /* finished testing */
+          if (!remaining) {
+            _onEventTest(null, 'finish');
+          }
+        };
+        if (remaining < 0) {
+          if (testSuite.testCases.hasOwnProperty(test)) {
+            test = testSuite.testCases[test];
+            /* test timeout */
+            if (!test.finished) {
+              test.time = Date.now() - test.time;
+              testSuite.failures += 1;
+              testSuite.tests += 1;
+              console.error('\n' + testSuite.environment, 'test failed -',
+                local2._name + '.' + test.name);
+              test.failure = 'test timeout';
+              EXPORTS.onEventErrorDefault(new Error(test.failure));
+
+            }
+            testSuite.time += test.time;
+            return;
+          }
+          return;
+        }
+        switch (mode) {
+        /* finish test cases */
+        case 'finish':
+          remaining = -1;
+          state.testCounter -= 1;
+          /* timeout remaining tests */
+          Object.keys(testSuite.testCases).forEach(_onEventTest);
+          /* finish test suites */
+          if (state.testCounter <= 0) {
+            state.testCounter = 0;
+            EXPORTS.testReport();
+          }
+          return;
+        /* start test */
+        case 'start':
+          try {
+            local2[test.name](_onEventError);
+          } catch (error) {
+            _onEventError(error);
+          }
+          return;
+        /* run single test */
+        default:
+          if (test.slice(-5) !== '_test') {
+            return;
+          }
+          if (!remaining) {
+            state.testCounter = state.testCounter || 0;
+            state.testCounter += 1;
+          }
+          remaining += 1;
+          /* en-queue test */
+          testSuite.testCases[test] = { name: test, time: Date.now() };
+          setTimeout(_onEventTest, 1, testSuite.testCases[test], 'start');
+        }
+      };
+      Object.keys(local2).forEach(_onEventTest);
+      if (remaining) {
+        /* add test suite */
+        state.testSuites = state.testSuites || [];
+        state.testSuites.push(testSuite);
+        /* add timeout to test suite */
+        setTimeout(_onEventTest, state.timeoutDefault, null, 'finish');
+      }
+    },
+
+    // testModule_default_test: function (onEventError) {
+      // /*
+        // this function tests testModule's default behavior
+      // */
+      // onEventError();
+      // EXPORTS
+    // },
+
+    testReport: function () {
+      var result;
+      result = '\n';
+      state.testSuites.forEach(function (testSuite) {
+        result += [testSuite.environment, 'tests -', testSuite.failures, 'failed /',
+          testSuite.skipped, 'skipped /', testSuite.passed, 'passed in', testSuite.name]
+          .join(' ') + '\n';
+      });
+      console.log(result);
+      if (state.isBrowser) {
+        /* upload test report */
+        EXPORTS.ajax({
+          data: JSON.stringify({ coverage: global.__coverage__, testSuites: state.testSuites }),
+          url: '/test/test.upload'
+        });
+        /* reset code coverage */
+        if (global.__coverage__) {
+          global.__coverage__ = {};
+        }
+      } else {
+        required.utility2._testReport(state.testSuites);
+      }
+      /* reset test suites */
+      state.testSuites.length = 0;
+    },
+
+  };
+  local._init();
+}());
+
+
+
+(function moduleUrlParams() {
+  /*
+    this shared module exports the urlParams api
+  */
+  'use strict';
+  var local;
+  local = {
+
+    _name: 'utility2.moduleUrlSearch',
+
+    _init: function () {
+      EXPORTS.initModule(module, local);
+    },
+
+    urlParamsGetItem: function (url, key, delimiter) {
+      /*
+        this function gets a param from the input url
+      */
+      return EXPORTS.urlParamsParse(url, delimiter).params[key] || '';
+    },
+
+    _urlParamsGetItem_default_test: function (onEventError) {
+      /*
+        this function tests urlParamsGetItem's default behavior
+      */
+      onEventError(EXPORTS.urlParamsGetItem('/aa#bb=cc%2B', 'bb', '#') === 'cc+' ? null
+        : new Error());
+    },
+
+    urlParamsParse: function (url, delimiter) {
+      /*
+        this function parses a url into path / params components
+      */
+      var key, match, params, regexp, search, value;
+      delimiter = delimiter || '?';
+      match = url.indexOf(delimiter);
+      params = {};
+      regexp = (/([^&]+)=([^&]+)/g);
+      if (match < 0) {
+        return { params: params, path: url };
+      }
+      search = url.slice(match + 1);
+      url = url.slice(0, match + 1);
+      while (true) {
+        match = regexp.exec(search);
+        if (!match) {
+          break;
+        }
+        /* validate key / value */
+        key = EXPORTS.urlDecodeOrError(match[1]);
+        value = EXPORTS.urlDecodeOrError(match[2]);
+        if (!((key instanceof Error) || (value instanceof Error))) {
+          params[key] = value;
+        }
+      }
+      return { params: params, path: url };
+    },
+
+    urlParamsParsedJoin: function (parsed, delimiter) {
+      /*
+        this function joins path / params components into a single url
+      */
+      var path;
+      path = parsed.path;
+      delimiter = delimiter || '?';
+      if (path.indexOf(delimiter) < 0) {
+        path += delimiter;
+      }
+      Object.keys(parsed.params).sort().forEach(function (key, ii) {
+        if (typeof parsed.params[key] === 'string') {
+          if (ii || path.slice(-1) !== delimiter) {
+            path += '&';
+          }
+          path += encodeURIComponent(key) + '=' + encodeURIComponent(parsed.params[key]);
+        }
+      });
+      return path.replace(delimiter + '&', delimiter);
+    },
+
+    urlParamsRemoveItem: function (url, key, delimiter) {
+      /*
+        this function removes a param from the input url
+      */
+      var parsed;
+      parsed = EXPORTS.urlParamsParse(url, delimiter);
+      parsed.params[key] = null;
+      return EXPORTS.urlParamsParsedJoin(parsed, delimiter);
+    },
+
+    _urlParamsRemoveItem_default_test: function (onEventError) {
+      /*
+        this function tests urlParamsRemoveItem's default behavior
+      */
+      EXPORTS.assert(EXPORTS.urlParamsRemoveItem('/aa#bb=1&cc=2', 'bb', '#') === '/aa#cc=2');
+      onEventError();
+    },
+
+    urlParamsSetItem: function (url, key, value, delimiter) {
+      /*
+        this function sets a param to the input url
+      */
+      var parsed;
+      parsed = EXPORTS.urlParamsParse(url, delimiter);
+      parsed.params[key] = value;
+      return EXPORTS.urlParamsParsedJoin(parsed, delimiter);
+    },
+
+    _urlParamsSetItem_default_test: function (onEventError) {
+      /*
+        this function tests urlParamsSetItem's default behavior
+      */
+      EXPORTS.assert(EXPORTS.urlParamsSetItem('/aa', 'bb', 'cc+', '#')
+        === '/aa#bb=cc%2B');
+      EXPORTS.assert(EXPORTS.urlParamsSetItem('/aa#bb=1', 'cc', 'dd+', '#')
+        === '/aa#bb=1&cc=dd%2B');
+      onEventError();
+    },
+
+  };
+  local._init();
+}());
+
+
+
+(function moduleInitShared() {
+  /*
+    this shared module inits utility2
+  */
+  'use strict';
+  var local;
+  local = {
+
+    _name: 'utility2.moduleInitShared',
+
+    _init: function () {
+      EXPORTS.initModule(module, local);
     },
 
     _initOnce: function () {
-      /* watch server for changes and reload via sse */
-      if (state.isBrowserTest === 'watch') {
-        new global.EventSource('/test/test.watch').addEventListener('message', function () {
-          location.reload();
-        });
+      /* exports */
+      /* global default timeout */
+      state.timeoutDefault = state.timeoutDefault || 30 * 1000;
+      if (!state.isNodejs) {
+        /* don't wait for server initialization, because it doesn't exist */
+        EXPORTS.deferCallback('serverResume', 'resume');
       }
+      /* browser initialization */
+      local._initOnceBrowser();
+      /* debug */
+      global.onEventError = EXPORTS.onEventErrorDefault;
+    },
+
+    _initOnceBrowser: function () {
+      /*
+        this function runs browser initialization code once
+      */
+      if (!state.isBrowser) {
+        return;
+      }
+      /* cache element id */
+      $('[id]').each(function (ii, target) {
+        state[target.id] = state[target.id] || $(target);
+      });
       /*
         bug - phantomjs - new Blob() throws error
         https://github.com/ariya/phantomjs/issues/11013
@@ -1351,6 +1462,25 @@ integrate forever-webui
         global.Blob = local._Blob;
       }
       global.Blob = local._Blob;
+      /* browser test flag - watch */
+      state.isBrowserTest = (/\btestWatch=(\d+)\b/).exec(location.hash);
+      if (state.isBrowserTest) {
+        /* increment watch counter */
+        location.hash = EXPORTS.urlParamsSetItem(location.hash, 'testWatch',
+          (Number(state.isBrowserTest[1]) + 1).toString(), '#');
+        state.isBrowserTest = 'watch';
+        /* watch server for changes and reload via sse */
+        new global.EventSource('/test/test.watch').addEventListener('message', function () {
+          location.reload();
+        });
+        return;
+      }
+      /* browser test flag - once */
+      state.isBrowserTest = (/\btestOnce=/).exec(location.hash);
+      if (state.isBrowserTest) {
+        state.isBrowserTest = 'once';
+        return;
+      }
     },
 
     _Blob: function (aFileParts, options) {
@@ -1388,7 +1518,7 @@ integrate forever-webui
       if (!state.isBrowser) {
         return;
       }
-      EXPORTS.moduleInit(module, local);
+      EXPORTS.initModule(module, local);
     },
 
     _initOnce: function () {
@@ -1430,7 +1560,6 @@ integrate forever-webui
           local._xhrProgressList.pop().abort();
         }
       });
-      global.local = local;
     },
 
     ajaxProgressOnEventError: function (options, onEventError) {
@@ -1454,7 +1583,7 @@ integrate forever-webui
       options.type = options.type || options.method;
       options.xhr = options.xhr || local._xhrProgress;
       if (options.params) {
-        options.url = EXPORTS.urlSearchParsedJoin({
+        options.url = EXPORTS.urlParamsParsedJoin({
           params: options.params,
           path: options.url
         });
@@ -1464,7 +1593,6 @@ integrate forever-webui
         console.log(options);
       }
       $.ajax(options).done(function (data, textStatus, xhr) {
-        global.xhr = xhr;
         switch (options.dataType) {
         case 'statusCode':
           onEventError(null, xhr.status, options);
@@ -1492,7 +1620,6 @@ integrate forever-webui
       */
       var blob;
       blob = new global.Blob(['hello world']);
-      debugPrint(JSON.stringify(blob));
       blob.name = 'test.txt';
       EXPORTS.ajax({
         file: blob,
@@ -1647,7 +1774,7 @@ integrate forever-webui
       if (!state.isBrowser) {
         return;
       }
-      EXPORTS.moduleInit(module, local);
+      EXPORTS.initModule(module, local);
     },
 
     _initOnce: function () {
@@ -1666,27 +1793,38 @@ integrate forever-webui
       });
     },
 
-    adminDebug: function (script, onEventError) {
-      EXPORTS.ajax({ data: script, url: "/admin/admin.debug" }, onEventError);
+    adminEval: function (script, onEventError) {
+      /*
+        this function remotely evals javascript code on server
+      */
+      EXPORTS.ajax({ data: script, url: "/admin/admin.eval" }, onEventError);
     },
 
-    _adminDebug_default_test: function (onEventError) {
+    _adminEval_default_test: function (onEventError) {
       /*
-        this function tests adminDebug's default behavior
+        this function tests adminEval's default behavior
       */
-      EXPORTS.adminDebug('null', onEventError);
+      EXPORTS.adminEval('null', onEventError);
     },
 
-    _adminDebug_error_test: function (onEventError) {
+    adminExit: function (options, onEventError) {
       /*
-        this function tests adminDebug's error-handling behavior
+        this function remotely evals javascript code on server
       */
-      EXPORTS.adminDebug('syntax error', function (error) {
-        onEventError(!error);
-      });
+      EXPORTS.ajax({ params: options, url: "/admin/admin.exit" }, onEventError);
+    },
+
+    _adminExit_default_test: function (onEventError) {
+      /*
+        this function tests adminExit's default behavior
+      */
+      EXPORTS.adminExit({ mock: '1' }, onEventError);
     },
 
     adminShell: function (script, onEventError) {
+      /*
+        this function remotely executes shell commands on server
+      */
       EXPORTS.ajax({ data: script, url: "/admin/admin.shell" }, onEventError);
     },
 
@@ -1703,28 +1841,106 @@ integrate forever-webui
 
 
 
-(function moduleCommonNodejs() {
+(function moduleLintNodejs() {
   /*
-    this nodejs module exports common, nodejs utilities
+    this nodejs module exports the lint api
   */
   'use strict';
   var local;
   local = {
 
-    _name: 'utility2.moduleCommonNodejs',
+    _name: 'utility2.moduleLintNodejs',
 
     _init: function () {
       if (!state.isNodejs) {
         return;
       }
-      EXPORTS.moduleInit(module, local);
+      EXPORTS.initModule(module, local);
+    },
+
+    _lintCss: function (file, script) {
+      /*
+        this function lints a css script for errors
+      */
+      if (required.csslint) {
+        console.log(required.csslint.CSSLint.getFormatter('text')
+          .formatResults(required.csslint.CSSLint.verify(script, { ignore: 'ids' }), file, {
+            quiet: true
+          }));
+      }
+      return script;
+    },
+
+    _lintJs: function (file, script) {
+      /*
+        this function lints a js script for errors
+      */
+      var lint;
+      if (required.jslint_linter && !global.__coverage__) {
+        lint = required.jslint_linter.lint(script, { maxerr: 8 });
+        if (!lint.ok) {
+          required.jslint_reporter.report(file, lint);
+        }
+      }
+      return script;
+    },
+
+    lintScript: function (file, script) {
+      /*
+        this function lints css / html / js / json scripts
+      */
+      switch (required.path.extname(file)) {
+      case '.css':
+        return local._lintCss(file, script);
+      default:
+        return local._lintJs(file, script);
+      }
+    },
+
+    _lintScript_css_test: function (onEventError) {
+      /*
+        this function tests lintScript's css lint behavior
+      */
+      EXPORTS.lintScript('foo.css', '\n');
+      onEventError();
+    },
+
+    _lintScript_js_test: function (onEventError) {
+      /*
+        this function tests lintScript's js lint behavior
+      */
+      var coverage;
+      coverage = global.__coverage__;
+      global.__coverage__ = null;
+      EXPORTS.lintScript('foo.js', '\n');
+      global.__coverage__ = coverage;
+      onEventError();
+    },
+
+  };
+  local._init();
+}());
+
+
+
+(function moduleInitNodejs() {
+  /*
+    this nodejs module inits utility2
+  */
+  'use strict';
+  var local;
+  local = {
+
+    _name: 'utility2.moduleInitNodejs',
+
+    _init: function () {
+      if (!state.isNodejs) {
+        return;
+      }
+      EXPORTS.initModule(module, local);
     },
 
     _initOnce: function () {
-      if (state.initOnceNodejs) {
-        return;
-      }
-      state.initOnceNodejs = true;
       /* require */
       required.child_process = required.child_process || require('child_process');
       required.fs = required.fs || require('fs');
@@ -1779,13 +1995,13 @@ integrate forever-webui
       }
       /* initialize sqlite3 */
       if (required.sqlite3) {
-        required.sqlite3_db = new required.sqlite3.cached.Database(':memory:');
+        state.dbSqlite3 = new required.sqlite3.cached.Database(':memory:');
       }
       /* exports */
-      global.atob = function (text) {
+      global.atob = global.atob || function (text) {
         return new Buffer(text, 'base64').toString();
       };
-      global.btoa = function (text) {
+      global.btoa = global.btoa || function (text) {
         return new Buffer(text).toString('base64');
       };
       /* check for code coverage */
@@ -1796,7 +2012,7 @@ integrate forever-webui
           }
         });
       }
-      /* process argv */
+      /* process.argv */
       process.argv.forEach(function (arg, ii, argv) {
         if ((/^--[a-z]/).test(arg)) {
           /* --no-foo -> state.isFoo = false */
@@ -1811,6 +2027,13 @@ integrate forever-webui
           }
         }
       });
+      /* process.exit */
+      process._exit = process._exit || process.exit;
+      process.exit = function () {
+        if (!state.isMock) {
+          process._exit();
+        }
+      };
       /* load package.json file */
       EXPORTS.tryCatchOnEventError(function () {
         /*jslint stupid: true*/
@@ -1839,12 +2062,14 @@ integrate forever-webui
             underscore.extend(state, EXPORTS.objectCopyDeep(state.stateOverride));
             console.log('loaded override config from ' + state.stateOverrideUrl);
           });
-        }, 60 * 1000);
+        }, 5 * 60 * 1000);
       });
       if (state.isTest) {
         EXPORTS.debugProcessOnce();
-        /* set test timeout */
-        setTimeout(process.exit, state.timeoutDefault);
+      }
+      /* exit on timeout */
+      if (state.exitTimeout) {
+        setTimeout(process.exit, state.exitTimeout);
       }
     },
 
@@ -1966,62 +2191,12 @@ integrate forever-webui
       return result.toString();
     },
 
-    _lintCss: function (file, script) {
+    _jsUglify_default_test: function (onEventError) {
       /*
-        this function lints a css script for errors
+        this function tests jsUglify's default behavior
       */
-      if (required.csslint) {
-        console.log(required.csslint.CSSLint.getFormatter('text')
-          .formatResults(required.csslint.CSSLint.verify(script, { ignore: 'ids' }), file, {
-            quiet: true
-          }));
-      }
-      return script;
-    },
-
-    _lintJs: function (file, script) {
-      /*
-        this function lints a js script for errors
-      */
-      var lint;
-      if (required.jslint_linter && !global.__coverage__) {
-        lint = required.jslint_linter.lint(script, { maxerr: 8 });
-        if (!lint.ok) {
-          required.jslint_reporter.report(file, lint);
-        }
-      }
-      return script;
-    },
-
-    lintScript: function (file, script) {
-      /*
-        this function lints css / html / js / json scripts
-      */
-      switch (required.path.extname(file)) {
-      case '.css':
-        return local._lintCss(file, script);
-      default:
-        return local._lintJs(file, script);
-      }
-    },
-
-    _lintScript_css_test: function (onEventError) {
-      /*
-        this function tests lintScript's css lint behavior
-      */
-      EXPORTS.lintScript('foo.css', '\n');
-      onEventError();
-    },
-
-    _lintScript_js_test: function (onEventError) {
-      /*
-        this function tests lintScript's js lint behavior
-      */
-      var coverage;
-      coverage = global.__coverage__;
-      global.__coverage__ = null;
-      EXPORTS.lintScript('foo.js', '\n');
-      global.__coverage__ = coverage;
+      EXPORTS.assert(EXPORTS.jsUglify('test.js', 'console.log("hello world");')
+        === 'console.log("hello world");');
       onEventError();
     },
 
@@ -2056,6 +2231,9 @@ integrate forever-webui
         options = { script: options };
       }
       options.stdio = options.stdio || ['ignore', 1, 2];
+      if (state.isMock) {
+        return;
+      }
       child = required.child_process.spawn(
         options.argv ? options.argv[0] : '/bin/sh',
         options.argv ? options.argv.slice(1) : ['-c', options.script],
@@ -2085,6 +2263,134 @@ integrate forever-webui
 
 
 
+(function moduleAdminNodejs() {
+  /*
+    this nodejs module exports the admin api
+  */
+  'use strict';
+  var local;
+  local = {
+
+    _name: 'utility2.moduleAdminNodejs',
+
+    _init: function () {
+      if (!state.isNodejs) {
+        return;
+      }
+      EXPORTS.initModule(module, local);
+    },
+
+    'routerSecurityDict_/admin': function (request, response, next) {
+      /*
+        this function handles admin security
+      */
+      if (EXPORTS.securityBasicAuthValidate(request)) {
+        next();
+        return;
+      }
+      EXPORTS.serverRespondDefault(response, 303, 'text/plain', '/signin?redirect='
+        + encodeURIComponent(request.url));
+    },
+
+    'routerDict_/admin/admin.eval': function (request, response, next) {
+      /*
+        this function evals javascript code
+      */
+      EXPORTS.fsCacheWritestream(request, null, function (error, tmp) {
+        if (error) {
+          next(error);
+          return;
+        }
+        required.fs.readFile(tmp, function (error, data) {
+          if (error) {
+            next(error);
+            return;
+          }
+          EXPORTS.jsEvalOnEventError(tmp, data, function (error, data) {
+            if (error) {
+              next(error);
+              return;
+            }
+            response.end(EXPORTS.jsonStringifyCircular(data));
+          });
+        });
+      });
+    },
+
+    'routerDict_/admin/admin.exit': function (request, response) {
+      /*
+        this function causes the application to exit
+      */
+      setTimeout(request.urlParsed.params.mock ? EXPORTS.nop : process.exit, 1000);
+      response.end();
+    },
+
+    'routerDict_/admin/admin.shell': function (request, response, next) {
+      /*
+        this function runs shell scripts
+      */
+      EXPORTS.fsCacheWritestream(request, null, function (error, tmp) {
+        if (error) {
+          next(error);
+          return;
+        }
+        var child, _onEventData;
+        _onEventData = function (chunk) {
+          process.stdout.write(chunk);
+          response.write(chunk);
+        };
+        child = required.child_process.spawn('/bin/sh', [tmp])
+          .on('close', function (exitCode) {
+            response.end('exit code: ' + exitCode);
+          })
+          .on('error', next);
+        child.stderr.on('data', _onEventData);
+        child.stdout.on('data', _onEventData);
+      });
+    },
+
+    'routerDict_/admin/admin.upload': function (request, response, next) {
+      /*
+        this function uploads a file into the ./tmp/upload/ directory by default
+      */
+      EXPORTS.fsCacheWritestream(request, null, function (error, tmp) {
+        if (error) {
+          next(error);
+          return;
+        }
+        EXPORTS.fsRename(tmp, state.fsDirTmp + '/upload/' + request.headers['upload-filename']
+          || '', function (error) {
+            if (error) {
+              next(error);
+              return;
+            }
+            response.end();
+          });
+      });
+    },
+
+    'routerAssetsDict_/admin/admin.html': function (request, response) {
+      /*
+        this function serves the admin.html asset file
+      */
+      EXPORTS.serverRespondDefault(response, 200, 'text/html', local._adminHtml);
+    },
+
+    _adminHtml: '<!DOCTYPE html><html><head>\n'
+      + '<link href="/public/assets/utility2-external/external.rollup.auto.css" rel="stylesheet"/>\n'
+      + '<style>\n'
+      + '</style></head><body>\n'
+      + '<input id="inputAdminUpload" type="file"/>\n'
+      + '<script src="/public/assets/utility2-external/external.rollup.auto.js"></script>\n'
+      + '<script src="/public/assets/utility2.js"></script>\n'
+      + '</body></html>',
+
+  };
+  local._init();
+}());
+
+
+
 (function moduleAjaxNodejs() {
   /*
     this nodejs module exports the ajaxNodejs api
@@ -2099,47 +2405,7 @@ integrate forever-webui
       if (!state.isNodejs) {
         return;
       }
-      EXPORTS.moduleInit(module, local);
-    },
-
-    _initOnce: function () {
-      /* socks5 ssh proxy */
-      state.socks5SshHost = process.env.SOCKS5_SSH_HOST || state.socks5SshHost;
-      if (state.socks5SshHost) {
-        state.socks5SshHostname = state.socks5SshHost.split(':')[0];
-        state.socks5SshPort = state.socks5SshHost.split(':')[1] || 22;
-        if (!state.socks5LocalPort) {
-          state.socks5LocalPort = state.socks5LocalPort || EXPORTS.serverPortRandom();
-          EXPORTS.shell({
-            script: 'ssh -D ' + state.socks5LocalPort + ' -o StrictHostKeyChecking=no -p '
-              + (state.socks5SshPort) + ' ' + state.socks5SshHostname,
-            stdio: ['pipe', 'pipe', 'pipe']
-          });
-          EXPORTS.clearCallSetInterval('socks5Resume', function (timeout) {
-            /* timeout error-handling */
-            if (timeout) {
-              EXPORTS.deferCallback(
-                'socks5Resume',
-                'error',
-                EXPORTS.createErrorTimeout('socks5 proxy timeout')
-              );
-            }
-            required.utility2._ajaxNodejsSocks5({
-              hostname: 'www.google.com',
-              url: 'http://www.google.com'
-            }, function (error) {
-              if (!error) {
-                EXPORTS.deferCallback('socks5Resume', 'resume');
-                EXPORTS.clearCallSetInterval('socks5Resume', 'clear');
-              }
-            });
-          }, 1000, state.timeoutDefault);
-        } else {
-          EXPORTS.deferCallback('socks5Resume', 'resume');
-        }
-      } else {
-        EXPORTS.deferCallback('socks5Resume', 'resume');
-      }
+      EXPORTS.initModule(module, local);
     },
 
     _ajaxNodejs: function (options, onEventError) {
@@ -2181,7 +2447,7 @@ integrate forever-webui
       options.path = options.proxy ? options.url : urlParsed.path;
       options.rejectUnauthorized = false;
       if (options.params) {
-        options.path = EXPORTS.urlSearchParsedJoin({
+        options.path = EXPORTS.urlParamsParsedJoin({
           params: options.params,
           path: options.path
         });
@@ -2198,14 +2464,7 @@ integrate forever-webui
         timeout = -1;
       }, options.timeout || state.timeoutDefault);
       /* socks5 */
-      if (state.socks5LocalPort
-          && !options.createConnection
-          && options.hostname !== state.socks5SshHostname
-          && options.url.indexOf(state.localhost) !== 0
-          && !(/^https*:\/\/localhost\b/).test(options.url)) {
-        EXPORTS.deferCallback('socks5Resume', 'defer', function () {
-          local._ajaxNodejsSocks5(options, _onEventError);
-        });
+      if (required.utility2._socks5Ajax(options, _onEventError) !== 'skip') {
         return;
       }
       request = required[urlParsed.protocol.slice(0, -1)].request(options, function (response) {
@@ -2339,9 +2598,72 @@ integrate forever-webui
       });
     },
 
-    _ajaxNodejsSocks5: function (options, onEventError) {
+  };
+  local._init();
+}());
+
+
+
+(function moduleSocks5Nodejs() {
+  /*
+    this nodejs module exports the socks5 api
+  */
+  'use strict';
+  var local;
+  local = {
+
+    _name: 'utility2.moduleSocks5Nodejs',
+
+    _init: function () {
+      if (!state.isNodejs) {
+        return;
+      }
+      EXPORTS.initModule(module, local);
+    },
+
+    _initOnce: function () {
+      /* socks5 ssh proxy */
+      state.socks5SshHost = process.env.SOCKS5_SSH_HOST || state.socks5SshHost;
+      if (state.socks5SshHost) {
+        state.socks5SshHostname = state.socks5SshHost.split(':')[0];
+        state.socks5SshPort = state.socks5SshHost.split(':')[1] || 22;
+        if (!state.socks5LocalPort) {
+          state.socks5LocalPort = state.socks5LocalPort || EXPORTS.serverPortRandom();
+          EXPORTS.shell({
+            script: 'ssh -D ' + state.socks5LocalPort + ' -o StrictHostKeyChecking=no -p '
+              + (state.socks5SshPort) + ' ' + state.socks5SshHostname,
+            stdio: ['pipe', 'pipe', 'pipe']
+          });
+          EXPORTS.clearCallSetInterval('socks5Resume', function (timeout) {
+            /* timeout error-handling */
+            if (timeout) {
+              EXPORTS.deferCallback(
+                'socks5Resume',
+                'error',
+                EXPORTS.createErrorTimeout('socks5 proxy timeout')
+              );
+            }
+            required.utility2._socks5Ajax({
+              hostname: 'www.google.com',
+              url: 'http://www.google.com'
+            }, function (error) {
+              if (!error) {
+                EXPORTS.deferCallback('socks5Resume', 'resume');
+                EXPORTS.clearCallSetInterval('socks5Resume', 'clear');
+              }
+            });
+          }, 1000, state.timeoutDefault);
+        } else {
+          EXPORTS.deferCallback('socks5Resume', 'resume');
+        }
+      } else {
+        EXPORTS.deferCallback('socks5Resume', 'resume');
+      }
+    },
+
+    _socks5Ajax: function (options, onEventError) {
       /*
-        this function hooks the socks5 proxy protocol into EXPORTS.ajax
+        this function hooks the socks5 proxy protocol into the function ajax
       */
       var chunks,
         hostname,
@@ -2350,6 +2672,13 @@ integrate forever-webui
         _onEventTimeout,
         port,
         socket;
+      if (!(state.socks5LocalPort
+          && !options.createConnection
+          && options.hostname !== state.socks5SshHostname
+          && options.url.indexOf(state.localhost) !== 0
+          && !(/^https*:\/\/localhost\b/).test(options.url))) {
+        return 'skip';
+      }
       chunks = new Buffer(0);
       hostname = new Buffer(options.hostname);
       _onEventData = function (chunk) {
@@ -2439,9 +2768,9 @@ integrate forever-webui
       }).on('error', _onEventError).on('data', _onEventData);
     },
 
-    _ajaxNodejsSocks5_socks5_test: function (onEventError) {
+    _socks5Ajax_socks5_test: function (onEventError) {
       /*
-        this function tests _ajaxNodejsSocks5's socks5 behavior
+        this function tests _socks5Ajax's socks5 behavior
       */
       if (!state.socks5LocalPort) {
         onEventError('skip');
@@ -2470,7 +2799,7 @@ integrate forever-webui
       if (!state.isNodejs) {
         return;
       }
-      EXPORTS.moduleInit(module, local);
+      EXPORTS.initModule(module, local);
     },
 
     _initOnce: function () {
@@ -2795,11 +3124,8 @@ integrate forever-webui
       if (!state.isNodejs) {
         return;
       }
-      EXPORTS.moduleInit(module, local);
-      /* start repl */
-      if (state.isRepl) {
-        EXPORTS.replStart();
-      }
+      EXPORTS.initModule(module, local);
+      local._replStart();
     },
 
     _replParse: function (script) {
@@ -2810,6 +3136,7 @@ integrate forever-webui
         return script;
       }
       script = script.slice(1, -2);
+      /* @@ syntax sugar */
       while (/\w@@ /.test(script)) {
         script = script.replace(/(\w)@@ ([\S\s]*)/, '$1($2)');
       }
@@ -2846,15 +3173,15 @@ integrate forever-webui
         break;
       /* sqlite3 commands */
       case 'sql':
-        if (!required.sqlite3_db) {
+        if (!state.dbSqlite3) {
           break;
         }
         if (bb === '_') {
-          console.log(required.sqlite3_dbResult);
+          console.log(state.dbSqlite3Result);
         } else {
-          required.sqlite3_db.all(bb, function (error, rows) {
+          state.dbSqlite3.all(bb, function (error, rows) {
             if (rows) {
-              required.sqlite3_dbResult = rows;
+              state.dbSqlite3Result = rows;
             }
             console.log(error || rows);
           });
@@ -2868,17 +3195,42 @@ integrate forever-webui
       return '(' + script + '\n)';
     },
 
-    replStart: function () {
+    _replParse_default_test: function (onEventError) {
+      var phantomjsEval, sqlite3_db_all;
+      /* mock state */
+      state.isMock = true;
+      phantomjsEval = EXPORTS.phantomjsEval;
+      EXPORTS.phantomjsEval = EXPORTS.nop;
+      sqlite3_db_all = state.dbSqlite3.all;
+      state.dbSqlite3.all = EXPORTS.nop;
+      /* run test */
+      local._replParse('($ ls\n)');
+      local._replParse('(console.log@@ "hello world"\n)');
+      local._replParse('(browser state\n)');
+      local._replParse('(git diff\n)');
+      local._replParse('(git log\n)');
+      local._replParse('(grep zxqj\n)');
+      local._replParse('(print true\n)');
+      local._replParse('(sql _\n)');
+      local._replParse('(sql SELECT * from myTable\n)');
+      local._replParse('(syntax error\n)');
+      /* restore state */
+      state.isMock = false;
+      EXPORTS.phantomjsEval = phantomjsEval;
+      state.dbSqlite3.all = sqlite3_db_all;
+      onEventError();
+    },
+
+    _replStart: function () {
       /* start interactive interpreter / debugger */
-      if (state.repl || state.repl === false) {
-        return;
+      if (state.isRepl === true && !state.repl) {
+        state.repl = required.repl.start({ eval: function (script, context, file,
+          onEventError) {
+          EXPORTS.jsEvalOnEventError('', required.utility2._replParse(script), onEventError);
+        }, useGlobal: true });
+        state.repl.context.EXPORTS = EXPORTS;
+        state.repl.context.required = required;
       }
-      state.repl = required.repl.start({ eval: function (script, context, file,
-        onEventError) {
-        EXPORTS.jsEvalOnEventError('', required.utility2._replParse(script), onEventError);
-      }, useGlobal: true });
-      state.repl.context.EXPORTS = EXPORTS;
-      state.repl.context.required = required;
     },
 
   };
@@ -2901,7 +3253,7 @@ integrate forever-webui
       if (!state.isNodejs) {
         return;
       }
-      EXPORTS.moduleInit(module, local);
+      EXPORTS.initModule(module, local);
     },
 
     _initOnce: function () {
@@ -3152,7 +3504,7 @@ integrate forever-webui
           return;
         }
         /* parse url search params */
-        request.urlParsed = request.urlParsed || EXPORTS.urlSearchParse(request.url);
+        request.urlParsed = request.urlParsed || EXPORTS.urlParamsParse(request.url);
         /* dyanamic path handler */
         for (path = request.urlPathNormalized; path !== path0; path = EXPORTS.fsDirname(path)) {
           path0 = path = path || '/';
@@ -3353,149 +3705,6 @@ integrate forever-webui
 
 
 
-(function moduleAdminNodejs() {
-  /*
-    this nodejs module exports the admin api
-  */
-  'use strict';
-  var local;
-  local = {
-
-    _name: 'utility2.moduleAdminNodejs',
-
-    _init: function () {
-      if (!state.isNodejs) {
-        return;
-      }
-      EXPORTS.moduleInit(module, local);
-    },
-
-    'routerSecurityDict_/admin': function (request, response, next) {
-      /*
-        this function handles admin security
-      */
-      if (EXPORTS.securityBasicAuthValidate(request)) {
-        next();
-        return;
-      }
-      EXPORTS.serverRespondDefault(response, 303, 'text/plain', '/signin?redirect='
-        + encodeURIComponent(request.url));
-    },
-
-    'routerDict_/admin/admin.debug': function (request, response, next) {
-      /*
-        this function runs admin debug code
-      */
-      EXPORTS.fsCacheWritestream(request, null, function (error, tmp) {
-        if (error) {
-          next(error);
-          return;
-        }
-        required.fs.readFile(tmp, function (error, data) {
-          if (error) {
-            next(error);
-            return;
-          }
-          EXPORTS.jsEvalOnEventError(tmp, data, function (error, data) {
-            if (error) {
-              next(error);
-              return;
-            }
-            response.end(EXPORTS.jsonStringifyCircular(data));
-          });
-        });
-      });
-    },
-
-    'routerDict_/admin/admin.exit': function (request, response) {
-      /*
-        this function causes the application to exit
-      */
-      response.end();
-      process.exit();
-    },
-
-    '_routerDict_/admin/admin.exit_default_test': function (onEventError) {
-      /*
-        this function tests _routerDict_/admin/admin.exit's default behavior
-      */
-      var exit;
-      exit = process.exit;
-      process.exit = EXPORTS.nop;
-      EXPORTS.ajax({
-        url: '/admin/admin.exit'
-      }, function (error) {
-        onEventError(error);
-        process.exit = exit;
-      });
-    },
-
-    'routerDict_/admin/admin.shell': function (request, response, next) {
-      /*
-        this function runs shell scripts
-      */
-      EXPORTS.fsCacheWritestream(request, null, function (error, tmp) {
-        if (error) {
-          next(error);
-          return;
-        }
-        var child, _onEventData;
-        _onEventData = function (chunk) {
-          process.stdout.write(chunk);
-          response.write(chunk);
-        };
-        child = required.child_process.spawn('/bin/sh', [tmp])
-          .on('close', function (exitCode) {
-            response.end('exit code: ' + exitCode);
-          })
-          .on('error', next);
-        child.stderr.on('data', _onEventData);
-        child.stdout.on('data', _onEventData);
-      });
-    },
-
-    'routerDict_/admin/admin.upload': function (request, response, next) {
-      /*
-        this function uploads a file into the ./tmp/upload/ directory by default
-      */
-      EXPORTS.fsCacheWritestream(request, null, function (error, tmp) {
-        if (error) {
-          next(error);
-          return;
-        }
-        EXPORTS.fsRename(tmp, state.fsDirTmp + '/upload/' + request.headers['upload-filename']
-          || '', function (error) {
-            if (error) {
-              next(error);
-              return;
-            }
-            response.end();
-          });
-      });
-    },
-
-    'routerAssetsDict_/admin/admin.html': function (request, response) {
-      /*
-        this function serves the admin.html asset file
-      */
-      EXPORTS.serverRespondDefault(response, 200, 'text/html', local._adminHtml);
-    },
-
-    _adminHtml: '<!DOCTYPE html><html><head>\n'
-      + '<link href="/public/assets/utility2-external/external.rollup.auto.css" rel="stylesheet"/>\n'
-      + '<style>\n'
-      + '</style></head><body>\n'
-      + '<input id="inputAdminUpload" type="file"/>\n'
-      + '<script src="/public/assets/utility2-external/external.rollup.auto.js"></script>\n'
-      + '<script src="/public/assets/utility2.js"></script>\n'
-      + '</body></html>',
-
-  };
-  local._init();
-}());
-
-
-
 (function modulePhantomjsNodejs() {
   /*
     this nodejs module runs the phantomjs test server
@@ -3509,11 +3718,8 @@ integrate forever-webui
     _init: function () {
       if (state.isNodejs) {
         EXPORTS.deferCallback('serverResume', 'defer', function (error) {
-          if (error) {
-            EXPORTS.onEventErrorDefault(error);
-            return;
-          }
-          EXPORTS.moduleInit(module, local);
+          EXPORTS.nop(error ? EXPORTS.onEventErrorDefault(error)
+            : EXPORTS.initModule(module, local));
         });
       }
     },
@@ -3556,6 +3762,7 @@ integrate forever-webui
             'error',
             EXPORTS.createErrorTimeout('phantomjs spawn timeout')
           );
+          return;
         }
         local._phantomjsTest('/favicon.ico', function (error) {
           if (error) {
@@ -3575,6 +3782,7 @@ integrate forever-webui
         state.phantomjsPid = EXPORTS.shell(required.phantomjs.path + ' '
           + file + ' ' + EXPORTS.base64Encode(JSON.stringify({
             fsDirCache: state.fsDirCache,
+            localhost: state.localhost,
             phantomjsCoverageFile: state.phantomjsCoverageFile,
             phantomjsPort: state.phantomjsPort,
             serverPort: state.serverPort,
@@ -3586,17 +3794,19 @@ integrate forever-webui
               EXPORTS.clearCallSetInterval('phantomjsResume', 'clear');
             }
           }).pid;
+        /* phantomjs code coverage */
         if (global.__coverage__) {
           EXPORTS.clearCallSetInterval('phantomjsCoverage', function () {
             required.fs.readFile(state.phantomjsCoverageFile, 'utf8', function (error, data) {
               if (error) {
                 return;
               }
-              /* upload test report */
+              /* upload phantomjs code coverage report */
               EXPORTS.ajax({
                 data: '{"coverage":' + data + '}',
                 url: '/test/test.upload'
               });
+              EXPORTS.clearCallSetInterval('phantomjsCoverage', 'clear');
             });
           }, 1000);
         }
@@ -3610,11 +3820,7 @@ integrate forever-webui
         this function sends a url to phantomjs server for testing
       */
       EXPORTS.deferCallback('phantomjsResume', 'defer', function (error) {
-        if (error) {
-          onEventError(error);
-          return;
-        }
-        local._phantomjsTest(url, onEventError);
+        EXPORTS.nop(error ? onEventError(error) : local._phantomjsTest(url, onEventError));
       });
     },
 
@@ -3637,11 +3843,8 @@ integrate forever-webui
         this function tests phantomjsTest's testOnce behavior
       */
       EXPORTS.deferCallback('phantomjsResume', 'defer', function (error) {
-        if (error) {
-          onEventError('skip');
-          return;
-        }
-        EXPORTS.phantomjsTest('/test/test.html#testOnce=1', onEventError);
+        EXPORTS.nop(error ? onEventError('skip')
+          : EXPORTS.phantomjsTest('/test/test.html#testOnce=1', onEventError));
       });
     },
 
@@ -3650,11 +3853,8 @@ integrate forever-webui
         this function tests phantomjsTest's testWatch behavior
       */
       EXPORTS.deferCallback('phantomjsResume', 'defer', function (error) {
-        if (error || !global.__coverage__) {
-          onEventError('skip');
-          return;
-        }
-        EXPORTS.phantomjsTest('/test/test.html#testWatch=1', onEventError);
+        EXPORTS.nop(error || !global.__coverage ? onEventError('skip')
+          : EXPORTS.phantomjsTest('/test/test.html#testWatch=1', onEventError));
       });
     },
 
@@ -3676,7 +3876,7 @@ integrate forever-webui
 
     _init: function () {
       if (state.isPhantomjs) {
-        EXPORTS.moduleInit(module, local);
+        EXPORTS.initModule(module, local);
       }
     },
 
@@ -3696,27 +3896,100 @@ integrate forever-webui
         response.write('200');
         response.close();
         EXPORTS.tryCatchOnEventError(function () {
-          var page, url;
+          var isFavicon, page, url;
           page = required.webpage.create();
           url = request.post;
           page.onConsoleMessage = console.log;
           page.open(url, function (status) {
             console.log('phantomjs open -', status, '-', url);
-            if (global.__coverage__) {
+          });
+          /* page timeout */
+          isFavicon = url === state.localhost + '/favicon.ico';
+          setTimeout(function () {
+            page.close();
+            if (isFavicon && global.__coverage__) {
               required.fs.write(
                 state.phantomjsCoverageFile,
                 JSON.stringify(global.__coverage__),
                 'w'
               );
             }
-          });
-          /* page timeout */
-          setTimeout(function () {
-            page.close();
-          }, state.timeoutDefault);
+          }, isFavicon ? 1000 : state.timeoutDefault);
         }, EXPORTS.onEventErrorDefault);
       });
       console.log('phantomjs server started on port ' + state.phantomjsPort);
+    },
+
+  };
+  local._init();
+}());
+
+
+
+(function moduleTestNodejs() {
+  /*
+    this nodejs module exports the test api
+  */
+  'use strict';
+  var local;
+  local = {
+
+    _name: 'utility2.moduleTestNodejs',
+
+    _init: function () {
+      if (state.isNodejs) {
+        EXPORTS.initModule(module, local);
+      }
+    },
+
+    _initOnce: function () {
+      setTimeout(local._testNpm);
+    },
+
+    _testNpm: function () {
+      /*
+        this function runs npm test with code coverage
+      */
+      if (!state.npmTest) {
+        return;
+      }
+      EXPORTS.shell('rm -r tmp/test_coverage 2>/dev/null;'
+        + 'istanbul cover --dir tmp/test_coverage'
+        + ' -x **.min.**'
+        + ' -x **.rollup.**'
+        + ' -x **/git_modules/**'
+        + ' -x **/tmp/**'
+        + ' ' + state.npmTest + ' --'
+        + ' --exitTimeout ' + 1.25 * state.timeoutDefault
+        + ' --repl'
+        + ' --serverPort random'
+        + ' --test'
+        + ' --timeoutDefault ' + state.timeoutDefault
+        + (process.env.TRAVIS
+          ? '; cat tmp/test_coverage/lcov.info | node_modules/coveralls/bin/coveralls.js'
+          : ''));
+      /* exit */
+      setTimeout(process.exit, state.timeoutDefault);
+    },
+
+    _testNpm_default_test: function (onEventError) {
+      /*
+        this function tests testNpm's default behavior
+      */
+      var npmTest, setTimeout;
+      /* mock state */
+      state.isMock = true;
+      npmTest = state.npmTest;
+      state.npmTest = true;
+      setTimeout = global.setTimeout;
+      global.setTimeout = EXPORTS.callCallback;
+      /* run test */
+      local._initOnce();
+      /* restore state */
+      state.isMock = false;
+      state.npmTest = npmTest;
+      global.setTimeout = setTimeout;
+      onEventError();
     },
 
   };
