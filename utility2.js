@@ -6,7 +6,6 @@ utility2.js
 common, shared utilities for both browser and nodejs
 
 todo:
-add browser defer for initModule until $.ready
 create extra test port for server
 emulate localStorage
 add shared rollup
@@ -111,6 +110,22 @@ integrate forever-webui
         /* export global */
         EXPORTS[key] = local2[key];
       });
+      if (state.isBrowser && EXPORTS.deferCallback) {
+        $(function () {
+          EXPORTS.deferCallback('initModuleDefer', 'resume');
+        });
+        EXPORTS.deferCallback('initModuleDefer', 'defer', function () {
+          local._initModuleResume(module, local2, exports);
+        });
+        return;
+      }
+      local._initModuleResume(module, local2, exports);
+    },
+
+    _initModuleResume: function (module, local2, exports) {
+      /*
+        this function resumes the ajax request after a socks5 proxy has been established
+      */
       /* first-time init */
       state.initOnceDict = state.initOnceDict || {};
       if (!state.initOnceDict[local2._name]) {
@@ -3386,10 +3401,12 @@ integrate forever-webui
     _replStart: function () {
       /* start interactive interpreter / debugger */
       if (state.isRepl === true && !state.repl) {
-        state.repl = required.repl.start({ eval: function (script, context, file,
-          onEventError) {
-          EXPORTS.jsEvalOnEventError('', required.utility2._replParse(script), onEventError);
-        }, useGlobal: true });
+        state.repl = required.repl.start({
+          eval: function (script, context, file, onEventError) {
+            EXPORTS.jsEvalOnEventError('', required.utility2._replParse(script), onEventError);
+          },
+          useGlobal: true
+        });
         state.repl.context.EXPORTS = EXPORTS;
         state.repl.context.required = required;
       }
@@ -3659,6 +3676,7 @@ integrate forever-webui
       headers = EXPORTS.objectCopyDeep(request.headers);
       url = request.url.replace('/proxy/proxy.ajax/', '');
       urlParsed = required.url.parse(url);
+      /* update host header with actual destination */
       headers.host = urlParsed.host;
       EXPORTS.ajax({
         headers: headers,
@@ -3758,7 +3776,7 @@ integrate forever-webui
       _onEventError = function (error) {
         /* call error-handling middleware */
         if (error instanceof Error) {
-          EXPORTS.middlewareOnEventError(error, request, response, next);
+          EXPORTS.serverRespondDefault(response, 500, 'plain/text', error, next);
           return true;
         }
       };
@@ -3800,10 +3818,6 @@ integrate forever-webui
           });
         });
       });
-    },
-
-    middlewareOnEventError: function (error, request, response, next) {
-      EXPORTS.serverRespondDefault(response, 500, 'plain/text', error, next);
     },
 
     securityBasicAuthValidate: function (request) {
@@ -3855,29 +3869,6 @@ integrate forever-webui
       required.fs.createReadStream(file).on('error', function () {
         next();
       }).pipe(response);
-    },
-
-    serverRespondProxy: function (request, response, next, url) {
-      /*
-        this function reverse-proxies frontend request to backend network
-      */
-      var headers, urlParsed;
-      headers = EXPORTS.objectCopyDeep(request.headers);
-      urlParsed = required.url.parse(url);
-      /* update host header with actual destination */
-      headers.host = urlParsed.host;
-      EXPORTS.ajax({
-        headers: headers,
-        onEventResponse: function (response2) {
-          if (!response.headersSent) {
-            response.writeHead(200, response2.headers);
-          }
-          response2.on('error', next).pipe(response.on('error', next));
-          return true;
-        },
-        readStream: request,
-        url: url
-      });
     },
 
     serverStart: function (port) {
@@ -4447,6 +4438,7 @@ integrate forever-webui
         this function tests testCoveralls's default behavior
       */
       EXPORTS.testMock({
+        process: { env: { TRAVIS: false } },
         state: { isCoveralls: true }
       }, function () {
         local._testCoveralls();
