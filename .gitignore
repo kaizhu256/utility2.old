@@ -11,10 +11,9 @@
 .svn
 .vim
 .wafpickle-*
-/artifacts/
-/bower_components/
-/local_modules/sandbox.js
-/node_modules/
-/tmp/
 CVS
+artifacts
+bower_components
+node_modules
 npm-debug.log
+tmp

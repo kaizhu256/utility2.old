@@ -6,8 +6,8 @@ utility2.js
 common, shared utilities for both browser and nodejs
 
 todo:
-add mock code coverage for socks5
-revamp test function
+add browser defer for initModule until $.ready
+create extra test port for server
 emulate localStorage
 add shared rollup
 add heroku dynamic config server
@@ -236,7 +236,7 @@ integrate forever-webui
         if (timeout) {
           onEventError();
         }
-      }, 100, 400);
+      }, 1, 1);
     },
 
     createErrorTimeout: function (message) {
@@ -501,8 +501,7 @@ integrate forever-webui
       /*
         this function tests nop's default behavior
       */
-      EXPORTS.nop();
-      onEventError();
+      onEventError(EXPORTS.nop());
     },
 
     objectCopyDeep: function (object) {
@@ -540,6 +539,16 @@ integrate forever-webui
       });
     },
 
+    _onEventErrorDefault_default_test: function (onEventError) {
+      /*
+        this function tests onEventErrorDefault's default behavior
+      */
+      EXPORTS.testMock({ console: { log: EXPORTS.nop } }, function () {
+        EXPORTS.onEventErrorDefault(null, null);
+        onEventError();
+      });
+    },
+
     serverPortRandom: function () {
       /*
         this function generates a random port number from 32768-65535
@@ -550,22 +559,25 @@ integrate forever-webui
 
     setOptionsDefaults: function (options, defaults) {
       /*
-        this function recursively walks through the options tree,
+        this function recursively walks through the defaults tree,
         and sets default values for unset leaf nodes
       */
-      Object.keys(defaults).forEach(function (key) {
-        var value, valueDefault;
-        valueDefault = defaults[key];
-        value = options[key];
+      Object.keys(defaults || {}).forEach(function (key) {
+        var defaults2, options2;
+        defaults2 = defaults[key];
+        options2 = options[key];
         /* set default value */
-        if (value === undefined) {
-          options[key] = valueDefault;
-        /* recurse if value and default value are both dictionaries */
-        } else if (value
-            && !Array.isArray(value)
-            && typeof value === 'object'
-            && typeof valueDefault === 'object') {
-          EXPORTS.setOptionsDefaults(value, valueDefault);
+        if (options2 === undefined) {
+          options[key] = defaults2;
+          return;
+        }
+        /* recurse if options2 and defaults2 are both dictionaries */
+        if (defaults2
+            && typeof defaults2 === 'object'
+            && options2
+            && typeof options2 === 'object'
+            && !Array.isArray(options2)) {
+          local.setOptionsDefaults(options2, defaults2);
         }
       });
       return options;
@@ -583,6 +595,44 @@ integrate forever-webui
       EXPORTS.assert(options.aa === 1);
       EXPORTS.assert(options.bb.cc === 2);
       EXPORTS.assert(JSON.stringify(options.cc) === '[]');
+      onEventError();
+    },
+
+    setOptionsOverrides: function (options, overrides) {
+      /*
+        this function recursively walks through the overrides tree,
+        and sets override values to the options tree
+      */
+      Object.keys(overrides || {}).forEach(function (key) {
+        var options2, overrides2;
+        overrides2 = overrides[key];
+        if (typeof overrides2 !== 'object' || overrides === null || Array.isArray(overrides2)) {
+          options[key] = overrides2;
+          return;
+        }
+        options2 = options[key];
+        if (!options2 || typeof options2 !== 'object') {
+          options2 = options[key] = {};
+        }
+        local.setOptionsOverrides(options2, overrides2);
+      });
+      return options;
+    },
+
+    _setOptionsOverrides_default_test: function (onEventError) {
+      /*
+        this function tests setOptionsDefault's default behavior
+      */
+      var options;
+      options = EXPORTS.setOptionsOverrides(
+        { aa: 1, bb: { cc: 2 }, dd: [3, 4] },
+        { aa: 5, bb: { dd: 6 }, dd: [7, 8], ff: {} }
+      );
+      EXPORTS.assert(options.aa === 5);
+      EXPORTS.assert(options.bb.cc === 2);
+      EXPORTS.assert(options.bb.dd === 6);
+      EXPORTS.assert(JSON.stringify(options.dd) === '[7,8]');
+      EXPORTS.assert(JSON.stringify(options.ff) === '{}');
       onEventError();
     },
 
@@ -760,6 +810,13 @@ integrate forever-webui
       required.utility2._ajaxNodejs(options, onEventError);
     },
 
+    _ajax_default_test: function (onEventError) {
+      /*
+        this function tests ajax's default behavior
+      */
+      EXPORTS.ajax({ url: state.localhost + '/test/test.echo' }, onEventError);
+    },
+
     ajaxMultiParams: function (options, onEventError) {
       /*
         this function makes multiple ajax calls for multiple params
@@ -844,8 +901,9 @@ integrate forever-webui
         this function makes multiple ajax calls for multiple urls
       */
       var _onEventError, remaining;
-      if (!(options.urls && Array.isArray(options.urls))) {
+      if (!(options.urls && Array.isArray(options.urls) && options.urls.length)) {
         onEventError(new Error('invalid urls'));
+        return;
       }
       onEventError = onEventError || EXPORTS.onEventErrorDefault;
       _onEventError = function (error, data, options) {
@@ -869,6 +927,15 @@ integrate forever-webui
         options2 = EXPORTS.objectCopyDeep(options);
         options2.url = url;
         EXPORTS.ajax(options2, _onEventError);
+      });
+    },
+
+    _ajaxMultiUrls_errorHandling_test: function (onEventError) {
+      /*
+        this function tests ajaxMultiUrls's error-handling behavior
+      */
+      EXPORTS.ajaxMultiUrls({}, function (error) {
+        onEventError(!error);
       });
     },
 
@@ -933,18 +1000,16 @@ integrate forever-webui
       EXPORTS.initModule(module, local);
     },
 
-    Cache: function (name, size) {
+    Cache: function (options) {
       /*
         this Cache class has lru-like cache behavior,
         but with O(1) average case gets and sets
       */
       if (!(this instanceof local.Cache)) {
-        return new local.Cache(name, size);
+        return new local.Cache(options);
       }
-      EXPORTS.assert(typeof name === 'string', 'name must be a string');
-      EXPORTS.assert(size >= 2, 'size must be greater than or equal to 2');
-      this.name = name || 'cache';
-      this.size = size || 256;
+      EXPORTS.assert(options.size >= 2, 'size must be greater than or equal to 2');
+      this.size = options.size || 256;
       this.clear();
     },
 
@@ -999,7 +1064,8 @@ integrate forever-webui
         this function tests Cache's default behavior
       */
       var cache;
-      cache = EXPORTS.Cache('cache', 2);
+      /* coverage - don't use the "new" keyword */
+      cache = EXPORTS.Cache({ size: 2 });
       EXPORTS.assert(cache.remaining === 2);
       cache.setItem('aa', 1);
       EXPORTS.assert(cache.remaining === 1);
@@ -1052,14 +1118,14 @@ integrate forever-webui
       EXPORTS.initModule(module, local);
     },
 
-    deferCallback: function (key, action, callback) {
+    deferCallback: function (key, mode, callback) {
       /*
         this function defers a callback until a resume event is fired
       */
       var self;
       self = state.deferCallbackDict = state.deferCallbackDict || {};
       self = self[key] = self[key] || { callbacks: [], pause: true };
-      switch (action) {
+      switch (mode) {
       case 'delete':
         delete state.deferCallbackDict[key];
         break;
@@ -1086,7 +1152,7 @@ integrate forever-webui
         local._deferCallbackResume(self);
         break;
       default:
-        throw new Error('unknown action - ' + action);
+        throw new Error('unknown mode - ' + mode);
       }
     },
 
@@ -1133,14 +1199,14 @@ integrate forever-webui
       });
     },
 
-    _deferCallback_unknownAction_test: function (onEventError) {
+    _deferCallback_unknownMode_test: function (onEventError) {
       /*
-        this function tests deferCallback's unknown action error-handling behavior
+        this function tests deferCallback's unknown mode error-handling behavior
       */
       var key;
       key = EXPORTS.uuid4();
       try {
-        EXPORTS.deferCallback(key, 'unknown action');
+        EXPORTS.deferCallback(key, 'unknown mode');
       } catch (error) {
         onEventError(!error);
         EXPORTS.deferCallback(key, 'delete');
@@ -1177,7 +1243,7 @@ integrate forever-webui
       /* additional mocks */
       required.utility2._testMock(global2);
       Object.keys(EXPORTS.setOptionsDefaults(global2, {
-        global: { setTimeout: EXPORTS.callCallback }
+        global: { setInterval: EXPORTS.testThrowError, setTimeout: EXPORTS.testThrowError }
       })).forEach(function (key1) {
         backup[key1] = {};
         Object.keys(global2[key1]).forEach(function (key2) {
@@ -1201,12 +1267,36 @@ integrate forever-webui
       /*
         this function runs tests on a module
       */
-      var environment, _onEventTest, remaining, testSuite;
+      var environment, _onEventFinishTestSuite, remaining, testSuite, timeout;
       /* browser-side testing */
       if (!state.isTest) {
         return;
       }
       environment = state.isBrowser ? 'browser' : 'nodejs';
+      _onEventFinishTestSuite = function () {
+        clearTimeout(timeout);
+        remaining = -1;
+        state.testSuiteRemaining -= 1;
+        /* timeout remaining tests */
+        Object.keys(testSuite.testCases).forEach(function (test) {
+          test = testSuite.testCases[test];
+          /* test timeout */
+          if (!test.finished) {
+            test.time = Date.now() - test.time;
+            testSuite.failures += 1;
+            testSuite.tests += 1;
+            console.error('\n' + testSuite.environment, 'test failed -',
+              local2._name + '.' + test.name);
+            test.failure = 'test timeout';
+            EXPORTS.onEventErrorDefault(new Error(test.failure));
+          }
+        });
+        /* finish test suites */
+        if (state.testSuiteRemaining <= 0) {
+          state.testSuiteRemaining = 0;
+          EXPORTS.testReport();
+        }
+      };
       remaining = 0;
       testSuite = {
         environment: environment,
@@ -1218,7 +1308,7 @@ integrate forever-webui
         tests: 0,
         time: 0,
       };
-      _onEventTest = function (test, mode) {
+      Object.keys(local2).forEach(function (test) {
         var _onEventError;
         _onEventError = function (error) {
           if (test.finished) {
@@ -1244,72 +1334,34 @@ integrate forever-webui
             testSuite.passed += 1;
           }
           /* finished testing */
-          if (!remaining) {
-            _onEventTest(null, 'finish');
+          if (remaining === 0) {
+            _onEventFinishTestSuite();
           }
         };
-        if (remaining < 0) {
-          if (testSuite.testCases.hasOwnProperty(test)) {
-            test = testSuite.testCases[test];
-            /* test timeout */
-            if (!test.finished) {
-              test.time = Date.now() - test.time;
-              testSuite.failures += 1;
-              testSuite.tests += 1;
-              console.error('\n' + testSuite.environment, 'test failed -',
-                local2._name + '.' + test.name);
-              test.failure = 'test timeout';
-              EXPORTS.onEventErrorDefault(new Error(test.failure));
-
-            }
-            testSuite.time += test.time;
-            return;
-          }
+        if (test.slice(-5) !== '_test') {
           return;
         }
-        switch (mode) {
-        /* finish test cases */
-        case 'finish':
-          remaining = -1;
-          state.testCounter -= 1;
-          /* timeout remaining tests */
-          Object.keys(testSuite.testCases).forEach(_onEventTest);
-          /* finish test suites */
-          if (state.testCounter <= 0) {
-            state.testCounter = 0;
-            EXPORTS.testReport();
-          }
-          return;
-        /* start test */
-        case 'start':
+        if (remaining === 0) {
+          state.testSuiteRemaining = state.testSuiteRemaining || 0;
+          state.testSuiteRemaining += 1;
+        }
+        remaining += 1;
+        /* enqueue test */
+        test = testSuite.testCases[test] = { name: test, time: Date.now() };
+        setTimeout(function () {
           try {
             local2[test.name](_onEventError);
           } catch (error) {
             _onEventError(error);
           }
-          return;
-        /* run single test */
-        default:
-          if (test.slice(-5) !== '_test') {
-            return;
-          }
-          if (!remaining) {
-            state.testCounter = state.testCounter || 0;
-            state.testCounter += 1;
-          }
-          remaining += 1;
-          /* en-queue test */
-          testSuite.testCases[test] = { name: test, time: Date.now() };
-          setTimeout(_onEventTest, 1, testSuite.testCases[test], 'start');
-        }
-      };
-      Object.keys(local2).forEach(_onEventTest);
+        });
+      });
       if (remaining) {
         /* add test suite */
-        state.testSuites = state.testSuites || [];
-        state.testSuites.push(testSuite);
+        state.testSuiteList = state.testSuiteList || [];
+        state.testSuiteList.push(testSuite);
         /* add timeout to test suite */
-        setTimeout(_onEventTest, state.timeoutDefault, null, 'finish');
+        timeout = setTimeout(_onEventFinishTestSuite, state.timeoutDefault);
       }
     },
 
@@ -1319,7 +1371,7 @@ integrate forever-webui
       */
       var result;
       result = '\n';
-      state.testSuites.forEach(function (testSuite) {
+      state.testSuiteList.forEach(function (testSuite) {
         result += [testSuite.environment, 'tests -', testSuite.failures, 'failed /',
           testSuite.skipped, 'skipped /', testSuite.passed, 'passed in', testSuite.name]
           .join(' ') + '\n';
@@ -1328,7 +1380,10 @@ integrate forever-webui
       if (state.isBrowser) {
         /* upload test report */
         EXPORTS.ajax({
-          data: JSON.stringify({ coverage: global.__coverage__, testSuites: state.testSuites }),
+          data: JSON.stringify({
+            coverage: global.__coverage__,
+            testSuiteList: state.testSuiteList
+          }),
           url: '/test/test.upload'
         });
         /* reset code coverage */
@@ -1336,10 +1391,10 @@ integrate forever-webui
           global.__coverage__ = {};
         }
       } else {
-        required.utility2._testReport(state.testSuites);
+        required.utility2._testReport(state.testSuiteList);
       }
       /* reset test suites */
-      state.testSuites.length = 0;
+      state.testSuiteList.length = 0;
     },
 
   };
@@ -1511,6 +1566,8 @@ integrate forever-webui
       $('[id]').each(function (ii, target) {
         state[target.id] = state[target.id] || $(target);
       });
+      /* override globals */
+      EXPORTS.setOptionsOverrides(global, global.globalOverride);
       /*
         bug - phantomjs - new Blob() throws error
         https://github.com/ariya/phantomjs/issues/11013
@@ -1520,7 +1577,6 @@ integrate forever-webui
       } catch (error) {
         global.Blob = local._Blob;
       }
-      global.Blob = local._Blob;
       /* browser test flag - watch */
       state.isTest = (/\btestWatch=(\d+)\b/).exec(location.hash);
       if (state.isTest) {
@@ -2008,21 +2064,20 @@ integrate forever-webui
 
     _initOnce: function () {
       /* require */
-      required.child_process = required.child_process || require('child_process');
-      required.fs = required.fs || require('fs');
-      required.http = required.http || require('http');
-      required.http.globalAgent.maxSockets = 256;
-      required.https = required.https || require('https');
-      required.https.globalAgent.maxSockets = 256;
-      required.net = required.net || require('net');
-      required.path = required.path || require('path');
-      required.repl = required.repl || require('repl');
-      required.url = required.url || require('url');
-      required.util = required.util || require('util');
-      required.vm = required.vm || require('vm');
-      required.zlib = required.zlib || require('zlib');
-      /* require external */
       [
+        /* internal */
+        'child_process',
+        'fs',
+        'http',
+        'https',
+        'net',
+        'path',
+        'repl',
+        'url',
+        'util',
+        'vm',
+        'zlib',
+        /* external */
         'coveralls',
         'csslint',
         'cssmin',
@@ -2045,6 +2100,9 @@ integrate forever-webui
           console.log('module not loaded - ' + module);
         }
       });
+      /* maxSockets */
+      required.http.globalAgent.maxSockets = 256;
+      required.https.globalAgent.maxSockets = 256;
       /* override required.fs with required.graceful_fs */
       if (required.graceful_fs) {
         required.fs = required.graceful_fs;
@@ -2119,7 +2177,7 @@ integrate forever-webui
               return;
             }
             state.stateOverride = data;
-            underscore.extend(state, EXPORTS.objectCopyDeep(state.stateOverride));
+            EXPORTS.setOptionsOverrides(state, EXPORTS.objectCopyDeep(state.stateOverride));
             console.log('loaded override config from ' + state.stateOverrideUrl);
           });
         }, 5 * 60 * 1000);
@@ -2169,8 +2227,8 @@ integrate forever-webui
           /* bump up timestamp */
           EXPORTS.timestamp = new Date().toISOString();
           /* test watch */
-          state.testWatch = state.testWatch || [];
-          (state.testWatch).forEach(function (response) {
+          state.testWatchList = state.testWatchList || [];
+          state.testWatchList.forEach(function (response) {
             response.write('data:\n\n');
           });
           content2 = content.replace(/^#/, '//#');
@@ -2528,6 +2586,7 @@ integrate forever-webui
         var readStream;
         options.response = response;
         if (options.onEventResponse && options.onEventResponse(response)) {
+          _onEventError();
           return;
         }
         if (options.redirect !== false) {
@@ -2621,14 +2680,7 @@ integrate forever-webui
       }
     },
 
-    _ajaxNodejs_default_test: function (onEventError) {
-      /*
-        this function tests _ajaxNodejs's default behavior
-      */
-      EXPORTS.ajax({ debugFlag: true, url: '/test/test.echo' }, onEventError);
-    },
-
-    _ajaxNodejs_serverResumeError_test: function (onEventError) {
+    __ajaxNodejs_serverResumeError_test: function (onEventError) {
       /*
         this function tests _ajaxNodejs's server resume on error behavior
       */
@@ -2661,15 +2713,15 @@ integrate forever-webui
 
 
 
-(function moduleSocks5Nodejs() {
+(function moduleSocks5AjaxNodejs() {
   /*
-    this nodejs module exports the socks5 api
+    this nodejs module exports the socks5Ajax api
   */
   'use strict';
   var local;
   local = {
 
-    _name: 'utility2.moduleSocks5Nodejs',
+    _name: 'utility2.moduleSocks5AjaxNodejs',
 
     _init: function () {
       if (!state.isNodejs) {
@@ -2719,11 +2771,11 @@ integrate forever-webui
       /*
         this function hooks the socks5 proxy protocol into the function ajax
       */
-      if (!(state.socks5LocalPort
-          && !options.createConnection
-          && options.hostname !== state.socks5SshHostname
+      if ((!state.socks5LocalPort || options.createConnection) || (!options.socks5 && !(
+          !(/^https*:\/\/localhost\b/).test(options.url)
           && options.url.indexOf(state.localhost) !== 0
-          && !(/^https*:\/\/localhost\b/).test(options.url))) {
+          && options.hostname !== state.socks5SshHostname
+        ))) {
         return 'skip';
       }
       EXPORTS.deferCallback('socks5Defer', 'defer', function (error) {
@@ -2739,111 +2791,153 @@ integrate forever-webui
       /*
         this function resumes the ajax request after a socks5 proxy has been established
       */
-      var chunks,
-        hostname,
-        _onEventData,
-        _onEventError,
-        _onEventTimeout,
-        port,
-        socket;
+      var chunks, hostname, _onEventData, _onEventError, port, self, timeout;
       chunks = new Buffer(0);
       hostname = new Buffer(options.hostname);
       _onEventData = function (chunk) {
         chunks = Buffer.concat([chunks, chunk]);
-        var ii;
-        for (ii = 0; ii < Math.min(chunks.length, 5); ii += 1) {
-          /* socks5 version */
-          switch (ii) {
-          case 0:
-          case 2:
-            if (chunks[ii] !== 5) {
-              _onEventError('socks5 - invalid socks version');
-              return;
-            }
-            break;
-          /* socks5 status */
-          case 1:
-          case 3:
-          case 4:
-            if (chunks[ii] !== 0) {
-              _onEventError('socks5 - request failed');
-              return;
-            }
-            break;
-          /* socks5 address / port */
-          case 5:
-            switch (chunks[ii]) {
-            /* ipv4 address */
-            case 1:
-              if (chunks.length < 8 + 4) {
-                return;
-              }
-              break;
-            /* case domain name */
-            case 3:
-              if (chunks.length < 8 + 1 + chunks[6]) {
-                return;
-              }
-              break;
-            /* ipv6 address */
-            case 4:
-              if (chunks.length < 8 + 16) {
-                return;
-              }
-              break;
-            }
-            _onEventError('socks5 - invalid code');
-            return;
-          }
-        }
-        if (chunks.length < 6) {
+        if (chunks.length < 5) {
           return;
         }
+        if (chunks.slice(0, 5).toString() !== '\u0005\u0000\u0005\u0000\u0000') {
+          _onEventError(new Error('socks5Ajax - request failed'));
+          return;
+        }
+        clearTimeout(timeout);
         /* cleanup socks5 listeners */
-        socket.removeListener('data', _onEventData);
-        socket.removeListener('error', onEventError);
-        clearTimeout(_onEventTimeout);
+        self.removeListener('data', _onEventData);
         /* continue with ajax request as normal */
         options.createConnection = function () {
           /* bug - reset createConnection for http redirects */
           options.createConnection = null;
-          return socket;
+          return self;
         };
         /* disable socket pooling */
         options.agent = false;
         EXPORTS.ajax(options, onEventError);
       };
       _onEventError = function (error) {
+        clearTimeout(timeout);
+        self.end();
+        self.destroy();
         onEventError(error);
-        socket.destroy();
       };
-      _onEventTimeout = setTimeout(_onEventError, state.timeoutDefault,
-        new Error('socks5 timeout'));
+      timeout = setTimeout(_onEventError, state.timeoutDefault,
+        new Error('socks5Ajax timeout'));
       port = Number(options.port || 80);
-      socket = required.net.createConnection({
+      self = required.net.createConnection({
         host: 'localhost',
         port: state.socks5LocalPort
       });
-      socket.on('connect', function () {
+      self.on('connect', function () {
         /*jslint bitwise: true*/
         try {
-          socket.write(Buffer.concat([new Buffer([5, 1, 0, 5, 1, 0, 3, hostname.length]),
+          self.write(Buffer.concat([new Buffer([5, 1, 0, 5, 1, 0, 3, hostname.length]),
             hostname, new Buffer([port >> 8, port & 0xff])]));
         } catch (error) {
           _onEventError(error);
         }
-      }).on('error', _onEventError).on('data', _onEventData);
+      }).on('data', _onEventData).on('error', _onEventError);
     },
 
-    _socks5Ajax_socks5_test: function (onEventError) {
+    __socks5Ajax_socks5_test: function (onEventError) {
       /*
         this function tests _socks5Ajax's socks5 behavior
       */
-      if (!state.socks5LocalPort) {
+      if (!(state.socks5LocalPort && state.isNpmTest)) {
         onEventError('skip');
         return;
       }
-      EXPORTS.ajax({ url: 'http://www.google.com' }, onEventError);
+      EXPORTS.ajax({ socks5: true, url: state.localhost + '/test/test.echo' }, onEventError);
+    },
+
+  };
+  local._init();
+}());
+
+
+
+(function moduleSocks5ServerNodejs() {
+  /*
+    this nodejs module exports the socks5Server api
+  */
+  'use strict';
+  var local;
+  local = {
+
+    _name: 'utility2.moduleSocks5ServerNodejs',
+
+    _init: function () {
+      if (!state.isNodejs) {
+        return;
+      }
+      EXPORTS.initModule(module, local);
+    },
+
+    _initOnce: function () {
+      if (state.isNpmTest) {
+        local._socks5ServerStart();
+      }
+    },
+
+    _socks5ServerOnEventSocket: function (self) {
+      var chunks, host, _onEventData, _onEventError, port, proxy, timeout;
+      chunks = new Buffer(0);
+      _onEventData = function (chunk) {
+        chunks = Buffer.concat([chunks, chunk]);
+        if (chunks.length < 8
+            || chunks.slice(0, 7).toString() !== '\u0005\u0001\u0000\u0005\u0001\u0000\u0003'
+            || chunks.length < 8 + chunks[7] + 2) {
+          _onEventError(new Error('socks5Server - request failed'));
+          return;
+        }
+        clearTimeout(timeout);
+        self.removeListener('data', _onEventData);
+        /* create proxy socket */
+        host = chunks.slice(8, 8 + chunks[7]).toString();
+        port = chunks.readUInt16BE(8 + chunks[7]);
+        console.log('_socks5ServerOnEventSocket - proxying ' + host + ':' + port);
+        proxy = required.net.connect(port, host);
+        proxy.on('error', _onEventError);
+        proxy.pipe(self);
+        self.pipe(proxy);
+      };
+      _onEventError = function (error) {
+        clearTimeout(timeout);
+        self.end();
+        self.destroy();
+        EXPORTS.onEventErrorDefault(error);
+      };
+      try {
+        self.write(new Buffer(
+          '\u0005\u0000\u0005\u0000\u0000\u0001\u0000\u0000\u0000\u0000\u0000\u0000'
+        ));
+        self.on('data', _onEventData).on('error', _onEventError);
+        /* socket timeout handling */
+        timeout = setTimeout(_onEventError, state.timeoutDefault,
+          new Error('socks5Server timeout'));
+      } catch (error) {
+        _onEventError(error);
+      }
+    },
+
+    __socks5ServerOnEventSocket_errorHandling_test: function (onEventError) {
+      /*
+        this function tests _socks5ServerOnEventSocket's error-handling behavior
+      */
+      EXPORTS.testMock({ console: { error: EXPORTS.nop } }, function () {
+        local._socks5ServerOnEventSocket({ destroy: EXPORTS.nop, end: EXPORTS.nop });
+        onEventError();
+      });
+    },
+
+    _socks5ServerStart: function () {
+      state.socks5LocalPort = state.socks5LocalPort || EXPORTS.serverPortRandom();
+      state.socks5Server = state.socks5Server || required.net.createServer(function (socket) {
+        required.utility2._socks5ServerOnEventSocket(socket);
+      }).listen(state.socks5LocalPort, function () {
+        console.log('socks5 server started on port ' + state.socks5LocalPort);
+      });
     },
 
   };
@@ -2937,12 +3031,12 @@ integrate forever-webui
         this function cleans up the cache directory
       */
       /* remove files from cache directory */
-      (state.cacheFiles || []).forEach(function (file) {
+      (state.fsDirCacheList || []).forEach(function (file) {
         local._fsRmr(state.fsDirCache + '/' + file, EXPORTS.onEventErrorDefault);
       });
       /* get list of files to be removed for the next cycle */
       required.fs.readdir(state.fsDirCache, function (error, files) {
-        state.cacheFiles = files;
+        state.fsDirCacheList = files;
       });
     },
 
@@ -3070,7 +3164,7 @@ integrate forever-webui
                 return;
               }
               remaining -= 1;
-              if (!remaining) {
+              if (remaining === 0) {
                 remaining = -1;
                 required.fs.rmdir(dir, onEventError);
               }
@@ -3135,10 +3229,10 @@ integrate forever-webui
       });
     },
 
-    _testReport: function (testSuites) {
+    _testReport: function (testSuiteList) {
       var xml;
       xml = '\n<testsuites>\n';
-      testSuites.forEach(function (testSuite) {
+      testSuiteList.forEach(function (testSuite) {
         xml += '<testsuite ';
         ['failures', 'name', 'passed', 'skipped', 'tests'].forEach(function (attribute) {
           xml += attribute + '="' + testSuite[attribute] + '" ';
@@ -3268,6 +3362,7 @@ integrate forever-webui
     _replParse_default_test: function (onEventError) {
       EXPORTS.testMock({
         EXPORTS: { ajax: EXPORTS.nop, phantomjsEval: EXPORTS.nop },
+        console: { log: EXPORTS.nop },
         state: { dbSqlite3: { all: function (_, onEventError) {
           onEventError(null, true);
         } } }
@@ -3540,12 +3635,10 @@ integrate forever-webui
 
     '_routerSecurityDict_/signin_default_test': function (onEventError) {
       /*
-        this function tests _routerSecurityDict_/signin_default_test's default behavior
+        this function tests routerSecurityDict_/signin_default_test's default behavior
       */
       EXPORTS.testMock({
-        routerTestDict: {
-          '/signin': local['routerSecurityDict_/signin']
-        }
+        routerTestDict: { '/signin': local['routerSecurityDict_/signin'] }
       }, function () {
         state.middlewareTest({
           headers: { host: 'localhost' },
@@ -3564,7 +3657,7 @@ integrate forever-webui
       */
       var headers, url, urlParsed;
       headers = EXPORTS.objectCopyDeep(request.headers);
-      url = EXPORTS.templateFormat(request.url.replace('/proxy/proxy.ajax/', ''));
+      url = request.url.replace('/proxy/proxy.ajax/', '');
       urlParsed = required.url.parse(url);
       headers.host = urlParsed.host;
       EXPORTS.ajax({
@@ -3857,6 +3950,15 @@ integrate forever-webui
       });
     },
 
+    __phantomjsAjax_errorHandling_test: function (onEventError) {
+      /*
+        this function tests _phantomjsAjax's error-handling behavior
+      */
+      local._phantomjsAjax({ data: '', url: '/error' }, function (error) {
+        onEventError(!error);
+      });
+    },
+
     phantomjsEval: function (script, onEventError) {
       /*
         this function sends a url to phantomjs server for testing
@@ -3866,6 +3968,15 @@ integrate forever-webui
         dataType: 'json',
         url: '/eval'
       }, onEventError);
+    },
+
+    _phantomjsEval_errorHandling_test: function (onEventError) {
+      /*
+        this function tests phantomjsEval's error-handling behavior
+      */
+      EXPORTS.phantomjsEval('syntax error', function (error) {
+        onEventError(!error);
+      });
     },
 
     phantomjsRestart: function (file) {
@@ -3972,7 +4083,7 @@ integrate forever-webui
         this function tests phantomjsTestUrl's testWatch behavior
       */
       EXPORTS.deferCallback('phantomjsDefer', 'defer', function (error) {
-        EXPORTS.nop(error
+        EXPORTS.nop(error || !state.isNpmTest
           ? onEventError('skip')
           : EXPORTS.phantomjsTestUrl('/test/test.html#testWatch=1', onEventError));
       });
@@ -4003,7 +4114,6 @@ integrate forever-webui
     _initOnce: function () {
       var tmp;
       /* exports */
-      required.fs = require('fs');
       required.system = require('system');
       required.webpage = require('webpage');
       required.webserver = require('webserver');
@@ -4023,23 +4133,6 @@ integrate forever-webui
         }
       });
       console.log('phantomjs server started on port ' + state.phantomjsPort);
-    },
-
-    _serverRespondData: function (request, response, data) {
-      if (!response.written) {
-        response.write(data || null);
-        response.written = true;
-      }
-      if (!response.closed) {
-        response.close();
-        response.closed = true;
-      }
-    },
-
-    _serverRespondError: function (request, response, error) {
-      EXPORTS.onEventErrorDefault(error);
-      response.statusCode = 500;
-      local._serverRespondData();
     },
 
     'routerDict_/': function (request, response, data) {
@@ -4066,7 +4159,24 @@ integrate forever-webui
       });
       /* page timeout */
       setTimeout(page.close, state.timeoutDefault);
-    }
+    },
+
+    _serverRespondData: function (request, response, data) {
+      if (!response.written) {
+        response.write(data || null);
+        response.written = true;
+      }
+      if (!response.closed) {
+        response.close();
+        response.closed = true;
+      }
+    },
+
+    _serverRespondError: function (request, response, error) {
+      EXPORTS.onEventErrorDefault(error);
+      response.statusCode = 500;
+      local._serverRespondData(request, response);
+    },
 
   };
   local._init();
@@ -4133,6 +4243,18 @@ integrate forever-webui
       }, state.timeoutDefault);
     },
 
+    '_routerDict_/test/test.timeout_default_test': function (onEventError) {
+      /*
+        this function tests routerDict_/test/test.timeout's default behavior
+      */
+      EXPORTS.testMock({
+        global: { setTimeout: EXPORTS.callCallback },
+        routerTestDict: { '/test/test.timeout': local['routerDict_/test/test.timeout'] },
+      }, function () {
+        state.middlewareTest({ url: '/test/test.timeout' }, { end: onEventError });
+      });
+    },
+
     'routerDict_/test/test.upload': function (request, response, next) {
       /*
         this function receives and parses uploaded test objects
@@ -4144,31 +4266,66 @@ integrate forever-webui
           return;
         }
         response.end();
-        if (error.testSuites) {
-          required.utility2._testReport(error.testSuites);
+        if (error.testSuiteList) {
+          required.utility2._testReport(error.testSuiteList);
         }
         /* merge uploaded code coverage object with global.__coverage__ */
         EXPORTS.coverageExtend(global.__coverage__, error.coverage);
       });
     },
 
-    'routerDict_/test/test.watch': function (request, response) {
+    '_routerDict_/test/test.upload_default_test': function (onEventError) {
+      /*
+        this function tests routerDict_/test/test.upload's default behavior
+      */
+      EXPORTS.testMock({
+        EXPORTS: { streamReadOnEventError: function (_, onEventError) {
+          onEventError(new Error());
+        } },
+        routerTestDict: { '/test/test.upload': local['routerDict_/test/test.upload'] },
+      }, function () {
+        state.middlewareTest({ url: '/test/test.upload' }, {}, function (error) {
+          onEventError(!error);
+        });
+      });
+    },
+
+    'routerDict_/test/test.watch': function (request, response, next) {
       /*
         this function informs the client about server file changes using server sent events
       */
       var list;
       if (request.headers.accept !== 'text/event-stream') {
-        response.end();
+        next();
         return;
       }
       /* https://developer.mozilla.org/en-US/docs/Server-sent_events/Using_server-sent_events */
       response.setHeader('content-type', 'text/event-stream');
       response.write('retry: ' + state.timeoutDefault + '\n\n');
-      list = state.testWatch;
+      list = state.testWatchList;
       if (list.length >= 256) {
-        list.length = 0;
+        list.shift();
       }
       list.push(response);
+    },
+
+    '_routerDict_/test/test.watch_default_test': function (onEventError) {
+      /*
+        this function tests routerDict_/test/test.watch's default behavior
+      */
+      EXPORTS.testMock({
+        routerTestDict: { '/test/test.watch': local['routerDict_/test/test.watch'] },
+        state: { testWatchList: new global.Array(256) }
+      }, function () {
+        state.middlewareTest({
+          headers: { accept: 'text/event-stream' },
+          url: '/test/test.watch'
+        }, {
+          setHeader: EXPORTS.nop,
+          write: EXPORTS.nop
+        });
+        state.middlewareTest({ headers: {}, url: '/test/test.watch' }, {}, onEventError);
+      });
     },
 
     'routerAssetsDict_/test/test.1x1.png': function (request, response) {
@@ -4189,7 +4346,10 @@ integrate forever-webui
       /*
         this function serves the asset test.html
       */
-      EXPORTS.serverRespondDefault(response, 200, 'text/html', local._assetTestHtml);
+      EXPORTS.serverRespondDefault(response, 200, 'text/html',
+        EXPORTS.templateFormat(local._assetTestHtml, { globalOverride: JSON.stringify({ state: {
+          localhost: state.localhost
+        } }) }));
     },
 
     'routerAssetsDict_/test/test.js': function (request, response) {
@@ -4215,6 +4375,7 @@ integrate forever-webui
       + EXPORTS.lintScript('test.css', '\n')
       + '</style></head><body>\n'
       + '<div id="divTest"></div>\n'
+      + '<script>window.globalOverride = {{globalOverride}};</script>\n'
 
       + [
         '/public/assets/utility2-external/external.rollup.auto.js',
@@ -4298,6 +4459,7 @@ integrate forever-webui
         this function tests testCoveralls's travis-ci behavior
       */
       EXPORTS.testMock({
+        global: { setTimeout: EXPORTS.callCallback },
         process: { env: { TRAVIS: true } },
         state: { isCoveralls: true }
       }, function () {
@@ -4341,11 +4503,12 @@ integrate forever-webui
         + ' -x **/git_modules/**'
         + ' -x **/tmp/**'
         + ' ' + state.npmTest + ' --'
-        + ' --timeoutExit ' + timeoutExit
+        + ' --npm-test'
         + ' --repl'
         + ' --serverPort random'
         + ' --test'
-        + ' --timeoutDefault ' + state.timeoutDefault;
+        + ' --timeoutDefault ' + state.timeoutDefault
+        + ' --timeoutExit ' + timeoutExit;
       EXPORTS.shell(script);
       /* exit */
       timeoutExit += 2000;
@@ -4357,10 +4520,29 @@ integrate forever-webui
         this function tests testNpm's default behavior
       */
       EXPORTS.testMock({
+        global: { setTimeout: EXPORTS.callCallback },
         state: { npmTest: true }
       }, function () {
         local._testNpm();
         onEventError();
+      });
+    },
+
+    testThrowError: function () {
+      /*
+        this function throws a new Error for testing purposes
+      */
+      throw new Error('testThrowError');
+    },
+
+    _testThrowError_default_test: function (onEventError) {
+      /*
+        this function tests testThrowError's default behavior
+      */
+      EXPORTS.tryCatchOnEventError(function () {
+        EXPORTS.testThrowError();
+      }, function (error) {
+        onEventError(!error);
       });
     },
 
