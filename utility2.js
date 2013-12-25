@@ -2565,6 +2565,7 @@ integrate forever-webui
           return;
         }
         clearTimeout(timeout);
+        timeout = -1;
         if (options.debugFlag) {
           console.log(['_ajaxNodejs', options.url,
             options.response && options.response.headers]);
@@ -2589,12 +2590,10 @@ integrate forever-webui
         return;
       }
       /* set timeout */
-      timeout = setTimeout(function () {
-        _onEventError(EXPORTS.createErrorTimeout());
-        timeout = -1;
-      }, options.timeout || state.timeoutDefault);
+      timeout = setTimeout(_onEventError, options.timeout || state.timeoutDefault,
+        EXPORTS.createErrorTimeout());
       /* socks5 */
-      if (required.utility2._socks5Ajax(options, _onEventError) !== 'skip') {
+      if (required.utility2._socks5Ajax(options, _onEventError)) {
         return;
       }
       request = required[urlParsed.protocol.slice(0, -1)].request(options, function (response) {
@@ -2791,7 +2790,7 @@ integrate forever-webui
           && options.url.indexOf(state.localhost) !== 0
           && options.hostname !== state.socks5SshHostname
         ))) {
-        return 'skip';
+        return;
       }
       EXPORTS.deferCallback('socks5Defer', 'defer', function (error) {
         if (error) {
@@ -2800,6 +2799,7 @@ integrate forever-webui
         }
         local._socks5AjaxResume(options, onEventError);
       });
+      return true;
     },
 
     _socks5AjaxResume: function (options, onEventError) {
@@ -2811,10 +2811,11 @@ integrate forever-webui
       hostname = new Buffer(options.hostname);
       _onEventData = function (chunk) {
         chunks = Buffer.concat([chunks, chunk]);
-        if (chunks.length < 5) {
+        if (chunks.length < 12) {
           return;
         }
-        if (chunks.slice(0, 5).toString() !== '\u0005\u0000\u0005\u0000\u0000') {
+        if (chunks.toString()
+            !== '\u0005\u0000\u0005\u0000\u0000\u0001\u0000\u0000\u0000\u0000\u0000\u0000') {
           _onEventError(new Error('socks5Ajax - request failed'));
           return;
         }
@@ -2832,7 +2833,11 @@ integrate forever-webui
         EXPORTS.ajax(options, onEventError);
       };
       _onEventError = function (error) {
+        if (timeout < 0) {
+          return;
+        }
         clearTimeout(timeout);
+        timeout = -1;
         self.end();
         self.destroy();
         onEventError(error);
@@ -2896,38 +2901,40 @@ integrate forever-webui
     },
 
     _socks5ServerOnEventSocket: function (self) {
-      var chunks, host, _onEventData, _onEventError, port, proxy, timeout;
-      chunks = new Buffer(0);
+      var host, _onEventData, _onEventError, port, proxy, timeout;
       _onEventData = function (chunk) {
-        chunks = Buffer.concat([chunks, chunk]);
-        if (chunks.length < 8
-            || chunks.slice(0, 7).toString() !== '\u0005\u0001\u0000\u0005\u0001\u0000\u0003'
-            || chunks.length < 8 + chunks[7] + 2) {
+        if (chunk.length < 8
+            || chunk.slice(0, 7).toString() !== '\u0005\u0001\u0000\u0005\u0001\u0000\u0003'
+            || chunk.length < 8 + chunk[7] + 2) {
           _onEventError(new Error('socks5Server - request failed'));
           return;
         }
         clearTimeout(timeout);
         self.removeListener('data', _onEventData);
         /* create proxy socket */
-        host = chunks.slice(8, 8 + chunks[7]).toString();
-        port = chunks.readUInt16BE(8 + chunks[7]);
+        host = chunk.slice(8, 8 + chunk[7]).toString();
+        port = chunk.readUInt16BE(8 + chunk[7]);
         console.log('_socks5ServerOnEventSocket - proxying ' + host + ':' + port);
         proxy = required.net.connect(port, host);
-        proxy.on('error', _onEventError);
+        proxy.write(chunk.slice(8 + chunk[7] + 2));
         proxy.pipe(self);
         self.pipe(proxy);
       };
       _onEventError = function (error) {
+        if (timeout < 0) {
+          return;
+        }
         clearTimeout(timeout);
+        timeout = -1;
         self.end();
         self.destroy();
         EXPORTS.onEventErrorDefault(error);
       };
       try {
+        self.on('data', _onEventData).on('error', _onEventError);
         self.write(new Buffer(
           '\u0005\u0000\u0005\u0000\u0000\u0001\u0000\u0000\u0000\u0000\u0000\u0000'
         ));
-        self.on('data', _onEventData).on('error', _onEventError);
         /* socket timeout handling */
         timeout = setTimeout(_onEventError, state.timeoutDefault,
           new Error('socks5Server timeout'));
@@ -2950,7 +2957,10 @@ integrate forever-webui
       state.socks5LocalPort = state.socks5LocalPort || EXPORTS.serverPortRandom();
       state.socks5Server = state.socks5Server || required.net.createServer(function (socket) {
         required.utility2._socks5ServerOnEventSocket(socket);
-      }).listen(state.socks5LocalPort, function () {
+      });
+      EXPORTS.deferCallback('socks5Defer', 'pause');
+      state.socks5Server.listen(state.socks5LocalPort, function () {
+        EXPORTS.deferCallback('socks5Defer', 'resume');
         console.log('socks5 server started on port ' + state.socks5LocalPort);
       });
     },
@@ -4489,7 +4499,7 @@ integrate forever-webui
       /* run test */
       timeoutExit += 2000;
       script = 'rm -r tmp/test_coverage 2>/dev/null;'
-        + 'istanbul cover --dir tmp/test_coverage'
+        + ' istanbul cover --dir tmp/test_coverage'
         + ' -x **.min.**'
         + ' -x **.rollup.**'
         + ' -x **/git_modules/**'
