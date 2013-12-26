@@ -110,6 +110,7 @@ integrate forever-webui
         /* export global */
         EXPORTS[key] = local2[key];
       });
+      /* defer further module initialization until jQuery.ready */
       if (state.isBrowser && EXPORTS.deferCallback) {
         $(function () {
           EXPORTS.deferCallback('initModuleDefer', 'resume');
@@ -124,7 +125,7 @@ integrate forever-webui
 
     _initModuleResume: function (module, local2, exports) {
       /*
-        this function resumes the ajax request after a socks5 proxy has been established
+        this function resumes module initialization
       */
       /* first-time init */
       state.initOnceDict = state.initOnceDict || {};
@@ -141,9 +142,11 @@ integrate forever-webui
       }
       /* run tests */
       setTimeout(function () {
-        EXPORTS.deferCallback('serverDefer', 'defer', function () {
-          EXPORTS.testModule(module, local2, exports);
-        });
+        if (local2._initTest) {
+          EXPORTS.deferCallback('serverDefer', 'defer', function () {
+            local2._initTest();
+          });
+        }
       });
     },
 
@@ -165,6 +168,10 @@ integrate forever-webui
 
     _init: function () {
       EXPORTS.initModule(module, local);
+    },
+
+    _initTest: function () {
+      EXPORTS.testModule(local);
     },
 
     base64Decode: function (text) {
@@ -259,7 +266,7 @@ integrate forever-webui
         this function creates a new timeout error
       */
       var error;
-      error = new Error(message || 'timeout error');
+      error = new Error((message || 'timeout error') + ' - ' + state.timeoutDefault);
       error.code = error.errno = 'ETIMEDOUT';
       return error;
     },
@@ -361,8 +368,8 @@ integrate forever-webui
       try {
         data = state.isNodejs ? required.vm.runInThisContext(script, file) : eval(script);
       } catch (error) {
+        /* debug error */
         state.error = error;
-        console.error(file);
         onEventError(error);
         return;
       }
@@ -373,15 +380,15 @@ integrate forever-webui
       /*
         this function tests jsEvalOnEventError's default behavior
       */
-      EXPORTS.jsEvalOnEventError('', 'null', onEventError);
+      EXPORTS.jsEvalOnEventError('test.js', 'null', onEventError);
     },
 
     _jsEvalOnEventError_syntaxErrorHandling_test: function (onEventError) {
       /*
         this function tests jsEvalOnEventError's syntax error-handling behavior
       */
-      EXPORTS.jsEvalOnEventError('', 'syntax error', function (error) {
-        EXPORTS.tryCatchOnEventError(function () {
+      EXPORTS.jsEvalOnEventError('error.js', 'syntax error', function (error) {
+        EXPORTS.tryCatch(function () {
           EXPORTS.assert(error instanceof Error);
         }, onEventError);
       });
@@ -533,7 +540,7 @@ integrate forever-webui
         on data, it will print the data.
       */
       if (error) {
-        /* debug */
+        /* debug error */
         state.error = error;
         console.error(error.stack || error.message || error);
         return;
@@ -692,22 +699,24 @@ integrate forever-webui
       onEventError();
     },
 
-    tryCatchOnEventError: function (callback, onEventError) {
+    tryCatch: function (callback, onEventError) {
       /*
         this function helps achieve 100% code coverage
       */
+      var data;
       try {
-        onEventError(null, callback());
+        data = callback();
       } catch (error) {
-        onEventError(error);
+        return onEventError(error);
       }
+      return onEventError(null, data);
     },
 
-    _tryCatchOnEventError_errorHandling_test: function (onEventError) {
+    _tryCatch_errorHandling_test: function (onEventError) {
       /*
-        this function tests tryCatchOnEventError's error-handling behavior
+        this function tests tryCatch's error-handling behavior
       */
-      EXPORTS.tryCatchOnEventError(function () {
+      EXPORTS.tryCatch(function () {
         throw new Error();
       }, function (error) {
         onEventError(!error);
@@ -803,11 +812,14 @@ integrate forever-webui
       EXPORTS.initModule(module, local);
     },
 
+    _initTest: function () {
+      EXPORTS.testModule(local);
+    },
+
     ajax: function (options, onEventError) {
       /*
         this function makes an ajax request, and auto-concats the response stream into utf8 text
       */
-      onEventError = onEventError || EXPORTS.onEventErrorDefault;
       options.url0 = options.url0 || options.url;
       if (options.data) {
         options.method = options.type = options.method || options.type || 'POST';
@@ -920,7 +932,6 @@ integrate forever-webui
         onEventError(new Error('invalid urls'));
         return;
       }
-      onEventError = onEventError || EXPORTS.onEventErrorDefault;
       _onEventError = function (error, data, options) {
         if (remaining < 0) {
           return;
@@ -974,6 +985,10 @@ integrate forever-webui
       EXPORTS.initModule(module, local);
     },
 
+    _initTest: function () {
+      EXPORTS.testModule(local);
+    },
+
     assert: function (passed, message) {
       /*
         this function throws an error if the assertion fails
@@ -1013,6 +1028,10 @@ integrate forever-webui
 
     _init: function () {
       EXPORTS.initModule(module, local);
+    },
+
+    _initTest: function () {
+      EXPORTS.testModule(local);
     },
 
     Cache: function (options) {
@@ -1133,6 +1152,10 @@ integrate forever-webui
       EXPORTS.initModule(module, local);
     },
 
+    _initTest: function () {
+      EXPORTS.testModule(local);
+    },
+
     deferCallback: function (key, mode, callback) {
       /*
         this function defers a callback until a resume event is fired
@@ -1248,6 +1271,10 @@ integrate forever-webui
       EXPORTS.initModule(module, local);
     },
 
+    _initTest: function () {
+      EXPORTS.testModule(local);
+    },
+
     testMock: function (global2, test) {
       /*
         this function mocks the global state while running tests
@@ -1267,7 +1294,7 @@ integrate forever-webui
         });
       });
       /* run test */
-      test();
+      EXPORTS.tryCatch(test, EXPORTS.onEventErrorDefault);
       /* restore global state */
       Object.keys(backup).forEach(function (key1) {
         Object.keys(backup[key1]).forEach(function (key2) {
@@ -1278,12 +1305,11 @@ integrate forever-webui
 
     _testMock: EXPORTS.nop,
 
-    testModule: function (module, local2) {
+    testModule: function (local2) {
       /*
         this function runs tests on a module
       */
       var environment, _onEventFinishTestSuite, remaining, testSuite, timeout;
-      /* browser-side testing */
       if (!state.isTest) {
         return;
       }
@@ -1302,7 +1328,7 @@ integrate forever-webui
             testSuite.tests += 1;
             console.error('\n' + testSuite.environment, 'test failed -',
               local2._name + '.' + test.name);
-            test.failure = 'test timeout';
+            test.failure = 'test timeout - ' + state.timeoutDefault;
             EXPORTS.onEventErrorDefault(new Error(test.failure));
           }
         });
@@ -1400,7 +1426,7 @@ integrate forever-webui
             testSuiteList: state.testSuiteList
           }),
           url: '/test/test.upload'
-        });
+        }, EXPORTS.onEventErrorDefault);
         /* reset code coverage */
         if (global.__coverage__) {
           global.__coverage__ = {};
@@ -1430,6 +1456,10 @@ integrate forever-webui
 
     _init: function () {
       EXPORTS.initModule(module, local);
+    },
+
+    _initTest: function () {
+      EXPORTS.testModule(local);
     },
 
     urlParamsGetItem: function (url, key, delimiter) {
@@ -1613,6 +1643,10 @@ integrate forever-webui
       }
     },
 
+    _initTest: function () {
+      EXPORTS.testModule(local);
+    },
+
     _Blob: function (aFileParts, options) {
       /*
         this function replaces the buggy phantomjs Blob class constructor
@@ -1692,6 +1726,10 @@ integrate forever-webui
       });
     },
 
+    _initTest: function () {
+      EXPORTS.testModule(local);
+    },
+
     ajaxProgressOnEventError: function (options, onEventError) {
       /*
         this function performs ajax calls with progress meter
@@ -1707,7 +1745,6 @@ integrate forever-webui
         local._ajaxProgressOnEventErrorFile(options, onEventError);
         return;
       }
-      onEventError = onEventError || EXPORTS.onEventErrorDefault;
       options.contentType = options.contentType || 'application/octet-stream';
       options.dataType = options.dataType || 'text';
       options.type = options.type || options.method;
@@ -1930,6 +1967,10 @@ integrate forever-webui
       });
     },
 
+    _initTest: function () {
+      EXPORTS.testModule(local);
+    },
+
     adminEval: function (script, onEventError) {
       /*
         this function remotely evals javascript code on server
@@ -1995,6 +2036,10 @@ integrate forever-webui
       EXPORTS.initModule(module, local);
     },
 
+    _initTest: function () {
+      EXPORTS.testModule(local);
+    },
+
     _lintCss: function (file, script) {
       /*
         this function lints a css script for errors
@@ -2012,11 +2057,22 @@ integrate forever-webui
       /*
         this function lints a js script for errors
       */
-      var lint;
+      var ast, lint;
       if (required.jslint_linter && !global.__coverage__) {
         lint = required.jslint_linter.lint(script, { maxerr: 8 });
         if (!lint.ok) {
           required.jslint_reporter.report(file, lint);
+        }
+      }
+      /* uglify-js - warn unused variables */
+      if (file.slice(-3) === '.js' && required.uglify_js) {
+        try {
+          ast = required.uglify_js.parse(script, { filename: file });
+          ast.figure_out_scope();
+          /* uglify-js - warn unused variables */
+          ast.transform(required.uglify_js_compressor);
+        } catch (errorUglifyjs) {
+          EXPORTS.onEventErrorDefault(errorUglifyjs);
         }
       }
       return script;
@@ -2119,23 +2175,17 @@ integrate forever-webui
       required.http.globalAgent.maxSockets = 256;
       required.https.globalAgent.maxSockets = 256;
       /* override required.fs with required.graceful_fs */
-      if (required.graceful_fs) {
-        required.fs = required.graceful_fs;
-      }
+      required.fs = required.graceful_fs;
       /* initialize istanbul */
-      if (required.istanbul) {
-        required.istanbul_Instrumenter = required.istanbul_Instrumenter
-          || new required.istanbul.Instrumenter();
-      }
+      required.istanbul_Instrumenter = required.istanbul_Instrumenter
+        || new required.istanbul.Instrumenter();
       /* initialize jslint */
-      if (required.jslint) {
-        required.jslint_linter = required.jslint_linter || require('jslint/lib/linter');
-        required.jslint_reporter = required.jslint_reporter || require('jslint/lib/reporter');
-      }
+      required.jslint_linter = required.jslint_linter || require('jslint/lib/linter');
+      required.jslint_reporter = required.jslint_reporter || require('jslint/lib/reporter');
       /* initialize sqlite3 */
-      if (required.sqlite3) {
-        state.dbSqlite3 = new required.sqlite3.cached.Database(':memory:');
-      }
+      state.dbSqlite3 = new required.sqlite3.cached.Database(':memory:');
+      /* initialize uglify-js*/
+      required.uglify_js_compressor = required.uglify_js.Compressor();
       /* exports */
       global.atob = global.atob || function (text) {
         return new Buffer(text, 'base64').toString();
@@ -2153,27 +2203,29 @@ integrate forever-webui
       }
       /* process.argv */
       process.argv.forEach(function (arg, ii, argv) {
+        var number;
         if ((/^--[a-z]/).test(arg)) {
           /* --no-foo -> state.isFoo = false */
           if ((/^--no-[a-z]/).test(arg)) {
             state[EXPORTS.stringToCamelCase('is' + arg.slice(4))] = false;
           /* --foo bar -> state.isFoo = bar */
           } else if (argv[ii + 1] && !(/^--[a-z]/).test(argv[ii + 1])) {
-            state[EXPORTS.stringToCamelCase(arg.slice(2))] = argv[ii + 1];
+            number = Number(argv[ii + 1]);
+            state[EXPORTS.stringToCamelCase(arg.slice(2))] = isNaN(number) ? argv[ii + 1]
+              : number;
           /* --foo -> state.isFoo = true */
           } else {
             state[EXPORTS.stringToCamelCase('is' + arg.slice(1))] = true;
           }
         }
       });
-      state.timeoutDefault = Number(state.timeoutDefault);
       /* load package.json file */
-      EXPORTS.tryCatchOnEventError(function () {
+      EXPORTS.tryCatch(function () {
         /*jslint stupid: true*/
         state.packageJson = {};
         state.packageJson = JSON.parse(required.fs.readFileSync(process.cwd()
           + '/package.json'));
-      }, EXPORTS.nop);
+      }, EXPORTS.onEventErrorDefault);
       /* load default config file */
       state.stateDefault = state.packageJson.stateDefault || {};
       EXPORTS.setOptionsDefaults(state, EXPORTS.objectCopyDeep(state.stateDefault));
@@ -2201,9 +2253,19 @@ integrate forever-webui
         EXPORTS.debugProcessOnce();
       }
       /* exit on timeout */
+      if (state.timeExit) {
+        state.timeoutExit = state.timeExit - Date.now();
+      }
       if (state.timeoutExit) {
+        state.timeoutExit = Number(state.timeoutExit);
+        EXPORTS.assert(!isNaN(state.timeoutExit));
+        state.timeExit = Date.now() + state.timeoutExit;
         setTimeout(process.exit, state.timeoutExit);
       }
+    },
+
+    _initTest: function () {
+      EXPORTS.testModule(local);
     },
 
     debugProcessOnce: function () {
@@ -2311,15 +2373,15 @@ integrate forever-webui
       */
       var ast, result;
       ast = required.uglify_js.parse(script, { filename: file });
-      result = required.uglify_js.OutputStream();
-      /* compress */
       ast.figure_out_scope();
-      ast.transform(required.uglify_js.Compressor());
+      /* compress */
+      ast.transform(required.uglify_js_compressor);
       /* mangle */
       ast.figure_out_scope();
       ast.compute_char_frequency();
       ast.mangle_names();
       /* output */
+      result = required.uglify_js.OutputStream();
       ast.print(result);
       return result.toString();
     },
@@ -2387,6 +2449,13 @@ integrate forever-webui
       });
     },
 
+    timeoutExitRemaining: function () {
+      /*
+        this function returns amout of timeout remaining before process.exit
+      */
+      return state.timeExit - Date.now();
+    },
+
   };
   local._init();
 }());
@@ -2408,6 +2477,10 @@ integrate forever-webui
         return;
       }
       EXPORTS.initModule(module, local);
+    },
+
+    _initTest: function () {
+      EXPORTS.testModule(local);
     },
 
     'routerSecurityDict_/admin': function (request, response, next) {
@@ -2538,24 +2611,15 @@ integrate forever-webui
       EXPORTS.initModule(module, local);
     },
 
+    _initTest: function () {
+      EXPORTS.testModule(local);
+    },
+
     _ajaxNodejs: function (options, onEventError) {
       /*
         this function is the nodejs implementation of the ajax function
       */
       /* localhost */
-      if (options.url[0] === '/') {
-        EXPORTS.deferCallback('serverDefer', 'defer', function (error) {
-          if (error) {
-            onEventError(error);
-            return;
-          }
-          options.url = state.localhost + options.url;
-          EXPORTS.ajax(options, onEventError);
-        });
-        return;
-      }
-      /* assert valid http / https url */
-      EXPORTS.assert(options.url && options.url.slice(0, 4) === 'http', [options.url]);
       var _onEventError,
         request,
         timeout,
@@ -2566,12 +2630,26 @@ integrate forever-webui
         }
         clearTimeout(timeout);
         timeout = -1;
+        /* debug */
         if (options.debugFlag) {
           console.log(['_ajaxNodejs', options.url,
             options.response && options.response.headers]);
         }
         onEventError(error, data, options);
       };
+      if (options.url[0] === '/') {
+        EXPORTS.deferCallback('serverDefer', 'defer', function (error) {
+          if (error) {
+            _onEventError(error);
+            return;
+          }
+          options.url = state.localhost + options.url;
+          EXPORTS.ajax(options, onEventError);
+        });
+        return;
+      }
+      /* assert valid http / https url */
+      EXPORTS.assert(options.url && options.url.slice(0, 4) === 'http', [options.url]);
       urlParsed = required.url.parse(options.proxy || options.url);
       urlParsed.protocol = urlParsed.protocol || 'http:';
       options.hostname = urlParsed.hostname;
@@ -2598,11 +2676,11 @@ integrate forever-webui
       }
       request = required[urlParsed.protocol.slice(0, -1)].request(options, function (response) {
         var readStream;
-        options.response = response;
-        if (options.onEventResponse && options.onEventResponse(response)) {
-          _onEventError();
+        if (options.dataType === 'response') {
+          _onEventError(null, response);
           return;
         }
+        options.response = response;
         if (options.redirect !== false) {
           /* http redirect */
           switch (response.statusCode) {
@@ -2634,9 +2712,6 @@ integrate forever-webui
         switch (options.dataType) {
         case 'headers':
           _onEventError(null, response.headers);
-          return;
-        case 'response':
-          _onEventError(null, response.on('error', _onEventError));
           return;
         case 'statusCode':
           _onEventError(null, response.statusCode);
@@ -2781,6 +2856,10 @@ integrate forever-webui
       }
     },
 
+    _initTest: function () {
+      EXPORTS.testModule(local);
+    },
+
     _socks5Ajax: function (options, onEventError) {
       /*
         this function hooks the socks5 proxy protocol into the function ajax
@@ -2844,7 +2923,7 @@ integrate forever-webui
       };
       timeout = setTimeout(_onEventError, state.timeoutDefault,
         new Error('socks5Ajax timeout'));
-      port = Number(options.port || 80);
+      port = Number(options.port) || 80;
       self = required.net.createConnection({
         host: 'localhost',
         port: state.socks5LocalPort
@@ -2900,6 +2979,10 @@ integrate forever-webui
       }
     },
 
+    _initTest: function () {
+      EXPORTS.testModule(local);
+    },
+
     _socks5ServerOnEventSocket: function (self) {
       var host, _onEventData, _onEventError, port, proxy, timeout;
       _onEventData = function (chunk) {
@@ -2916,6 +2999,7 @@ integrate forever-webui
         port = chunk.readUInt16BE(8 + chunk[7]);
         console.log('_socks5ServerOnEventSocket - proxying ' + host + ':' + port);
         proxy = required.net.connect(port, host);
+        /* write leftover chunk from current read to proxy connection */
         proxy.write(chunk.slice(8 + chunk[7] + 2));
         proxy.pipe(self);
         self.pipe(proxy);
@@ -3016,6 +3100,10 @@ integrate forever-webui
       EXPORTS.fsRmrAtomic(process.cwd() + '/tmp/coverage', EXPORTS.nop);
       /* remove old test reports */
       EXPORTS.fsRmrAtomic(process.cwd() + '/tmp/test', EXPORTS.nop);
+    },
+
+    _initTest: function () {
+      EXPORTS.testModule(local);
     },
 
     createFsCacheFilename: function () {
@@ -3314,6 +3402,10 @@ integrate forever-webui
       local._replStart();
     },
 
+    _initTest: function () {
+      EXPORTS.testModule(local);
+    },
+
     _replParse: function (script) {
       /* optimization - cached callback */
       var aa, bb;
@@ -3385,6 +3477,10 @@ integrate forever-webui
     },
 
     _replParse_default_test: function (onEventError) {
+      if (!state.repl) {
+        onEventError('skip');
+        return;
+      }
       EXPORTS.testMock({
         EXPORTS: { ajax: EXPORTS.nop, phantomjsEval: EXPORTS.nop },
         console: { log: EXPORTS.nop },
@@ -3392,18 +3488,20 @@ integrate forever-webui
           onEventError(null, true);
         } } }
       }, function () {
-        local._replParse('($ ls\n)');
-        local._replParse('(ajax http://www.google.com\n)');
-        local._replParse('(ajaxDebug http://www.google.com\n)');
-        local._replParse('(console.log@@ "hello world"\n)');
-        local._replParse('(browser state\n)');
-        local._replParse('(git diff\n)');
-        local._replParse('(git log\n)');
-        local._replParse('(grep zxqj\n)');
-        local._replParse('(print true\n)');
-        local._replParse('(sql _\n)');
-        local._replParse('(sql SELECT * from myTable\n)');
-        local._replParse('(syntax error\n)');
+        /*jslint evil: true*/
+        state.repl.eval(null, null, null, EXPORTS.nop);
+        state.repl.eval('($ ls\n)', null, null, EXPORTS.nop);
+        state.repl.eval('(ajax http://www.google.com\n)', null, null, EXPORTS.nop);
+        state.repl.eval('(ajaxDebug http://www.google.com\n)', null, null, EXPORTS.nop);
+        state.repl.eval('(console.log@@ "hello world"\n)', null, null, EXPORTS.nop);
+        state.repl.eval('(browser state\n)', null, null, EXPORTS.nop);
+        state.repl.eval('(git diff\n)', null, null, EXPORTS.nop);
+        state.repl.eval('(git log\n)', null, null, EXPORTS.nop);
+        state.repl.eval('(grep zxqj\n)', null, null, EXPORTS.nop);
+        state.repl.eval('(print true\n)', null, null, EXPORTS.nop);
+        state.repl.eval('(sql _\n)', null, null, EXPORTS.nop);
+        state.repl.eval('(sql SELECT * from myTable\n)', null, null, EXPORTS.nop);
+        state.repl.eval('(syntax error\n)', null, null, EXPORTS.nop);
         onEventError();
       });
     },
@@ -3443,6 +3541,10 @@ integrate forever-webui
         return;
       }
       EXPORTS.initModule(module, local);
+    },
+
+    _initTest: function () {
+      EXPORTS.testModule(local);
     },
 
     rollupFile: function (file, onEventError) {
@@ -3619,6 +3721,10 @@ integrate forever-webui
       EXPORTS.serverStart();
     },
 
+    _initTest: function () {
+      EXPORTS.testModule(local);
+    },
+
     'routerPreloggerDict_/favicon.ico': function (request, response, next) {
       EXPORTS.serverRespondFile(response, process.cwd() + '/public/assets/favicon.ico', next);
     },
@@ -3689,16 +3795,19 @@ integrate forever-webui
       /* update host header with actual destination */
       headers.host = urlParsed.host;
       EXPORTS.ajax({
+        dataType: 'response',
         headers: headers,
-        onEventResponse: function (response2) {
-          if (!response.headersSent) {
-            response.writeHead(200, response2.headers);
-          }
-          response2.on('error', next).pipe(response.on('error', next));
-          return true;
-        },
         readStream: request,
         url: url
+      }, function (error, response2) {
+        if (error) {
+          next(error);
+          return;
+        }
+        if (!response.headersSent) {
+          response.writeHead(response2.statusCode, response2.headers);
+        }
+        response2.on('error', next).pipe(response.on('error', next));
       });
     },
 
@@ -3935,6 +4044,14 @@ integrate forever-webui
       EXPORTS.phantomjsRestart();
     },
 
+    _initTest: function () {
+      EXPORTS.deferCallback('phantomjsDefer', 'defer', function (error) {
+        if (!error) {
+          EXPORTS.testModule(local);
+        }
+      });
+    },
+
     _phantomjsAjax: function (options, onEventError) {
       /*
         this function makes ajax request to the phantomjs test server
@@ -4052,7 +4169,7 @@ integrate forever-webui
               ? EXPORTS.onEventErrorDefault(error)
               : EXPORTS.coverageExtend(global.__coverage__, data));
           });
-        }, 0.5 * state.timeoutDefault);
+        }, EXPORTS.timeoutExitRemaining() - 1000);
       } catch (errorPhantomjs) {
         EXPORTS.deferCallback('phantomjsDefer', 'error', errorPhantomjs);
       }
@@ -4072,22 +4189,16 @@ integrate forever-webui
       /*
         this function tests phantomjsTestUrl's testOnce behavior
       */
-      EXPORTS.deferCallback('phantomjsDefer', 'defer', function (error) {
-        EXPORTS.nop(error
-          ? onEventError('skip')
-          : EXPORTS.phantomjsTestUrl('/test/test.html#testOnce=1', onEventError));
-      });
+      EXPORTS.phantomjsTestUrl('/test/test.html#testOnce=1', onEventError);
     },
 
     _phantomjsTestUrl_testWatch_test: function (onEventError) {
       /*
         this function tests phantomjsTestUrl's testWatch behavior
       */
-      EXPORTS.deferCallback('phantomjsDefer', 'defer', function (error) {
-        EXPORTS.nop(error || !state.isNpmTest
-          ? onEventError('skip')
-          : EXPORTS.phantomjsTestUrl('/test/test.html#testWatch=1', onEventError));
-      });
+      EXPORTS.nop(state.isNpmTest
+        ? EXPORTS.phantomjsTestUrl('/test/test.html#testWatch=1', onEventError)
+        : onEventError('skip'));
     },
 
   };
@@ -4136,7 +4247,11 @@ integrate forever-webui
       console.log('phantomjs server started on port ' + state.phantomjsPort);
     },
 
-    'routerDict_/': function (request, response, data) {
+    _initTest: function () {
+      EXPORTS.testModule(local);
+    },
+
+    'routerDict_/': function (request, response) {
       local._serverRespondData(request, response);
     },
 
@@ -4211,6 +4326,10 @@ integrate forever-webui
       setTimeout(local._testCoveralls);
     },
 
+    _initTest: function () {
+      EXPORTS.testModule(local);
+    },
+
     'routerDict_/test/test.echo': function (request, response) {
       /*
         this function echoes the request back to the response
@@ -4270,7 +4389,7 @@ integrate forever-webui
         if (error.testSuiteList) {
           required.utility2._testReport(error.testSuiteList);
         }
-        /* merge uploaded code coverage object with global.__coverage__ */
+        /* extend global.__coverage with uploaded code coverage object */
         EXPORTS.coverageExtend(global.__coverage__, error.coverage);
       });
     },
@@ -4491,13 +4610,11 @@ integrate forever-webui
       /*
         this function runs npm test with code coverage
       */
-      var script, timeoutExit;
+      var script;
       if (!state.npmTest) {
         return;
       }
-      timeoutExit = state.timeoutDefault;
       /* run test */
-      timeoutExit += 2000;
       script = 'rm -r tmp/test_coverage 2>/dev/null;'
         + ' istanbul cover --dir tmp/test_coverage'
         + ' -x **.min.**'
@@ -4509,12 +4626,9 @@ integrate forever-webui
         + ' --repl'
         + ' --serverPort random'
         + ' --test'
-        + ' --timeoutDefault ' + state.timeoutDefault
-        + ' --timeoutExit ' + timeoutExit;
+        + ' --timeout-default ' + state.timeoutDefault
+        + ' --time-exit ' + state.timeExit;
       EXPORTS.shell(script);
-      /* exit */
-      timeoutExit += 2000;
-      setTimeout(process.exit, timeoutExit);
     },
 
     _testNpm_default_test: function (onEventError) {
@@ -4541,7 +4655,7 @@ integrate forever-webui
       /*
         this function tests testThrowError's default behavior
       */
-      EXPORTS.tryCatchOnEventError(function () {
+      EXPORTS.tryCatch(function () {
         EXPORTS.testThrowError();
       }, function (error) {
         onEventError(!error);
