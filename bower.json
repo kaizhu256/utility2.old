@@ -1,0 +1,14 @@
+{
+  "dependencies": {
+    "utility2-external": "*"
+  },
+  "devDependencies": {
+  },
+  "ignore": [
+    ".jshintrc",
+    "**/*.txt"
+  ],
+  "main": "utility2.js",
+  "name": "utility2",
+  "version": "2013.12.28-1"
+}
