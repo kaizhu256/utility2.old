@@ -8,22 +8,21 @@ common, shared utilities for both browser and nodejs
 todo:
 create extra test port for server
 emulate localStorage
-add shared rollup
 add heroku dynamic config server
 integrate forever-webui
 */
 
 
 
-(function moduleInitializeFirstShared() {
+(function moduleInitFirstShared() {
   /*
-    this shared module performs initialization before the below modules are loaded
+    this shared module runs initializations before the below modules are loaded
   */
   'use strict';
   var local;
   local = {
 
-    _name: 'utility2.moduleInitializeFirstShared',
+    _name: 'utility2.moduleInitFirstShared',
 
     _init: function () {
       try {
@@ -32,7 +31,7 @@ integrate forever-webui
       }
       /* exports */
       global.EXPORTS = global.EXPORTS || {};
-      global.module = global.module || null;
+      global.module = global.module || {};
       global.required = EXPORTS.required = EXPORTS.required || global.required || {};
       global.state = EXPORTS.state = EXPORTS.state || global.state || {};
       /* make console.log callable without context */
@@ -41,16 +40,14 @@ integrate forever-webui
         console._log.apply(console, arguments);
       };
       /* debugPrint */
-      global.debugPrint = function (arg) {
+      global.debugPrint = function () {
         /*
           this global function is used purely for temporary debugging,
           and jslint will nag you to remove it
         */
+        console._log('\n\n\n\ndebugPrint');
         console._log.apply(console, arguments);
-        return arg;
       };
-      /* code coverage for debugPrint */
-      global.debugPrint();
       /* underscore */
       global.underscore = global.underscore || global._;
       if (global.process && process.versions) {
@@ -103,7 +100,7 @@ integrate forever-webui
           return;
         }
         /* export local2 */
-        if (key[0] === '_') {
+        if (key[0] === '_' && key.slice(-5) !== '_test') {
           exports[key] = local2[key];
           return;
         }
@@ -136,7 +133,7 @@ integrate forever-webui
           local2._initOnce();
         }
         /* require once */
-        if (module && required.utility2._moduleInitOnceNodejs) {
+        if (required.utility2._moduleInitOnceNodejs) {
           required.utility2._moduleInitOnceNodejs(module, local2, exports);
         }
       }
@@ -227,13 +224,16 @@ integrate forever-webui
       */
       var _callback, dict;
       _callback = function () {
-        if (Date.now() < timeout) {
-          callback();
-          return;
+        if (timeout !== -1) {
+          if (Date.now() < timeout) {
+            callback();
+            return;
+          }
+          callback(timeout);
+          timeout = -1;
+          clearInterval(dict[key]);
+          delete dict[key];
         }
-        callback(timeout);
-        clearInterval(dict[key]);
-        delete dict[key];
       };
       dict = state.setIntervalDict = state.setIntervalDict || {};
       timeout = timeout ? Date.now() + timeout : Infinity;
@@ -245,20 +245,29 @@ integrate forever-webui
       /* 2. run callback */
       _callback();
       /* 3. set interval key to callback */
-      if (Date.now() < timeout) {
-        dict[key] = setInterval(_callback, interval);
-      }
+      dict[key] = setInterval(_callback, interval);
     },
 
     _clearCallSetInterval_timeout_test: function (onEventError) {
       /*
         this function tests clearCallSetInterval's timeout behavior
       */
-      EXPORTS.clearCallSetInterval(EXPORTS.uuid4(), function (timeout) {
-        if (timeout) {
-          onEventError();
-        }
-      }, 1, 1);
+      var remaining, _test;
+      remaining = 0;
+      _test = function (key, interval, timeout) {
+        remaining += 1;
+        EXPORTS.clearCallSetInterval(key, function (timeout) {
+          if (timeout) {
+            remaining -= 1;
+          }
+          if (remaining <= 0) {
+            onEventError();
+          }
+        }, interval, timeout);
+      };
+      _test(EXPORTS.uuid4(), 200, 100);
+      _test(EXPORTS.uuid4(), 200, 200);
+      _test(EXPORTS.uuid4(), 200, 300);
     },
 
     createErrorTimeout: function (message) {
@@ -343,6 +352,12 @@ integrate forever-webui
       ));
     },
 
+    _debugPrint_default_test: function (onEventError) {
+      EXPORTS.testMock({ console: { _log: EXPORTS.nop } }, function () {
+        onEventError(global.debugPrint('hello world'));
+      });
+    },
+
     fsDirname: function (file) {
       /*
         this function returns a file name's parent directory
@@ -357,6 +372,23 @@ integrate forever-webui
       if (object instanceof Error && object.code === 'ETIMEDOUT') {
         return object;
       }
+    },
+
+    jsEvalFileSyncOnEventError: function (file, onEventError) {
+      /*
+        this function synchronously evals a file with auto error-handling
+      */
+      /*jslint stupid: true*/
+      var script;
+      try {
+        script = required.fs.readFileSync(file, 'utf8');
+      } catch (error) {
+        /* debug error */
+        state.error = error;
+        onEventError(error);
+        return;
+      }
+      EXPORTS.jsEvalOnEventError(file, script, onEventError);
     },
 
     jsEvalOnEventError: function (file, script, onEventError) {
@@ -399,8 +431,7 @@ integrate forever-webui
         this function returns JSON.parse(data) or error
       */
       try {
-        /* remove comments */
-        return JSON.parse(typeof data === 'string' ? data.replace((/^\s*\/\/.*/gm), '') : data);
+        return JSON.parse(data);
       } catch (error) {
         return error;
       }
@@ -514,7 +545,7 @@ integrate forever-webui
 
     nop: function () {
       /*
-        this function performs no operation (nop)
+        this function runs no operation (nop)
       */
       return;
     },
@@ -628,6 +659,9 @@ integrate forever-webui
       Object.keys(overrides || {}).forEach(function (key) {
         var options2, overrides2;
         overrides2 = overrides[key];
+        if (overrides2 === undefined) {
+          return;
+        }
         if (typeof overrides2 !== 'object' || overrides === null || Array.isArray(overrides2)) {
           options[key] = overrides2;
           return;
@@ -681,7 +715,7 @@ integrate forever-webui
 
     templateFormat: function (template, dict) {
       /*
-        this function performs basic templating on a template with a given dict
+        this function runs basic templating on a template with a given dict
       */
       return template.replace((/\{\{\w+\}\}/g), function (key) {
         var value;
@@ -820,6 +854,7 @@ integrate forever-webui
       /*
         this function makes an ajax request, and auto-concats the response stream into utf8 text
       */
+      EXPORTS.assert(onEventError);
       options.url0 = options.url0 || options.url;
       if (options.data) {
         options.method = options.type = options.method || options.type || 'POST';
@@ -928,7 +963,7 @@ integrate forever-webui
         this function makes multiple ajax calls for multiple urls
       */
       var _onEventError, remaining;
-      if (!(options.urls && Array.isArray(options.urls) && options.urls.length)) {
+      if (!(options && options.urls && Array.isArray(options.urls) && options.urls.length)) {
         onEventError(new Error('invalid urls'));
         return;
       }
@@ -1310,7 +1345,7 @@ integrate forever-webui
         this function runs tests on a module
       */
       var environment, _onEventFinishTestSuite, remaining, testSuite, timeout;
-      if (!state.isTest) {
+      if (!(state.isTest || local2._isTest)) {
         return;
       }
       environment = state.isBrowser ? 'browser' : 'nodejs';
@@ -1351,6 +1386,9 @@ integrate forever-webui
       };
       Object.keys(local2).forEach(function (test) {
         var _onEventError;
+        if (test.slice(-5) !== '_test') {
+          return;
+        }
         _onEventError = function (error) {
           if (test.finished) {
             error = new Error('test callback used multiple times');
@@ -1379,9 +1417,6 @@ integrate forever-webui
             _onEventFinishTestSuite();
           }
         };
-        if (test.slice(-5) !== '_test') {
-          return;
-        }
         if (remaining === 0) {
           state.testSuiteRemaining = state.testSuiteRemaining || 0;
           state.testSuiteRemaining += 1;
@@ -1711,7 +1746,7 @@ integrate forever-webui
           + 'margin: 10px;\n'
         + '}\n'
         + '</style>\n');
-      /* initialize xhr progress container */
+      /* init xhr progress container */
       local._divXhrProgress = $('<div id="divXhrProgress">\n'
         + '<div class="active progress progress-striped">\n'
           + '<div class="progress-bar progress-bar-info">loading\n'
@@ -1732,7 +1767,7 @@ integrate forever-webui
 
     ajaxProgressOnEventError: function (options, onEventError) {
       /*
-        this function performs ajax calls with progress meter
+        this function runs ajax calls with a progress meter
         usage:
         EXPORTS.ajaxProgressOnEventError({
           data: 'hello world',
@@ -1819,7 +1854,7 @@ integrate forever-webui
 
     _onEventEnd: function (event) {
       /*
-        this function performs event-handling for ending the ajax request
+        this function runs event-handling for ending the ajax request
       */
       switch (event.type) {
       case 'load':
@@ -2019,103 +2054,6 @@ integrate forever-webui
 
 
 
-(function moduleLintNodejs() {
-  /*
-    this nodejs module exports the lint api
-  */
-  'use strict';
-  var local;
-  local = {
-
-    _name: 'utility2.moduleLintNodejs',
-
-    _init: function () {
-      if (!state.isNodejs) {
-        return;
-      }
-      EXPORTS.initModule(module, local);
-    },
-
-    _initTest: function () {
-      EXPORTS.testModule(local);
-    },
-
-    _lintCss: function (file, script) {
-      /*
-        this function lints a css script for errors
-      */
-      if (required.csslint) {
-        console.log(required.csslint.CSSLint.getFormatter('text')
-          .formatResults(required.csslint.CSSLint.verify(script, { ignore: 'ids' }), file, {
-            quiet: true
-          }));
-      }
-      return script;
-    },
-
-    _lintJs: function (file, script) {
-      /*
-        this function lints a js script for errors
-      */
-      var ast, lint;
-      if (required.jslint_linter && !global.__coverage__) {
-        lint = required.jslint_linter.lint(script, { maxerr: 8 });
-        if (!lint.ok) {
-          required.jslint_reporter.report(file, lint);
-        }
-      }
-      /* uglify-js - warn unused variables */
-      if (file.slice(-3) === '.js' && required.uglify_js) {
-        try {
-          ast = required.uglify_js.parse(script, { filename: file });
-          ast.figure_out_scope();
-          /* uglify-js - warn unused variables */
-          ast.transform(required.uglify_js_compressor);
-        } catch (errorUglifyjs) {
-          EXPORTS.onEventErrorDefault(errorUglifyjs);
-        }
-      }
-      return script;
-    },
-
-    lintScript: function (file, script) {
-      /*
-        this function lints css / html / js / json scripts
-      */
-      switch (required.path.extname(file)) {
-      case '.css':
-        return local._lintCss(file, script);
-      default:
-        return local._lintJs(file, script);
-      }
-    },
-
-    _lintScript_css_test: function (onEventError) {
-      /*
-        this function tests lintScript's css lint behavior
-      */
-      EXPORTS.lintScript('foo.css', '\n');
-      onEventError();
-    },
-
-    _lintScript_js_test: function (onEventError) {
-      /*
-        this function tests lintScript's js lint behavior
-      */
-      var coverage;
-      coverage = global.__coverage__;
-      global.__coverage__ = null;
-      EXPORTS.lintScript('foo.js', '\n');
-      global.__coverage__ = coverage;
-      onEventError();
-    },
-
-  };
-  local._init();
-}());
-
-
-
 (function moduleInitNodejs() {
   /*
     this nodejs module inits utility2
@@ -2136,23 +2074,26 @@ integrate forever-webui
     _initOnce: function () {
       /* require */
       [
-        /* internal */
+        /* require internal */
         'child_process',
+        'crypto',
         'fs',
         'http',
         'https',
         'net',
         'path',
         'repl',
+        'stream',
+        'tls',
         'url',
         'util',
         'vm',
         'zlib',
-        /* external */
+        /* require external */
+        'connect',
         'coveralls',
         'csslint',
         'cssmin',
-        'express',
         'graceful-fs',
         'istanbul',
         'jslint',
@@ -2161,7 +2102,6 @@ integrate forever-webui
         'phantomjs',
         'sqlite3',
         'uglify-js',
-        'utility2-external'
       ].forEach(function (module) {
         var module2;
         module2 = module.replace((/\W/g), '_');
@@ -2171,20 +2111,31 @@ integrate forever-webui
           console.log('module not loaded - ' + module);
         }
       });
+      /* require utility2-external */
+      required.utility2_external = required.utility2_external
+        || require(__dirname + '/bower_components/utility2-external');
+      [
+        'utility2.external.shared.js'
+      ].forEach(function (file) {
+        EXPORTS.jsEvalFileSyncOnEventError(
+          required.utility2_external.__dirname + '/' + file,
+          EXPORTS.onEventErrorDefault
+        );
+      });
       /* maxSockets */
       required.http.globalAgent.maxSockets = 256;
       required.https.globalAgent.maxSockets = 256;
       /* override required.fs with required.graceful_fs */
       required.fs = required.graceful_fs;
-      /* initialize istanbul */
+      /* init istanbul */
       required.istanbul_Instrumenter = required.istanbul_Instrumenter
         || new required.istanbul.Instrumenter();
-      /* initialize jslint */
+      /* init jslint */
       required.jslint_linter = required.jslint_linter || require('jslint/lib/linter');
       required.jslint_reporter = required.jslint_reporter || require('jslint/lib/reporter');
-      /* initialize sqlite3 */
+      /* init sqlite3 */
       state.dbSqlite3 = new required.sqlite3.cached.Database(':memory:');
-      /* initialize uglify-js*/
+      /* init uglify-js*/
       required.uglify_js_compressor = required.uglify_js.Compressor();
       /* exports */
       global.atob = global.atob || function (text) {
@@ -2201,18 +2152,19 @@ integrate forever-webui
           }
         });
       }
-      /* process.argv */
+      /* init process.argv */
       process.argv.forEach(function (arg, ii, argv) {
-        var number;
+        var value;
+        value = argv[ii + 1];
         if ((/^--[a-z]/).test(arg)) {
           /* --no-foo -> state.isFoo = false */
           if ((/^--no-[a-z]/).test(arg)) {
             state[EXPORTS.stringToCamelCase('is' + arg.slice(4))] = false;
           /* --foo bar -> state.isFoo = bar */
-          } else if (argv[ii + 1] && !(/^--[a-z]/).test(argv[ii + 1])) {
-            number = Number(argv[ii + 1]);
-            state[EXPORTS.stringToCamelCase(arg.slice(2))] = isNaN(number) ? argv[ii + 1]
-              : number;
+          } else if (value && !(/^--[a-z]/).test(value)) {
+            state[EXPORTS.stringToCamelCase(arg.slice(2))] = isNaN(Number(value))
+              ? value
+              : Number(value);
           /* --foo -> state.isFoo = true */
           } else {
             state[EXPORTS.stringToCamelCase('is' + arg.slice(1))] = true;
@@ -2226,11 +2178,12 @@ integrate forever-webui
         state.packageJson = JSON.parse(required.fs.readFileSync(process.cwd()
           + '/package.json'));
       }, EXPORTS.onEventErrorDefault);
-      /* load default config file */
+      /* load default state */
       state.stateDefault = state.packageJson.stateDefault || {};
       EXPORTS.setOptionsDefaults(state, EXPORTS.objectCopyDeep(state.stateDefault));
-      /* load dynamic config from external url every 60 seconds */
+      /* load dynamic, override state from external url every 60 seconds */
       state.stateOverride = state.stateOverride || {};
+      EXPORTS.setOptionsOverrides(state, state.stateOverride || {});
       state.stateOverrideUrl = state.stateOverrideUrl || '/state/stateOverride.json';
       setTimeout(function () {
         EXPORTS.clearCallSetInterval('configLoadOverride', function () {
@@ -2243,12 +2196,23 @@ integrate forever-webui
               EXPORTS.onEventErrorDefault(error);
               return;
             }
-            state.stateOverride = data;
+            EXPORTS.setOptionsOverrides(state.stateOverride, data);
             EXPORTS.setOptionsOverrides(state, EXPORTS.objectCopyDeep(state.stateOverride));
             console.log('loaded override config from ' + state.stateOverrideUrl);
           });
         }, 5 * 60 * 1000);
       });
+      /* load file */
+      if (state.loadFiles) {
+        state.loadFiles.split(',').forEach(function (file) {
+          /*jslint stupid: true*/
+          var _onEventError;
+          _onEventError = EXPORTS.onEventErrorDefault;
+          EXPORTS.tryCatch(function () {
+            EXPORTS.jsEvalOnEventError(file, required.fs.readFileSync(file), _onEventError);
+          }, _onEventError);
+        });
+      }
       if (state.isTest) {
         EXPORTS.debugProcessOnce();
       }
@@ -2284,7 +2248,7 @@ integrate forever-webui
 
     fsWatch: function (file) {
       /*
-        this function watches a file and performs specified actions if it is modified.
+        this function watches a file and runs specified actions if it is modified.
         usage:
         fsWatch({ action: ['lint', 'eval'], name: 'foo.js' });
       */
@@ -2314,7 +2278,7 @@ integrate forever-webui
             /*jslint stupid: true*/
             content2 = required.istanbul_Instrumenter.instrumentSync(content2, file.name);
           }
-          /* perform action */
+          /* run action */
           (file.action || []).forEach(function (action) {
             switch (action) {
             /* eval the file in global context */
@@ -2332,11 +2296,11 @@ integrate forever-webui
               action(file.name, content, content2);
             }
           });
-          /* perform copy */
+          /* run copy action */
           (file.copy || []).forEach(function (file2) {
             EXPORTS.fsWriteFileAtomic(file2, content, null, EXPORTS.onEventErrorDefault);
           });
-          /* perform copyx */
+          /* run copyx action */
           (file.copyx || []).forEach(function (file2) {
             EXPORTS.fsWriteFileAtomic(file2, content, { mode: '777' },
               EXPORTS.onEventErrorDefault);
@@ -2397,13 +2361,13 @@ integrate forever-webui
 
     _moduleInitOnceNodejs: function (module, local2, exports) {
       /*
-        this function performs extra nodejs initialization on the module
+        this function runs extra nodejs initializations
       */
-      if (exports.file) {
+      if (exports.__filename || !(module && module.filename)) {
         return;
       }
-      exports.file = (module && module.filename) || 'undefined';
-      exports.dir = EXPORTS.fsDirname(exports.file);
+      exports.__filename = exports.__filename || module.filename;
+      exports.__dirname = exports.__dirname || EXPORTS.fsDirname(exports.__filename);
       module.exports = exports;
       /* watch module */
       EXPORTS.fsWatch({ action: ['lint', function (file, content, content2) {
@@ -2411,7 +2375,7 @@ integrate forever-webui
         exports._fileContentBrowser = global.__coverage__ ? content2
           : (content2 + '\n(function moduleNodejs() {\n}());\n')
             .replace((/\n\(function module\w*Nodejs\([\S\s]*/), '').trim();
-      }, 'eval'], name: exports.file });
+      }, 'eval'], name: exports.__filename });
     },
 
     shell: function (options) {
@@ -2449,604 +2413,25 @@ integrate forever-webui
       });
     },
 
+    streamWriteSplice: function (writable, onEventData) {
+      /*
+        this function overrides the writable stream's internal _write function,
+        splicing the written chunk to onEventData
+      */
+      var _write;
+      _write = writable._write.bind(writable);
+      writable._write = function (chunk, encoding, callback) {
+        _write(chunk, encoding, callback);
+        /* splice chunk to onEventData */
+        onEventData(chunk);
+      };
+    },
+
     timeoutExitRemaining: function () {
       /*
         this function returns amout of timeout remaining before process.exit
       */
       return state.timeExit - Date.now();
-    },
-
-  };
-  local._init();
-}());
-
-
-
-(function moduleAdminNodejs() {
-  /*
-    this nodejs module exports the admin api
-  */
-  'use strict';
-  var local;
-  local = {
-
-    _name: 'utility2.moduleAdminNodejs',
-
-    _init: function () {
-      if (!state.isNodejs) {
-        return;
-      }
-      EXPORTS.initModule(module, local);
-    },
-
-    _initTest: function () {
-      EXPORTS.testModule(local);
-    },
-
-    'routerSecurityDict_/admin': function (request, response, next) {
-      /*
-        this function handles admin security
-      */
-      if (EXPORTS.securityBasicAuthValidate(request)) {
-        next();
-        return;
-      }
-      EXPORTS.serverRespondDefault(response, 303, 'text/plain', '/signin?redirect='
-        + encodeURIComponent(request.url));
-    },
-
-    'routerDict_/admin/admin.eval': function (request, response, next) {
-      /*
-        this function evals javascript code
-      */
-      EXPORTS.fsCacheWritestream(request, null, function (error, tmp) {
-        if (error) {
-          next(error);
-          return;
-        }
-        required.fs.readFile(tmp, function (error, data) {
-          if (error) {
-            next(error);
-            return;
-          }
-          EXPORTS.jsEvalOnEventError(tmp, data, function (error, data) {
-            if (error) {
-              next(error);
-              return;
-            }
-            response.end(EXPORTS.jsonStringifyCircular(data));
-          });
-        });
-      });
-    },
-
-    'routerDict_/admin/admin.exit': function (request, response) {
-      /*
-        this function causes the application to exit
-      */
-      setTimeout(request.urlParsed.params.mock ? EXPORTS.nop : process.exit, 1000);
-      response.end();
-    },
-
-    'routerDict_/admin/admin.shell': function (request, response, next) {
-      /*
-        this function runs shell scripts
-      */
-      EXPORTS.fsCacheWritestream(request, null, function (error, tmp) {
-        if (error) {
-          next(error);
-          return;
-        }
-        var child, _onEventData;
-        _onEventData = function (chunk) {
-          process.stdout.write(chunk);
-          response.write(chunk);
-        };
-        child = required.child_process.spawn('/bin/sh', [tmp])
-          .on('close', function (exitCode) {
-            response.end('exit code: ' + exitCode);
-          })
-          .on('error', next);
-        child.stderr.on('data', _onEventData);
-        child.stdout.on('data', _onEventData);
-      });
-    },
-
-    'routerDict_/admin/admin.upload': function (request, response, next) {
-      /*
-        this function uploads a file into the ./tmp/upload/ directory by default
-      */
-      EXPORTS.fsCacheWritestream(request, null, function (error, tmp) {
-        if (error) {
-          next(error);
-          return;
-        }
-        EXPORTS.fsRename(tmp, state.fsDirTmp + '/upload/' + request.headers['upload-filename']
-          || '', function (error) {
-            if (error) {
-              next(error);
-              return;
-            }
-            response.end();
-          });
-      });
-    },
-
-    'routerAssetsDict_/admin/admin.html': function (request, response) {
-      /*
-        this function serves the asset admin.html
-      */
-      EXPORTS.serverRespondDefault(response, 200, 'text/html', local._adminHtml);
-    },
-
-    _adminHtml: '<!DOCTYPE html><html><head>\n'
-      + '<link href="/public/assets/utility2-external/external.rollup.auto.css" rel="stylesheet"/>\n'
-      + '<style>\n'
-      + '</style></head><body>\n'
-      + '<input id="inputAdminUpload" type="file"/>\n'
-      + '<script src="/public/assets/utility2-external/external.rollup.auto.js"></script>\n'
-      + '<script src="/public/assets/utility2.js"></script>\n'
-      + '</body></html>',
-
-  };
-  local._init();
-}());
-
-
-
-(function moduleAjaxNodejs() {
-  /*
-    this nodejs module exports the ajaxNodejs api
-  */
-  'use strict';
-  var local;
-  local = {
-
-    _name: 'utility2.moduleAjaxNodejs',
-
-    _init: function () {
-      if (!state.isNodejs) {
-        return;
-      }
-      EXPORTS.initModule(module, local);
-    },
-
-    _initTest: function () {
-      EXPORTS.testModule(local);
-    },
-
-    _ajaxNodejs: function (options, onEventError) {
-      /*
-        this function is the nodejs implementation of the ajax function
-      */
-      /* localhost */
-      var _onEventError,
-        request,
-        timeout,
-        urlParsed;
-      _onEventError = function (error, data) {
-        if (timeout < 0) {
-          return;
-        }
-        clearTimeout(timeout);
-        timeout = -1;
-        /* debug */
-        if (options.debugFlag) {
-          console.log(['_ajaxNodejs', options.url,
-            options.response && options.response.headers]);
-        }
-        onEventError(error, data, options);
-      };
-      if (options.url[0] === '/') {
-        EXPORTS.deferCallback('serverDefer', 'defer', function (error) {
-          if (error) {
-            _onEventError(error);
-            return;
-          }
-          options.url = state.localhost + options.url;
-          EXPORTS.ajax(options, onEventError);
-        });
-        return;
-      }
-      /* assert valid http / https url */
-      EXPORTS.assert(options.url && options.url.slice(0, 4) === 'http', [options.url]);
-      urlParsed = required.url.parse(options.proxy || options.url);
-      urlParsed.protocol = urlParsed.protocol || 'http:';
-      options.hostname = urlParsed.hostname;
-      options.path = options.proxy ? options.url : urlParsed.path;
-      options.rejectUnauthorized = false;
-      if (options.params) {
-        options.path = EXPORTS.urlParamsParsedJoin({
-          params: options.params,
-          path: options.path
-        });
-      }
-      options.port = urlParsed.port;
-      /* simulate making ajax request and print debug info, but do not actually do anything */
-      if (options.debugFlag === 'simulate') {
-        console.log(['_ajaxNodejs', options]);
-        return;
-      }
-      /* set timeout */
-      timeout = setTimeout(_onEventError, options.timeout || state.timeoutDefault,
-        EXPORTS.createErrorTimeout());
-      /* socks5 */
-      if (required.utility2._socks5Ajax(options, _onEventError)) {
-        return;
-      }
-      request = required[urlParsed.protocol.slice(0, -1)].request(options, function (response) {
-        var readStream;
-        if (options.dataType === 'response') {
-          _onEventError(null, response);
-          return;
-        }
-        options.response = response;
-        if (options.redirect !== false) {
-          /* http redirect */
-          switch (response.statusCode) {
-          case 300:
-          case 301:
-          case 302:
-          case 303:
-          case 307:
-          case 308:
-            options.redirected = options.redirected || 0;
-            options.redirected += 1;
-            if (options.redirected >= 8) {
-              _onEventError(new Error('too many http redirects - '
-                + response.headers.location));
-              return;
-            }
-            options.url = response.headers.location;
-            if (options.url[0] === '/') {
-              options.url = urlParsed.protocol + '//' + options.hostname + options.url;
-            }
-            if (response.statusCode === 303) {
-              options.data = null;
-              options.method = 'GET';
-            }
-            EXPORTS.ajax(options, _onEventError);
-            return;
-          }
-        }
-        switch (options.dataType) {
-        case 'headers':
-          _onEventError(null, response.headers);
-          return;
-        case 'statusCode':
-          _onEventError(null, response.statusCode);
-          return;
-        }
-        readStream = response;
-        switch (response.headers['content-encoding']) {
-        case 'deflate':
-          readStream = response.pipe(required.zlib.createInflate());
-          break;
-        case 'gzip':
-          readStream = response.pipe(required.zlib.createGunzip());
-          break;
-        }
-        readStream.on('error', _onEventError);
-        EXPORTS.streamReadOnEventError(readStream, function (error, data) {
-          if (error) {
-            _onEventError(error);
-            return;
-          }
-          if (response.statusCode >= 400) {
-            _onEventError(new Error((options.method || 'GET') + ' - ' + options.url
-              + ' - ' + response.statusCode + ' - ' + data.toString()));
-            return;
-          }
-          switch (options.dataType) {
-          case 'binary':
-            break;
-          /* try to JSON.parse the response */
-          case 'json':
-            data = EXPORTS.jsonParseOrError(data);
-            if (data instanceof Error) {
-              /* or if parsing fails, pass an error with offending url */
-              _onEventError(new Error('invalid json data from ' + options.url));
-              return;
-            }
-            break;
-          default:
-            data = data.toString();
-          }
-          _onEventError(null, data);
-        });
-      }).on('error', _onEventError);
-      if (options.file) {
-        options.readStream = options.readStream || required.fs.createReadStream(options.file);
-      }
-      if (options.readStream) {
-        options.readStream.on('error', _onEventError).pipe(request.on('error', _onEventError));
-      } else {
-        request.end(options.data);
-      }
-      /* debug */
-      if (options.debugFlag || state.debugFlag) {
-        console.log(['_ajaxNodejs', options]);
-      }
-    },
-
-    __ajaxNodejs_serverResumeError_test: function (onEventError) {
-      /*
-        this function tests _ajaxNodejs's server resume on error behavior
-      */
-      EXPORTS.deferCallback('serverDefer', 'resume');
-      EXPORTS.deferCallback('serverDefer', 'error', new Error());
-      EXPORTS.ajax({
-        url: '/test/test.echo'
-      }, function (error) {
-        EXPORTS.deferCallback('serverDefer', 'reset');
-        EXPORTS.deferCallback('serverDefer', 'resume');
-        onEventError(error ? null : new Error());
-      });
-    },
-
-    _ajaxNodejs_timeout_test: function (onEventError) {
-      /*
-        this function tests ajaxNodejs's timeout behavior
-      */
-      EXPORTS.ajax({
-        timeout: 1,
-        url: '/test/test.timeout'
-      }, function (error) {
-        onEventError(EXPORTS.isErrorTimeout(error) ? null : new Error());
-      });
-    },
-
-  };
-  local._init();
-}());
-
-
-
-(function moduleSocks5AjaxNodejs() {
-  /*
-    this nodejs module exports the socks5Ajax api
-  */
-  'use strict';
-  var local;
-  local = {
-
-    _name: 'utility2.moduleSocks5AjaxNodejs',
-
-    _init: function () {
-      if (!state.isNodejs) {
-        return;
-      }
-      EXPORTS.initModule(module, local);
-    },
-
-    _initOnce: function () {
-      /* socks5 ssh proxy */
-      state.socks5SshHost = process.env.SOCKS5_SSH_HOST || state.socks5SshHost;
-      if (state.socks5SshHost) {
-        state.socks5SshHostname = state.socks5SshHost.split(':')[0];
-        state.socks5SshPort = state.socks5SshHost.split(':')[1] || 22;
-        if (state.socks5LocalPort) {
-          EXPORTS.deferCallback('socks5Defer', 'resume');
-        } else {
-          state.socks5LocalPort = state.socks5LocalPort || EXPORTS.serverPortRandom();
-          EXPORTS.shell({
-            script: 'ssh -D ' + state.socks5LocalPort + ' -o StrictHostKeyChecking=no -p '
-              + (state.socks5SshPort) + ' ' + state.socks5SshHostname,
-            stdio: ['pipe', 'pipe', 'pipe']
-          });
-          EXPORTS.clearCallSetInterval('socks5Defer', function (timeout) {
-            /* timeout error-handling */
-            if (timeout) {
-              EXPORTS.deferCallback('socks5Defer', 'error',
-                EXPORTS.createErrorTimeout('socks5 proxy timeout'));
-            }
-            required.utility2._socks5AjaxResume({
-              hostname: 'www.google.com',
-              url: 'http://www.google.com'
-            }, function (error) {
-              if (!error) {
-                EXPORTS.deferCallback('socks5Defer', 'resume');
-                EXPORTS.clearCallSetInterval('socks5Defer', 'clear');
-              }
-            });
-          }, 1000, state.timeoutDefault);
-        }
-      } else {
-        EXPORTS.deferCallback('socks5Defer', 'resume');
-      }
-    },
-
-    _initTest: function () {
-      EXPORTS.testModule(local);
-    },
-
-    _socks5Ajax: function (options, onEventError) {
-      /*
-        this function hooks the socks5 proxy protocol into the function ajax
-      */
-      if ((!state.socks5LocalPort || options.createConnection) || (!options.socks5 && !(
-          !(/^https*:\/\/localhost\b/).test(options.url)
-          && options.url.indexOf(state.localhost) !== 0
-          && options.hostname !== state.socks5SshHostname
-        ))) {
-        return;
-      }
-      EXPORTS.deferCallback('socks5Defer', 'defer', function (error) {
-        if (error) {
-          onEventError(error);
-          return;
-        }
-        local._socks5AjaxResume(options, onEventError);
-      });
-      return true;
-    },
-
-    _socks5AjaxResume: function (options, onEventError) {
-      /*
-        this function resumes the ajax request after a socks5 proxy has been established
-      */
-      var chunks, hostname, _onEventData, _onEventError, port, self, timeout;
-      chunks = new Buffer(0);
-      hostname = new Buffer(options.hostname);
-      _onEventData = function (chunk) {
-        chunks = Buffer.concat([chunks, chunk]);
-        if (chunks.length < 12) {
-          return;
-        }
-        if (chunks.toString()
-            !== '\u0005\u0000\u0005\u0000\u0000\u0001\u0000\u0000\u0000\u0000\u0000\u0000') {
-          _onEventError(new Error('socks5Ajax - request failed'));
-          return;
-        }
-        clearTimeout(timeout);
-        /* cleanup socks5 listeners */
-        self.removeListener('data', _onEventData);
-        /* continue with ajax request as normal */
-        options.createConnection = function () {
-          /* bug - reset createConnection for http redirects */
-          options.createConnection = null;
-          return self;
-        };
-        /* disable socket pooling */
-        options.agent = false;
-        EXPORTS.ajax(options, onEventError);
-      };
-      _onEventError = function (error) {
-        if (timeout < 0) {
-          return;
-        }
-        clearTimeout(timeout);
-        timeout = -1;
-        self.end();
-        self.destroy();
-        onEventError(error);
-      };
-      timeout = setTimeout(_onEventError, state.timeoutDefault,
-        new Error('socks5Ajax timeout'));
-      port = Number(options.port) || 80;
-      self = required.net.createConnection({
-        host: 'localhost',
-        port: state.socks5LocalPort
-      });
-      self.on('connect', function () {
-        /*jslint bitwise: true*/
-        try {
-          self.write(Buffer.concat([new Buffer([5, 1, 0, 5, 1, 0, 3, hostname.length]),
-            hostname, new Buffer([port >> 8, port & 0xff])]));
-        } catch (error) {
-          _onEventError(error);
-        }
-      }).on('data', _onEventData).on('error', _onEventError);
-    },
-
-    __socks5Ajax_socks5_test: function (onEventError) {
-      /*
-        this function tests _socks5Ajax's socks5 behavior
-      */
-      if (!(state.socks5LocalPort && state.isNpmTest)) {
-        onEventError('skip');
-        return;
-      }
-      EXPORTS.ajax({ socks5: true, url: state.localhost + '/test/test.echo' }, onEventError);
-    },
-
-  };
-  local._init();
-}());
-
-
-
-(function moduleSocks5ServerNodejs() {
-  /*
-    this nodejs module exports the socks5Server api
-  */
-  'use strict';
-  var local;
-  local = {
-
-    _name: 'utility2.moduleSocks5ServerNodejs',
-
-    _init: function () {
-      if (!state.isNodejs) {
-        return;
-      }
-      EXPORTS.initModule(module, local);
-    },
-
-    _initOnce: function () {
-      if (state.isNpmTest) {
-        local._socks5ServerStart();
-      }
-    },
-
-    _initTest: function () {
-      EXPORTS.testModule(local);
-    },
-
-    _socks5ServerOnEventSocket: function (self) {
-      var host, _onEventData, _onEventError, port, proxy, timeout;
-      _onEventData = function (chunk) {
-        if (chunk.length < 8
-            || chunk.slice(0, 7).toString() !== '\u0005\u0001\u0000\u0005\u0001\u0000\u0003'
-            || chunk.length < 8 + chunk[7] + 2) {
-          _onEventError(new Error('socks5Server - request failed'));
-          return;
-        }
-        clearTimeout(timeout);
-        self.removeListener('data', _onEventData);
-        /* create proxy socket */
-        host = chunk.slice(8, 8 + chunk[7]).toString();
-        port = chunk.readUInt16BE(8 + chunk[7]);
-        console.log('_socks5ServerOnEventSocket - proxying ' + host + ':' + port);
-        proxy = required.net.connect(port, host);
-        /* write leftover chunk from current read to proxy connection */
-        proxy.write(chunk.slice(8 + chunk[7] + 2));
-        proxy.pipe(self);
-        self.pipe(proxy);
-      };
-      _onEventError = function (error) {
-        if (timeout < 0) {
-          return;
-        }
-        clearTimeout(timeout);
-        timeout = -1;
-        self.end();
-        self.destroy();
-        EXPORTS.onEventErrorDefault(error);
-      };
-      try {
-        self.on('data', _onEventData).on('error', _onEventError);
-        self.write(new Buffer(
-          '\u0005\u0000\u0005\u0000\u0000\u0001\u0000\u0000\u0000\u0000\u0000\u0000'
-        ));
-        /* socket timeout handling */
-        timeout = setTimeout(_onEventError, state.timeoutDefault,
-          new Error('socks5Server timeout'));
-      } catch (error) {
-        _onEventError(error);
-      }
-    },
-
-    __socks5ServerOnEventSocket_errorHandling_test: function (onEventError) {
-      /*
-        this function tests _socks5ServerOnEventSocket's error-handling behavior
-      */
-      EXPORTS.testMock({ console: { error: EXPORTS.nop } }, function () {
-        local._socks5ServerOnEventSocket({ destroy: EXPORTS.nop, end: EXPORTS.nop });
-        onEventError();
-      });
-    },
-
-    _socks5ServerStart: function () {
-      state.socks5LocalPort = state.socks5LocalPort || EXPORTS.serverPortRandom();
-      state.socks5Server = state.socks5Server || required.net.createServer(function (socket) {
-        required.utility2._socks5ServerOnEventSocket(socket);
-      });
-      EXPORTS.deferCallback('socks5Defer', 'pause');
-      state.socks5Server.listen(state.socks5LocalPort, function () {
-        EXPORTS.deferCallback('socks5Defer', 'resume');
-        console.log('socks5 server started on port ' + state.socks5LocalPort);
-      });
     },
 
   };
@@ -3342,40 +2727,963 @@ integrate forever-webui
       });
     },
 
-    _testReport: function (testSuiteList) {
-      var xml;
-      xml = '\n<testsuites>\n';
-      testSuiteList.forEach(function (testSuite) {
-        xml += '<testsuite ';
-        ['failures', 'name', 'passed', 'skipped', 'tests'].forEach(function (attribute) {
-          xml += attribute + '="' + testSuite[attribute] + '" ';
-        });
-        xml += '>\n<properties>\n';
-        ['environment'].forEach(function (property) {
-          xml += '<property name="' + property
-            + '" value=' + JSON.stringify(testSuite[property]) + '/>\n';
-        });
-        xml += '</properties>\n';
-        Object.keys(testSuite.testCases).forEach(function (test) {
-          test = testSuite.testCases[test];
-          xml += '<testcase ';
-          ['name', 'time'].forEach(function (attribute) {
-            xml += attribute + '="' + test[attribute] + '" ';
-          });
-          xml += '>';
-          if (test.failure) {
-            xml += '<failure><![CDATA[' + test.failure + ']]></failure>\n';
-          } else if (test.skipped) {
-            xml += '<skipped></skipped>';
+  };
+  local._init();
+}());
+
+
+
+(function moduleAdminNodejs() {
+  /*
+    this nodejs module exports the admin api
+  */
+  'use strict';
+  var local;
+  local = {
+
+    _name: 'utility2.moduleAdminNodejs',
+
+    _init: function () {
+      if (!state.isNodejs) {
+        return;
+      }
+      EXPORTS.initModule(module, local);
+    },
+
+    _initTest: function () {
+      EXPORTS.testModule(local);
+    },
+
+    'routerSecurityDict_/admin': function (request, response, next) {
+      /*
+        this function handles admin security
+      */
+      if (EXPORTS.securityBasicAuthValidate(request)) {
+        next();
+        return;
+      }
+      EXPORTS.serverRespondDefault(response, 303, 'text/plain', '/signin?redirect='
+        + encodeURIComponent(request.url));
+    },
+
+    'routerDict_/admin/admin.eval': function (request, response, next) {
+      /*
+        this function evals javascript code
+      */
+      EXPORTS.fsCacheWritestream(request, null, function (error, tmp) {
+        if (error) {
+          next(error);
+          return;
+        }
+        required.fs.readFile(tmp, function (error, data) {
+          if (error) {
+            next(error);
+            return;
           }
-          xml += '</testcase>\n';
+          EXPORTS.jsEvalOnEventError(tmp, data, function (error, data) {
+            if (error) {
+              next(error);
+              return;
+            }
+            response.end(EXPORTS.jsonStringifyCircular(data));
+          });
         });
-        xml += '</testsuite>\n';
       });
-      xml += '</testsuites>\n';
-      /* write test report */
-      EXPORTS.fsWriteFileAtomic(state.fsDirTmp + '/test/' + EXPORTS.dateAndSalt()
-        + '.xml', xml, null, EXPORTS.onEventErrorDefault);
+    },
+
+    'routerDict_/admin/admin.exit': function (request, response) {
+      /*
+        this function causes the application to exit
+      */
+      setTimeout(request.urlParsed.params.mock ? EXPORTS.nop : process.exit, 1000);
+      response.end();
+    },
+
+    'routerDict_/admin/admin.shell': function (request, response, next) {
+      /*
+        this function runs shell scripts
+      */
+      EXPORTS.fsCacheWritestream(request, null, function (error, tmp) {
+        if (error) {
+          next(error);
+          return;
+        }
+        var child, _onEventData;
+        _onEventData = function (chunk) {
+          process.stdout.write(chunk);
+          response.write(chunk);
+        };
+        child = required.child_process.spawn('/bin/sh', [tmp])
+          .on('close', function (exitCode) {
+            response.end('exit code: ' + exitCode);
+          })
+          .on('error', next);
+        child.stderr.on('data', _onEventData);
+        child.stdout.on('data', _onEventData);
+      });
+    },
+
+    'routerDict_/admin/admin.upload': function (request, response, next) {
+      /*
+        this function uploads a file into the ./tmp/upload/ directory by default
+      */
+      EXPORTS.fsCacheWritestream(request, null, function (error, tmp) {
+        if (error) {
+          next(error);
+          return;
+        }
+        EXPORTS.fsRename(tmp, state.fsDirTmp + '/upload/' + request.headers['upload-filename']
+          || '', function (error) {
+            if (error) {
+              next(error);
+              return;
+            }
+            response.end();
+          });
+      });
+    },
+
+    'routerAssetsDict_/admin/admin.html': function (request, response) {
+      /*
+        this function serves the asset admin.html
+      */
+      EXPORTS.serverRespondDefault(response, 200, 'text/html', local._adminHtml);
+    },
+
+    _adminHtml: '<!DOCTYPE html><html><head>\n'
+      + '<link href="/public/assets/utility2-external/external.rollup.auto.css" rel="stylesheet"/>\n'
+      + '<style>\n'
+      + '</style></head><body>\n'
+      + '<input id="inputAdminUpload" type="file"/>\n'
+      + '<script src="/public/assets/utility2-external/external.rollup.auto.js"></script>\n'
+      + '<script src="/public/assets/utility2.js"></script>\n'
+      + '</body></html>',
+
+  };
+  local._init();
+}());
+
+
+
+(function moduleAjaxNodejs() {
+  /*
+    this nodejs module exports the ajaxNodejs api
+  */
+  'use strict';
+  var local;
+  local = {
+
+    _name: 'utility2.moduleAjaxNodejs',
+
+    _init: function () {
+      if (!state.isNodejs) {
+        return;
+      }
+      EXPORTS.initModule(module, local);
+    },
+
+    _initTest: function () {
+      EXPORTS.testModule(local);
+    },
+
+    _ajaxNodejs: function (options, onEventError) {
+      /*
+        this function is the nodejs implementation of the ajax function
+      */
+      /* localhost */
+      var _onEventError,
+        request,
+        response,
+        timeout,
+        urlParsed;
+      _onEventError = function (error, data) {
+        if (timeout < 0) {
+          return;
+        }
+        clearTimeout(timeout);
+        timeout = -1;
+        /* debug */
+        if (options.debugFlag) {
+          console.log([
+            '_ajaxNodejs',
+            options.url,
+            response && response.statusCode,
+            response && response.headers
+          ]);
+        }
+        onEventError(error, data, options);
+      };
+      if (options.url[0] === '/') {
+        EXPORTS.deferCallback('serverDefer', 'defer', function (error) {
+          if (error) {
+            _onEventError(error);
+            return;
+          }
+          options.url = state.localhost + options.url;
+          EXPORTS.ajax(options, onEventError);
+        });
+        return;
+      }
+      /* set default options */
+      urlParsed = required.url.parse(options.proxy || options.url || '');
+      /* assert valid http / https url */
+      if (!(/^https*:$/).test(urlParsed.protocol)) {
+        onEventError(new Error('invalid url - ' + (options.proxy || options.url)));
+        return;
+      }
+      options.hostname = urlParsed.hostname;
+      options.path = options.proxy ? options.url : urlParsed.path;
+      options.protocol = urlParsed.protocol || 'http:';
+      options.rejectUnauthorized = options.rejectUnauthorized === undefined ? false : undefined;
+      if (options.params) {
+        options.path = EXPORTS.urlParamsParsedJoin({
+          params: options.params,
+          path: options.path
+        });
+      }
+      options.port = urlParsed.port;
+      /* simulate making ajax request and print debug info, but do not actually do anything */
+      if (options.debugFlag === 'simulate') {
+        console.log(['_ajaxNodejs', options]);
+        return;
+      }
+      /* set timeout */
+      timeout = setTimeout(_onEventError, options.timeout || state.timeoutDefault,
+        EXPORTS.createErrorTimeout());
+      /* socks5 */
+      if (required.utility2._socks5Ajax(options, _onEventError)) {
+        return;
+      }
+      request = options.protocol === 'https:' ? required.https : required.http;
+      request = request.request(options, function (_response) {
+        var readStream;
+        response = _response;
+        if (options.dataType === 'response') {
+          _onEventError(null, response);
+          return;
+        }
+        if (options.redirect !== false) {
+          /* http redirect */
+          switch (response.statusCode) {
+          case 300:
+          case 301:
+          case 302:
+          case 303:
+          case 307:
+          case 308:
+            options.redirected = options.redirected || 0;
+            options.redirected += 1;
+            if (options.redirected >= 8) {
+              _onEventError(new Error('too many http redirects - '
+                + response.headers.location));
+              return;
+            }
+            options.url = response.headers.location;
+            if (options.url[0] === '/') {
+              options.url = options.protocol + '//' + options.hostname + options.url;
+            }
+            if (response.statusCode === 303) {
+              options.data = null;
+              options.method = 'GET';
+            }
+            EXPORTS.ajax(options, _onEventError);
+            return;
+          }
+        }
+        switch (options.dataType) {
+        case 'headers':
+          _onEventError(null, response.headers);
+          return;
+        case 'statusCode':
+          _onEventError(null, response.statusCode);
+          return;
+        }
+        readStream = response;
+        switch (response.headers['content-encoding']) {
+        case 'deflate':
+          readStream = response.pipe(required.zlib.createInflate());
+          break;
+        case 'gzip':
+          readStream = response.pipe(required.zlib.createGunzip());
+          break;
+        }
+        readStream.on('error', _onEventError);
+        EXPORTS.streamReadOnEventError(readStream, function (error, data) {
+          if (error) {
+            _onEventError(error);
+            return;
+          }
+          if (response.statusCode >= 400) {
+            _onEventError(new Error((options.method || 'GET') + ' - ' + options.url
+              + ' - ' + response.statusCode + ' - ' + data.toString()));
+            return;
+          }
+          switch (options.dataType) {
+          case 'binary':
+            break;
+          /* try to JSON.parse the response */
+          case 'json':
+            data = EXPORTS.jsonParseOrError(data);
+            if (data instanceof Error) {
+              /* or if parsing fails, pass an error with offending url */
+              _onEventError(new Error('invalid json data from ' + options.url));
+              return;
+            }
+            break;
+          default:
+            data = data.toString();
+          }
+          _onEventError(null, data);
+        });
+      }).on('error', _onEventError);
+      if (options.file) {
+        options.readStream = options.readStream || required.fs.createReadStream(options.file);
+      }
+      if (options.readStream) {
+        options.readStream.on('error', _onEventError).pipe(request.on('error', _onEventError));
+      } else {
+        request.end(options.data);
+      }
+      /* debug */
+      if (options.debugFlag || state.debugFlag) {
+        console.log(['_ajaxNodejs', options]);
+      }
+    },
+
+    __ajaxNodejs_serverResumeError_test: function (onEventError) {
+      /*
+        this function tests _ajaxNodejs's server resume on error behavior
+      */
+      EXPORTS.deferCallback('serverDefer', 'resume');
+      EXPORTS.deferCallback('serverDefer', 'error', new Error());
+      EXPORTS.ajax({
+        url: '/test/test.echo'
+      }, function (error) {
+        EXPORTS.deferCallback('serverDefer', 'reset');
+        EXPORTS.deferCallback('serverDefer', 'resume');
+        onEventError(error ? null : new Error());
+      });
+    },
+
+    _ajaxNodejs_timeout_test: function (onEventError) {
+      /*
+        this function tests ajaxNodejs's timeout behavior
+      */
+      EXPORTS.ajax({
+        timeout: 1,
+        url: '/test/test.timeout'
+      }, function (error) {
+        onEventError(EXPORTS.isErrorTimeout(error) ? null : new Error());
+      });
+    },
+
+  };
+  local._init();
+}());
+
+
+
+(function moduleLintNodejs() {
+  /*
+    this nodejs module exports the lint api
+  */
+  'use strict';
+  var local;
+  local = {
+
+    _name: 'utility2.moduleLintNodejs',
+
+    _init: function () {
+      if (!state.isNodejs) {
+        return;
+      }
+      EXPORTS.initModule(module, local);
+    },
+
+    _initTest: function () {
+      EXPORTS.testModule(local);
+    },
+
+    _lintCss: function (file, script) {
+      /*
+        this function lints a css script for errors
+      */
+      if (required.csslint) {
+        console.log(required.csslint.CSSLint.getFormatter('text').formatResults(
+          required.csslint.CSSLint.verify(
+            script || '',
+            { ignore: 'ids' }
+          ),
+          file,
+          { quiet: true }
+        ));
+      }
+      return script;
+    },
+
+    _lintJs: function (file, script) {
+      /*
+        this function lints a js script for errors
+      */
+      var ast, lint;
+      if (required.jslint_linter && !global.__coverage__) {
+        lint = required.jslint_linter.lint(script, { maxerr: 8 });
+        if (!lint.ok) {
+          required.jslint_reporter.report(file, lint);
+        }
+      }
+      /* uglify-js - warn unused variables */
+      if (file.slice(-3) === '.js' && required.uglify_js) {
+        try {
+          ast = required.uglify_js.parse(script, { filename: file });
+          ast.figure_out_scope();
+          /* uglify-js - warn unused variables */
+          ast.transform(required.uglify_js_compressor);
+        } catch (errorUglifyjs) {
+          EXPORTS.onEventErrorDefault(errorUglifyjs);
+        }
+      }
+      return script;
+    },
+
+    lintScript: function (file, script) {
+      /*
+        this function lints css / html / js / json scripts
+      */
+      switch (required.path.extname(file)) {
+      case '.css':
+        return local._lintCss(file, script);
+      default:
+        return local._lintJs(file, script);
+      }
+    },
+
+    _lintScript_css_test: function (onEventError) {
+      /*
+        this function tests lintScript's css lint behavior
+      */
+      EXPORTS.lintScript('foo.css', '\n');
+      onEventError();
+    },
+
+    _lintScript_js_test: function (onEventError) {
+      /*
+        this function tests lintScript's js lint behavior
+      */
+      var coverage;
+      coverage = global.__coverage__;
+      global.__coverage__ = null;
+      EXPORTS.lintScript('foo.js', '\n');
+      global.__coverage__ = coverage;
+      onEventError();
+    },
+
+  };
+  local._init();
+}());
+
+
+
+(function moduleRollupNodejs() {
+  /*
+    this nodejs module exports the rollup api
+  */
+  'use strict';
+  var local;
+  local = {
+
+    _name: 'utility2.moduleRollupNodejs',
+
+    _init: function () {
+      if (!state.isNodejs) {
+        return;
+      }
+      EXPORTS.initModule(module, local);
+    },
+
+    _initOnce: function () {
+      EXPORTS.nop(require.main === module && required.utility2._rollupFileCommandLine());
+    },
+
+    _rollupFileCommandLine: function () {
+      /*
+        this function rollup files given by command-line
+      */
+      var _onEventError, remaining;
+      if (!state.rollup) {
+        return;
+      }
+      _onEventError = function (error) {
+        if (remaining < 0) {
+          return;
+        }
+        if (error) {
+          remaining = -1;
+          _onEventError(error);
+          process.exit();
+          return;
+        }
+        remaining -= 1;
+        if (remaining === 0) {
+          remaining = -1;
+          process.exit();
+        }
+      };
+      remaining = 0;
+      state.rollup.split(',').forEach(function (file) {
+        if (!file) {
+          return;
+        }
+        remaining += 1;
+        local._rollupFile(file, _onEventError);
+      });
+      if (remaining === 0) {
+        remaining += 1;
+        _onEventError();
+      }
+    },
+
+    _initTest: function () {
+      EXPORTS.testModule(local);
+    },
+
+    _rollupFile: function (file, onEventError) {
+      /*
+        this function rolls up a css / js file
+      */
+      console.log('updating rollup file ... ' + file);
+      required.fs.readFile(file, 'utf8', function (error, content) {
+        if (error) {
+          onEventError(error);
+          return;
+        }
+        var dict, options;
+        dict = {};
+        // content = (/\/\* listing start \*\/\n([\S\s]+\n)\/\* listing end \*\/\n/).exec(content);
+        content = (/[\S\s]+?\n\}\(\)\);\n/).exec(content);
+        content = EXPORTS.lintScript(file + '.js', content && content[0].trim());
+        EXPORTS.jsEvalOnEventError(file, content, function (error, data) {
+          if (error) {
+            onEventError(error);
+            process.exit();
+          }
+          options = data;
+        });
+        EXPORTS.ajaxMultiUrls({
+          urls: options.urls
+        }, function (error, data, options, remaining) {
+          if (error) {
+            onEventError(error);
+            return;
+          }
+          dict[options.url0] = data;
+          if (remaining === 0) {
+            /* additional css parsing */
+            if (file.slice(-4) === '.css') {
+              local._rollupFileCss(file, onEventError, content, options, dict);
+              return;
+            }
+            local._rollupFileConcat(file, onEventError, content, options, dict);
+          }
+        });
+      });
+    },
+
+    __rollupFile_cssRollup_test: function (onEventError) {
+      /*
+        this function tests _rollupFile's css rollup behavior
+      */
+      var file = state.fsDirCache + '/test.rollup.css';
+      EXPORTS.fsWriteFileAtomic(file, '(function () {\n'
+        + '    "use strict";\n'
+        + '    return { urls: ["/test/test.css", "' + state.localhost + '/test/test.css"] };\n'
+        + '}());\n', null, function () {
+          local._rollupFile(file, onEventError);
+        });
+    },
+
+    __rollupFile_jsRollup_test: function (onEventError) {
+      /*
+        this function tests _rollupFile's js rollup behavior
+      */
+      var file = state.fsDirCache + '/test.rollup.js';
+      EXPORTS.fsWriteFileAtomic(file, '(function () {\n'
+        + '    "use strict";\n'
+        + '    return { urls: ["/test/test.js", "' + state.localhost + '/test/test.js"] };\n'
+        + '}());\n', null, function () {
+          local._rollupFile(file, onEventError);
+        });
+    },
+
+    _rollupFileCss: function (file, onEventError, content, options, dict) {
+      /*
+        this function runs additional rollup steps for css scripts
+      */
+      var remaining;
+      remaining = 0;
+      options.urls.forEach(function (url1) {
+        var dataUris, text;
+        dataUris = {};
+        text = dict[url1];
+        text.replace((/\burl\(([^)]+)\)/g), function (match, url2) {
+          url2 = required.path.resolve('/' + EXPORTS.fsDirname(url1) + '/'
+            + url2.replace((/["']/g), '')).replace((/^\/(https*:\/)/), '$1/');
+          dataUris[url2] = dataUris[url2] || {};
+          dataUris[url2][match] = null;
+        });
+        remaining += 1;
+        EXPORTS.ajaxMultiUrls({
+          dataType: 'binary',
+          urls: Object.keys(dataUris)
+        }, function (error, data, options2, remaining2) {
+          if (remaining < 0) {
+            return;
+          }
+          if (error) {
+            remaining = -1;
+            onEventError(error);
+            return;
+          }
+          data = 'url(\n"data:' + EXPORTS.mimeLookup(file) + ';base64,'
+            + data.toString('base64') + '"\n)';
+          Object.keys(dataUris[options2.url0]).forEach(function (match) {
+            text = text.replace(new RegExp(match.replace((/(\W)/g), '\\$1'), 'g'), data);
+          });
+          dict[url1] = text;
+          if (remaining2 === 0) {
+            remaining -= 1;
+            if (remaining === 0) {
+              remaining = -1;
+              local._rollupFileConcat(file, onEventError, content, options, dict);
+            }
+          }
+        });
+      });
+    },
+
+    _rollupFileConcat: function (file, onEventError, content, options, dict) {
+      /*
+        this function concats the rollup content and writes it back to file
+      */
+      /* concat data to content */
+      options.urls.forEach(function (url) {
+        content += '\n\n/* module - ' + url + ' */\n' + dict[url].trim();
+      });
+      /* remove trailing whitespace */
+      content = content.replace((/[\t\r ]+$/gm), '').trim();
+      /* write to file */
+      EXPORTS.fsWriteFileAtomic(file, content, null, onEventError);
+    },
+
+  };
+  local._init();
+}());
+
+
+
+(function moduleSocks5AjaxNodejs() {
+  /*
+    this nodejs module exports the socks5Ajax api
+  */
+  'use strict';
+  var local;
+  local = {
+
+    _name: 'utility2.moduleSocks5AjaxNodejs',
+
+    _init: function () {
+      if (!state.isNodejs) {
+        return;
+      }
+      EXPORTS.initModule(module, local);
+    },
+
+    _initTest: function () {
+      EXPORTS.testModule(local);
+    },
+
+    _socks5Ajax: function (options, onEventError) {
+      /*
+        this function hooks the socks5 proxy protocol into the function ajax
+      */
+      var regexp;
+      regexp = typeof state.socks5IgnoreRegexp === 'string'
+        ? new RegExp(state.socks5IgnoreRegexp)
+        : state.socks5IgnoreRegexp;
+      if (!state.socks5ServerPort || options.createConnection
+          || (options.url.indexOf(state.localhost2) !== 0
+          && ((/^https*:\/\/localhost\b/).test(options.url)
+            || (regexp && regexp.test(options.url))
+            || options.url.indexOf(state.localhost) === 0
+            || options.hostname === state.socks5SshHostname))) {
+        return;
+      }
+      EXPORTS.deferCallback('socks5Defer', 'defer', function (error) {
+        if (error) {
+          onEventError(error);
+          return;
+        }
+        local._socks5AjaxResume(options, onEventError);
+      });
+      return true;
+    },
+
+    _socks5AjaxResume: function (options, onEventError) {
+      /*
+        this function resumes the ajax request after a socks5 proxy has been established
+      */
+      var chunks, hostname, _onEventData, port, self;
+      chunks = new Buffer(0);
+      hostname = new Buffer(options.hostname);
+      _onEventData = function (chunk) {
+        chunks = Buffer.concat([chunks, chunk]);
+        if (chunks.length < 12) {
+          return;
+        }
+        if (!(chunks[0] === 5
+            && chunks[1] === 0
+            && chunks[2] === 5
+            && chunks[3] === 0
+            && chunks[4] === 0
+            && chunks[5] === 1)) {
+          onEventError(new Error('socks5Ajax - request failed'));
+          return;
+        }
+        /* cleanup socks5 listeners */
+        self.removeListener('data', _onEventData);
+        /* continue with ajax request as normal */
+        options.createConnection = function () {
+          /* reset createConnection for http redirects */
+          options.createConnection = null;
+          return self;
+        };
+        /* disable socket pooling */
+        options.agent = false;
+        if (options.protocol !== 'https:') {
+          EXPORTS.ajax(options, onEventError);
+          return;
+        }
+        local._startTls({
+          rejectUnauthorized: options.rejectUnauthorized,
+          socket: self
+        }, function (error, cleartext) {
+          if (error) {
+            onEventError(error);
+            return;
+          }
+          self = cleartext;
+          EXPORTS.ajax(options, onEventError);
+        });
+      };
+      port = Number(options.port) || (options.protocol === 'https:' ? 443 : 80);
+      self = required.net.connect(state.socks5ServerPort, 'localhost', function () {
+        /*jslint bitwise: true*/
+        try {
+          self.write(Buffer.concat([
+            new Buffer([5, 1, 0, 5, 1, 0, 3, hostname.length]),
+            hostname,
+            new Buffer([port >> 8, port & 0xff])
+          ]));
+        } catch (error) {
+          onEventError(error);
+        }
+      }).on('data', _onEventData).on('error', onEventError);
+    },
+
+    __socks5Ajax_socks5_test: function (onEventError) {
+      /*
+        this function tests _socks5Ajax's socks5 behavior
+      */
+      if (!state.socks5ServerPort) {
+        onEventError('skip');
+        return;
+      }
+      EXPORTS.ajax({ url: state.localhost2 + '/test/test.echo' }, onEventError);
+    },
+
+    _startTls: function (options, onEventError) {
+      /*
+        this function upgrades a socket to tls security protocol
+      */
+      var pair;
+      pair = required.tls
+        .createSecurePair(required.crypto.createCredentials(options))
+        .on('error', onEventError);
+      pair.encrypted.pipe(options.socket);
+      options.socket.pipe(pair.encrypted);
+      pair.on('secure', function () {
+        onEventError(pair.ssl.verifyError(), pair.cleartext.on('error', onEventError));
+      });
+    },
+
+  };
+  local._init();
+}());
+
+
+
+(function moduleSocks5ServerNodejs() {
+  /*
+    this nodejs module exports the socks5Server api
+  */
+  'use strict';
+  var local;
+  local = {
+
+    _name: 'utility2.moduleSocks5ServerNodejs',
+
+    _init: function () {
+      if (!state.isNodejs) {
+        return;
+      }
+      EXPORTS.initModule(module, local);
+    },
+
+    _initOnce: function () {
+      /* create a random socks5 port for npm test */
+      EXPORTS.socks5ServerRestart(state.socks5ServerPort, state.socks5SshHost);
+    },
+
+    _initTest: function () {
+      EXPORTS.testModule(local);
+    },
+
+    _socks5ServerOnEventSocket: function (self) {
+      var ended, _onEventData, _onEventError, proxy;
+      _onEventData = function (chunk) {
+        var host, port;
+        if (chunk.length < 11 || !(chunk[0] === 5
+            && chunk[1] === 1
+            && chunk[2] === 0
+            && chunk[3] === 5
+            && chunk[4] === 1
+            && chunk[5] === 0
+            && chunk[6] === 3
+            && chunk.length >= 8 + chunk[7] + 2)) {
+          _onEventError(new Error('_socks5ServerOnEventSocket - request failed'));
+          return;
+        }
+        self.removeListener('data', _onEventData);
+        /* create proxy socket */
+        host = chunk.slice(8, 8 + chunk[7]).toString();
+        port = chunk.readUInt16BE(8 + chunk[7]);
+        console.log('_socks5ServerOnEventSocket - proxying ' + host + ':' + port);
+        proxy = required.net.connect(port, host).on('error', _onEventError);
+        /* write leftover chunk from current read to proxy connection */
+        proxy.write(chunk.slice(8 + chunk[7] + 2));
+        proxy.pipe(self);
+        self.pipe(proxy);
+      };
+      _onEventError = function (error) {
+        if (!ended) {
+          ended = true;
+          EXPORTS.onEventErrorDefault(error);
+          self.removeListener('data', _onEventData);
+          self.end('HTTP/1.1 500 Internal Server Error\r\n\r\n');
+          EXPORTS.nop(proxy && proxy.end());
+        }
+      };
+      self
+        .on('data', _onEventData)
+        .on('error', _onEventError)
+        .write('\u0005\u0000\u0005\u0000\u0000\u0001\u0000\u0000\u0000\u0000\u0000\u0000');
+    },
+
+    __socks5ServerOnEventSocket_errorHandling_test: function (onEventError) {
+      /*
+        this function tests _socks5ServerOnEventSocket's error-handling behavior
+      */
+      EXPORTS.testMock({ console: { error: EXPORTS.nop } }, function () {
+        local._socks5ServerOnEventSocket({
+          end: EXPORTS.nop,
+          on: function (event, onEvent) {
+            if (event === 'error') {
+              this.onEventError = onEvent;
+            }
+            return this;
+          },
+          removeListener: EXPORTS.nop,
+          write: function () {
+            this.onEventError(new Error());
+            onEventError();
+          }
+        });
+      });
+    },
+
+    socks5ServerRestart: function (port, sshHost) {
+      /*
+        this function restarts the socks5 server
+      */
+      if (state.isNpmTest) {
+        sshHost = null;
+      }
+      state.socks5ServerPort = port || state.socks5ServerPort || (sshHost ? 'random' : null);
+      /* invalid port */
+      if (!state.socks5ServerPort) {
+        EXPORTS.deferCallback('socks5Defer', 'resume');
+        return;
+      }
+      /* random server port */
+      if (state.socks5ServerPort === 'random') {
+        state.socks5ServerPort = EXPORTS.serverPortRandom();
+      }
+      /* pause socks5 proxy */
+      EXPORTS.deferCallback('socks5Defer', 'pause');
+      /* start ssh socks5 proxy server */
+      if (sshHost) {
+        local._socks5ServerRestartSsh(sshHost);
+        return;
+      }
+      /* close old socks5 server */
+      if (state.socks5Server) {
+        state.socks5Server.close();
+      }
+      /* start socks5 proxy server */
+      state.socks5Server = required.net.createServer(local._socks5ServerOnEventSocket);
+      state.socks5Server.listen(state.socks5ServerPort, function () {
+        EXPORTS.deferCallback('socks5Defer', 'resume');
+        console.log('socks5 server started on port ' + state.socks5ServerPort);
+      });
+    },
+
+    _socks5ServerRestartSsh: function (sshHost) {
+      /*
+        this function restart the socks5 ssh server
+      */
+      /* kill old ssh process */
+      try {
+        process.kill(state.socks5SshPid || 99999999);
+      } catch (ignore) {
+      }
+      state.socks5SshHost = sshHost;
+      state.socks5SshHostname = state.socks5SshHost.split(':')[0];
+      state.socks5SshPort = state.socks5SshHost.split(':')[1] || 22;
+      state.socks5SshPid = EXPORTS.shell({
+        script: 'ssh -D ' + state.socks5ServerPort + ' -o StrictHostKeyChecking=no -p '
+          + (state.socks5SshPort) + ' ' + state.socks5SshHostname,
+        stdio: ['pipe', 'pipe', 'pipe']
+      }).pid;
+      EXPORTS.clearCallSetInterval('socks5Defer', function (timeout) {
+        /* timeout error-handling */
+        if (timeout) {
+          EXPORTS.deferCallback(
+            'socks5Defer',
+            'error',
+            EXPORTS.createErrorTimeout('socks5 proxy timeout')
+          );
+          return;
+        }
+        required.utility2._socks5AjaxResume({
+          hostname: 'www.google.com',
+          url: 'http://www.google.com'
+        }, function (error) {
+          if (!error) {
+            EXPORTS.deferCallback('socks5Defer', 'resume');
+            EXPORTS.clearCallSetInterval('socks5Defer', 'clear');
+          }
+        });
+      }, 1000, state.timeoutDefault);
     },
 
   };
@@ -3424,10 +3732,11 @@ integrate forever-webui
       switch (aa) {
       /* eval in phantomjs */
       case 'ajaxDebug':
-        EXPORTS.ajax({ debugFlag: true, url: bb });
+        EXPORTS.ajax({ debugFlag: true, redirect: false, url: bb },
+          EXPORTS.onEventErrorDefault);
         return;
       case 'ajax':
-        EXPORTS.ajax({ url: bb });
+        EXPORTS.ajax({ url: bb }, EXPORTS.onEventErrorDefault);
         return;
       case 'browser':
         EXPORTS.phantomjsEval(bb, EXPORTS.onEventErrorDefault);
@@ -3526,156 +3835,6 @@ integrate forever-webui
 
 
 
-(function moduleRollupNodejs() {
-  /*
-    this nodejs module exports the rollup api
-  */
-  'use strict';
-  var local;
-  local = {
-
-    _name: 'utility2.moduleRollupNodejs',
-
-    _init: function () {
-      if (!state.isNodejs) {
-        return;
-      }
-      EXPORTS.initModule(module, local);
-    },
-
-    _initTest: function () {
-      EXPORTS.testModule(local);
-    },
-
-    rollupFile: function (file, onEventError) {
-      /*
-        this function rolls up a css / js file
-      */
-      console.log('updating rollup file ... ' + file);
-      required.fs.readFile(file, 'utf8', function (error, content) {
-        if (error) {
-          onEventError(error);
-          return;
-        }
-        var dict, urls;
-        dict = {};
-        content = (/\/\* listing start \*\/\n([\S\s]+\n)\/\* listing end \*\/\n/).exec(content);
-        urls = EXPORTS.jsonParseOrError((content || [])[1]);
-        content = content[0].trim();
-        if (urls instanceof Error) {
-          onEventError(urls);
-          return;
-        }
-        EXPORTS.ajaxMultiUrls({
-          urls: urls
-        }, function (error, data, options, remaining) {
-          if (error) {
-            onEventError(error);
-            return;
-          }
-          dict[options.url0] = data;
-          if (remaining === 0) {
-            /* additional css parsing */
-            if (file.slice(-4) === '.css') {
-              local._rollupFileCss(file, onEventError, content, urls, dict);
-              return;
-            }
-            local._rollupFileConcat(file, onEventError, content, urls, dict);
-          }
-        });
-      });
-    },
-
-    _rollupFile_cssRollup_test: function (onEventError) {
-      /*
-        this function tests rollupFile's css rollup behavior
-      */
-      var file = state.fsDirCache + '/test.rollup.css';
-      EXPORTS.fsWriteFileAtomic(file, '/* listing start */\n'
-        + '["/test/test.css", "' + state.localhost + '/test/test.css"]\n'
-        + '/* listing end */\n', null, function () {
-          EXPORTS.rollupFile(file, onEventError);
-        });
-    },
-
-    _rollupFile_jsRollup_test: function (onEventError) {
-      /*
-        this function tests rollupFile's js rollup behavior
-      */
-      var file = state.fsDirCache + '/test.rollup.js';
-      EXPORTS.fsWriteFileAtomic(file, '/* listing start */\n'
-        + '["/test/test.js", "' + state.localhost + '/test/test.js"]\n'
-        + '/* listing end */\n', null, function () {
-          EXPORTS.rollupFile(file, onEventError);
-        });
-    },
-
-    _rollupFileCss: function (file, onEventError, content, urls, dict) {
-      /*
-        this function performs additional rollup steps for css scripts
-      */
-      var remaining;
-      remaining = 0;
-      urls.forEach(function (url1) {
-        var dataUris, text;
-        dataUris = {};
-        text = dict[url1];
-        text.replace((/\burl\(([^)]+)\)/g), function (match, url2) {
-          url2 = required.path.resolve('/' + EXPORTS.fsDirname(url1) + '/'
-            + url2.replace((/["']/g), '')).replace((/^\/(https*:\/)/), '$1/');
-          dataUris[url2] = dataUris[url2] || {};
-          dataUris[url2][match] = null;
-        });
-        remaining += 1;
-        EXPORTS.ajaxMultiUrls({
-          dataType: 'binary',
-          urls: Object.keys(dataUris)
-        }, function (error, data, options, _remaining) {
-          if (remaining < 0) {
-            return;
-          }
-          if (error) {
-            remaining = -1;
-            onEventError(error);
-            return;
-          }
-          data = 'url(\n"data:' + EXPORTS.mimeLookup(file) + ';base64,'
-            + data.toString('base64') + '"\n)';
-          Object.keys(dataUris[options.url0]).forEach(function (match) {
-            text = text.replace(new RegExp(match.replace((/(\W)/g), '\\$1'), 'g'), data);
-          });
-          dict[url1] = text;
-          if (_remaining === 0) {
-            remaining -= 1;
-            if (remaining === 0) {
-              remaining = -1;
-              local._rollupFileConcat(file, onEventError, content, urls, dict);
-            }
-          }
-        });
-      });
-    },
-
-    _rollupFileConcat: function (file, onEventError, content, urls, dict) {
-      /*
-        this function concats the rollup content and writes it back to file
-      */
-      /* concat data to content */
-      urls.forEach(function (url) {
-        content += '\n\n/* ' + url + ' */\n' + dict[url].trim();
-      });
-      /* remove trailing whitespace */
-      content = content.replace((/[ \t]+$/gm), '').trim();
-      /* write to file */
-      EXPORTS.fsWriteFileAtomic(file, content, null, onEventError);
-    },
-
-  };
-  local._init();
-}());
-
-
-
 (function moduleServerNodejs() {
   /*
     this nodejs module exports the server middleware api
@@ -3697,23 +3856,23 @@ integrate forever-webui
       /* security - basic auth */
       state.securityBasicAuthSecret = state.securityBasicAuthSecret
         || Math.random().toString(36).slice(2);
-      /* 1. middleware pre-logger */
-      state.middlewarePrelogger = state.middlewarePrelogger
-        || local._createMiddleware(state.routerPreloggerDict);
-      /* 2. middleware logger */
-      state.middlewareLogger = state.middlewareLogger || required.express.logger('dev');
-      /* 3. middleware security */
+      /* 1. middleware logging */
+      state.middlewareLogging = state.middlewareLogging
+        || local._createMiddleware(state.routerLoggingDict);
+      state.middlewareLoggingDefault = state.middlewareLoggingDefault
+        || required.connect.logger('dev');
+      /* 2. middleware security */
       state.middlewareSecurity = state.middlewareSecurity
         || local._createMiddleware(state.routerSecurityDict);
-      /* 4. middleware proxy */
+      /* 3. middleware proxy */
       state.middlewareProxy = state.middlewareProxy
         || local._createMiddleware(state.routerProxyDict);
-      /* 5. middleware backend */
+      /* 4. middleware backend */
       state.middleware = state.middleware || local._createMiddleware(state.routerDict);
-      /* 6. middleware assets */
+      /* 5. middleware assets */
       state.middlewareAssets = state.middlewareAssets
         || local._createMiddleware(state.routerAssetsDict);
-      /* 7. middleware test */
+      /* 6. middleware test */
       global.routerTestDict = global.routerTestDict || {};
       state.middlewareTest = state.middlewareTest
         || local._createMiddleware(global.routerTestDict);
@@ -3725,8 +3884,15 @@ integrate forever-webui
       EXPORTS.testModule(local);
     },
 
-    'routerPreloggerDict_/favicon.ico': function (request, response, next) {
-      EXPORTS.serverRespondFile(response, process.cwd() + '/public/assets/favicon.ico', next);
+    'routerLoggingDict_/': function (request, response, next) {
+      /*
+        this function handles default logging
+      */
+      state.middlewareLoggingDefault(request, response, next);
+    },
+
+    'routerLoggingDict_/favicon.ico': function (request, response, next) {
+      next();
     },
 
     'routerSecurityDict_/': function (request, response, next) {
@@ -3899,39 +4065,33 @@ integrate forever-webui
           return true;
         }
       };
-      /* call pre-logger middleware for things which don't require logging */
-      state.middlewarePrelogger(request, response, function (error) {
+      /* call logging middleware */
+      state.middlewareLogging(request, response, function (error) {
         if (_onEventError(error)) {
           return;
         }
-        /* call logging middleware */
-        state.middlewareLogger(request, response, function (error) {
+        /* call security middleware */
+        state.middlewareSecurity(request, response, function (error) {
           if (_onEventError(error)) {
             return;
           }
-          /* call security middleware */
-          state.middlewareSecurity(request, response, function (error) {
+          /* call proxy middleware */
+          state.middlewareProxy(request, response, function (error) {
             if (_onEventError(error)) {
               return;
             }
-            /* call proxy middleware */
-            state.middlewareProxy(request, response, function (error) {
+            /* call backend middleware */
+            state.middleware(request, response, function (error) {
               if (_onEventError(error)) {
                 return;
               }
-              /* call backend middleware */
-              state.middleware(request, response, function (error) {
+              /* call static assets middleware */
+              state.middlewareAssets(request, response, function (error) {
                 if (_onEventError(error)) {
                   return;
                 }
-                /* call static assets middleware */
-                state.middlewareAssets(request, response, function (error) {
-                  if (_onEventError(error)) {
-                    return;
-                  }
-                  /* fallback to next middleware */
-                  next();
-                });
+                /* fallback to next middleware */
+                next();
               });
             });
           });
@@ -3991,27 +4151,40 @@ integrate forever-webui
     },
 
     serverStart: function (port) {
-      state.serverPort = process.env.PORT || state.serverPort || port;
+      var _listen, remaining;
+      state.serverPort = port || state.serverPort;
       if (!state.serverPort) {
         return;
       }
-      /* optional random server port */
+      /* random server port */
       if (state.serverPort === 'random') {
         state.serverPort = EXPORTS.serverPortRandom();
       }
       /* setup localhost */
       state.localhost = state.localhost || 'http://localhost:' + state.serverPort;
       /* create server */
-      state.server = state.server || required.express().use(EXPORTS.middlewareApplication);
+      state.server = state.server || required.connect().use(EXPORTS.middlewareApplication);
       /* listen on specified port */
       if (state.serverListened) {
         return;
       }
       state.serverListened = true;
-      state.server.listen(state.serverPort, function () {
-        console.log('server started on port ' + state.serverPort);
-        EXPORTS.deferCallback('serverDefer', 'resume');
-      });
+      _listen = function (port) {
+        EXPORTS.deferCallback('serverDefer', 'pause');
+        remaining = remaining || 0;
+        remaining += 1;
+        state.server.listen(port, function () {
+          remaining -= 1;
+          console.log('server started on port ' + port);
+          if (remaining === 0) {
+            EXPORTS.deferCallback('serverDefer', 'resume');
+          }
+        });
+      };
+      _listen(state.serverPort);
+      state.serverPort2 = state.serverPort2 || EXPORTS.serverPortRandom();
+      state.localhost2 = state.localhost2 || 'http://localhost:' + state.serverPort2;
+      _listen(state.serverPort2);
     },
 
   };
@@ -4104,8 +4277,8 @@ integrate forever-webui
       EXPORTS.deferCallback('phantomjsDefer', 'reset');
       state.phantomjsPort = EXPORTS.serverPortRandom();
       /* instrument file if coverage is enabled */
-      file = file || required.utility2.file;
-      if (global.__coverage__ && file === required.utility2.file) {
+      file = file || required.utility2.__filename;
+      if (global.__coverage__ && file === required.utility2.__filename) {
         required.fs.readFile(file, 'utf8', function (error, content) {
           /*jslint stupid: true*/
           var file2;
@@ -4624,6 +4797,7 @@ integrate forever-webui
         + ' ' + state.npmTest + ' --'
         + ' --npm-test'
         + ' --repl'
+        + ' --socks5-server-port random'
         + ' --serverPort random'
         + ' --test'
         + ' --timeout-default ' + state.timeoutDefault
@@ -4642,6 +4816,42 @@ integrate forever-webui
         local._testNpm();
         onEventError();
       });
+    },
+
+    _testReport: function (testSuiteList) {
+      var xml;
+      xml = '\n<testsuites>\n';
+      testSuiteList.forEach(function (testSuite) {
+        xml += '<testsuite ';
+        ['failures', 'name', 'passed', 'skipped', 'tests'].forEach(function (attribute) {
+          xml += attribute + '="' + testSuite[attribute] + '" ';
+        });
+        xml += '>\n<properties>\n';
+        ['environment'].forEach(function (property) {
+          xml += '<property name="' + property
+            + '" value=' + JSON.stringify(testSuite[property]) + '/>\n';
+        });
+        xml += '</properties>\n';
+        Object.keys(testSuite.testCases).forEach(function (test) {
+          test = testSuite.testCases[test];
+          xml += '<testcase ';
+          ['name', 'time'].forEach(function (attribute) {
+            xml += attribute + '="' + test[attribute] + '" ';
+          });
+          xml += '>';
+          xml += (test.failure
+            ? '<failure><![CDATA[' + test.failure + ']]></failure>\n'
+            : test.skipped
+            ? '<skipped></skipped>'
+            : '');
+          xml += '</testcase>\n';
+        });
+        xml += '</testsuite>\n';
+      });
+      xml += '</testsuites>\n';
+      /* write test report */
+      EXPORTS.fsWriteFileAtomic(state.fsDirTmp + '/test/' + EXPORTS.dateAndSalt()
+        + '.xml', xml, null, EXPORTS.onEventErrorDefault);
     },
 
     testThrowError: function () {

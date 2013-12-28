@@ -4,10 +4,10 @@
     "email": "kaizhu256@gmail.com"
   }],
   "dependencies": {
-    "coveralls": "*",
+    "bower": "1.2.8",
+    "connect": "*",
     "csslint": "*",
     "cssmin": "*",
-    "express": "*",
     "graceful-fs": "*",
     "istanbul": "*",
     "jslint": "*",
@@ -20,6 +20,9 @@
     "utility2-external": "*"
   },
   "description": "common, shared nodejs utilities",
+  "devDependencies": {
+    "coveralls": "*"
+  },
   "main": "utility2.js",
   "name": "utility2",
   "repository" : {
@@ -27,8 +30,12 @@
     "url" : "https://github.com/kaizhu256/utility2"
   },
   "scripts": {
+    "postinstall": "./node_modules/bower/bin/bower install",
     "start": "./utility2.js --repl --serverPort random --test",
     "test": "utility2=./utility2.js; $utility2 --npm-test $utility2 --timeout-default 8000 --timeout-exit 16000; sleep 2; $utility2 --coveralls"
+  },
+  "stateDefault": {
+    "coverallsUrl": "https://coveralls.io/r/kaizhu256/utility2"
   },
   "version": "2013.12.22-2"
 }
