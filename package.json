@@ -9,33 +9,30 @@
     "csslint": "*",
     "cssmin": "*",
     "graceful-fs": "*",
-    "istanbul": "*",
-    "jslint": "*",
     "mime": "*",
     "moment": "*",
     "phantomjs": "*",
     "sqlite3": "*",
-    "uglify-js": "*",
-    "underscore": "*",
-    "utility2-external": "*"
+    "uglify-js": "*"
   },
   "description": "common, shared nodejs utilities",
   "devDependencies": {
-    "coveralls": "*"
+    "coveralls": "*",
+    "istanbul": "*"
   },
   "main": "utility2.js",
   "name": "utility2",
   "repository" : {
     "type" : "git",
-    "url" : "https://github.com/kaizhu256/utility2"
+    "url" : "https://github.com/kaizhu256/utility2.git"
   },
   "scripts": {
     "postinstall": "./node_modules/bower/bin/bower install",
     "start": "./utility2.js --repl --serverPort random --test",
-    "test": "utility2=./utility2.js; $utility2 --npm-test $utility2 --timeout-default 8000 --timeout-exit 16000; sleep 2; $utility2 --coveralls"
+    "test": "npm install; utility2=./utility2.js; $utility2 --npm-test $utility2 --timeout-default 8000 --timeout-exit 16000; sleep 2; $utility2 --coveralls"
   },
   "stateDefault": {
     "coverallsUrl": "https://coveralls.io/r/kaizhu256/utility2"
   },
-  "version": "2013.12.22-2"
+  "version": "2013.12.28-1"
 }

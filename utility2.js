@@ -1,12 +1,11 @@
 #!/usr/bin/env node
-/*jslint browser: true, indent: 2, nomen: true, regexp: true, todo: true, unparam: true*/
+/*jslint browser: true, indent: 2, maxerr: 8, node: true, nomen: true, regexp: true, todo: true, unparam: true*/
 /*global EXPORTS, global, required, state, underscore, $*/
 /*
 utility2.js
 common, shared utilities for both browser and nodejs
 
 todo:
-create extra test port for server
 emulate localStorage
 add heroku dynamic config server
 integrate forever-webui
@@ -48,8 +47,6 @@ integrate forever-webui
         console._log('\n\n\n\ndebugPrint');
         console._log.apply(console, arguments);
       };
-      /* underscore */
-      global.underscore = global.underscore || global._;
       if (global.process && process.versions) {
         /* nodejs */
         if (process.versions.node) {
@@ -120,6 +117,28 @@ integrate forever-webui
       local._initModuleResume(module, local2, exports);
     },
 
+    _initModuleOnceNodejs: function (module, local2, exports) {
+      /*
+        this function runs extra nodejs initializations
+      */
+      if (!state.isNodejs
+          || exports.__filename
+          || !(module && module.filename)
+          || !EXPORTS.fsWatch) {
+        return;
+      }
+      exports.__filename = exports.__filename || module.filename;
+      exports.__dirname = exports.__dirname || EXPORTS.fsDirname(exports.__filename);
+      module.exports = exports;
+      /* watch module */
+      EXPORTS.fsWatch({ action: ['lint', function (file, content, content2) {
+        exports._fileContent = content2;
+        exports._fileContentBrowser = global.__coverage__ ? content2
+          : (content2 + '\n(function moduleNodejs() {\n}());\n')
+            .replace((/\n\(function module\w*Nodejs\([\S\s]*/), '').trim();
+      }, 'eval'], name: exports.__filename });
+    },
+
     _initModuleResume: function (module, local2, exports) {
       /*
         this function resumes module initialization
@@ -128,14 +147,12 @@ integrate forever-webui
       state.initOnceDict = state.initOnceDict || {};
       if (!state.initOnceDict[local2._name]) {
         state.initOnceDict[local2._name] = true;
-        /* init once */
+        /* init module once */
         if (local2._initOnce) {
           local2._initOnce();
         }
-        /* require once */
-        if (required.utility2._moduleInitOnceNodejs) {
-          required.utility2._moduleInitOnceNodejs(module, local2, exports);
-        }
+        /* init module once - nodejs */
+        local._initModuleOnceNodejs(module, local2, exports);
       }
       /* run tests */
       setTimeout(function () {
@@ -145,7 +162,7 @@ integrate forever-webui
           });
         }
       });
-    },
+    }
 
   };
   local._init();
@@ -379,16 +396,13 @@ integrate forever-webui
         this function synchronously evals a file with auto error-handling
       */
       /*jslint stupid: true*/
-      var script;
-      try {
-        script = required.fs.readFileSync(file, 'utf8');
-      } catch (error) {
-        /* debug error */
-        state.error = error;
-        onEventError(error);
-        return;
-      }
-      EXPORTS.jsEvalOnEventError(file, script, onEventError);
+      EXPORTS.tryCatch(function () {
+        return required.fs.readFileSync(file, 'utf8');
+      }, function (error, data) {
+        EXPORTS.nop(error
+          ? onEventError(error)
+          : EXPORTS.jsEvalOnEventError(file, data, onEventError));
+      });
     },
 
     jsEvalOnEventError: function (file, script, onEventError) {
@@ -824,7 +838,7 @@ integrate forever-webui
         }
       }
       return id;
-    },
+    }
 
   };
   local._init();
@@ -854,18 +868,13 @@ integrate forever-webui
       /*
         this function makes an ajax request, and auto-concats the response stream into utf8 text
       */
-      EXPORTS.assert(onEventError);
       options.url0 = options.url0 || options.url;
       if (options.data) {
         options.method = options.type = options.method || options.type || 'POST';
       }
       /* browser */
       if (state.isBrowser) {
-        /* ajax xss via proxy */
-        if ((/^https*:/).test(options.url)) {
-          options.url = '/proxy/proxy.ajax/' + options.url;
-        }
-        EXPORTS.ajaxProgressOnEventError(options, onEventError);
+        required.utility2._ajaxProgressOnEventError(options, onEventError);
         return;
       }
       /* nodejs */
@@ -998,7 +1007,7 @@ integrate forever-webui
       EXPORTS.ajaxMultiUrls({}, function (error) {
         onEventError(!error);
       });
-    },
+    }
 
   };
   local._init();
@@ -1043,7 +1052,7 @@ integrate forever-webui
       } catch (error) {
         onEventError(!error);
       }
-    },
+    }
 
   };
   local._init();
@@ -1165,7 +1174,7 @@ integrate forever-webui
       EXPORTS.assert(Object.keys(cache.cache1).length === 4);
       EXPORTS.assert(Object.keys(cache.cache2).length === 2);
       onEventError();
-    },
+    }
 
   };
   local._init();
@@ -1284,7 +1293,7 @@ integrate forever-webui
         onEventError(!error);
         EXPORTS.deferCallback(key, 'delete');
       }
-    },
+    }
 
   };
   local._init();
@@ -1382,7 +1391,7 @@ integrate forever-webui
         skipped: 0,
         testCases: {},
         tests: 0,
-        time: 0,
+        time: 0
       };
       Object.keys(local2).forEach(function (test) {
         var _onEventError;
@@ -1471,7 +1480,7 @@ integrate forever-webui
       }
       /* reset test suites */
       state.testSuiteList.length = 0;
-    },
+    }
 
   };
   local._init();
@@ -1599,7 +1608,7 @@ integrate forever-webui
       EXPORTS.assert(EXPORTS.urlParamsSetItem('/aa#bb=1', 'cc', 'dd+', '#')
         === '/aa#bb=1&cc=dd%2B');
       onEventError();
-    },
+    }
 
   };
   local._init();
@@ -1694,7 +1703,7 @@ integrate forever-webui
         oBuilder.append(aFileParts[0]);
       }
       return options ? oBuilder.getBlob(options.type) : oBuilder.getBlob();
-    },
+    }
 
   };
   local._init();
@@ -1765,16 +1774,20 @@ integrate forever-webui
       EXPORTS.testModule(local);
     },
 
-    ajaxProgressOnEventError: function (options, onEventError) {
+    _ajaxProgressOnEventError: function (options, onEventError) {
       /*
         this function runs ajax calls with a progress meter
         usage:
-        EXPORTS.ajaxProgressOnEventError({
+        local._ajaxProgressOnEventError({
           data: 'hello world',
           type: 'POST',
           url: '/upload/foo.txt'
         }, EXPORTS.onEventErrorDefault);
       */
+      /* ajax xss via proxy */
+      if ((/^https*:/).test(options.url)) {
+        options.url = '/proxy/proxy.ajax/' + options.url;
+      }
       /* binary file */
       if (options.file && !options.data) {
         local._ajaxProgressOnEventErrorFile(options, onEventError);
@@ -1847,7 +1860,7 @@ integrate forever-webui
           ui8a[ii] = data.charCodeAt(ii) & 0xff;
         }
         options.data = ui8a;
-        EXPORTS.ajaxProgressOnEventError(options, onEventError);
+        local._ajaxProgressOnEventError(options, onEventError);
       };
       reader.readAsBinaryString(options.file);
     },
@@ -1961,7 +1974,7 @@ integrate forever-webui
       if (label) {
         local._divXhrProgressBar.html(label);
       }
-    },
+    }
 
   };
   local._init();
@@ -1992,7 +2005,7 @@ integrate forever-webui
       }
       /* event handling */
       state.inputAdminUpload.on("change", function (event) {
-        EXPORTS.ajaxProgressOnEventError({
+        EXPORTS.ajax({
           file: event.target.files[0],
           method: "POST",
           url: "/admin/admin.upload"
@@ -2046,7 +2059,7 @@ integrate forever-webui
         this function tests adminShell's default behavior
       */
       EXPORTS.adminShell('echo', onEventError);
-    },
+    }
 
   };
   local._init();
@@ -2073,7 +2086,7 @@ integrate forever-webui
 
     _initOnce: function () {
       /* require */
-      [
+      EXPORTS.requireModules([
         /* require internal */
         'child_process',
         'crypto',
@@ -2091,7 +2104,6 @@ integrate forever-webui
         'zlib',
         /* require external */
         'connect',
-        'coveralls',
         'csslint',
         'cssmin',
         'graceful-fs',
@@ -2101,16 +2113,8 @@ integrate forever-webui
         'moment',
         'phantomjs',
         'sqlite3',
-        'uglify-js',
-      ].forEach(function (module) {
-        var module2;
-        module2 = module.replace((/\W/g), '_');
-        try {
-          required[module2] = required[module2] || require(module);
-        } catch (errorRequire) {
-          console.log('module not loaded - ' + module);
-        }
-      });
+        'uglify-js'
+      ]);
       /* require utility2-external */
       required.utility2_external = required.utility2_external
         || require(__dirname + '/bower_components/utility2-external');
@@ -2128,8 +2132,10 @@ integrate forever-webui
       /* override required.fs with required.graceful_fs */
       required.fs = required.graceful_fs;
       /* init istanbul */
-      required.istanbul_Instrumenter = required.istanbul_Instrumenter
-        || new required.istanbul.Instrumenter();
+      if (required.istanbul) {
+        required.istanbul_Instrumenter = required.istanbul_Instrumenter
+          || new required.istanbul.Instrumenter();
+      }
       /* init jslint */
       required.jslint_linter = required.jslint_linter || require('jslint/lib/linter');
       required.jslint_reporter = required.jslint_reporter || require('jslint/lib/reporter');
@@ -2181,28 +2187,31 @@ integrate forever-webui
       /* load default state */
       state.stateDefault = state.packageJson.stateDefault || {};
       EXPORTS.setOptionsDefaults(state, EXPORTS.objectCopyDeep(state.stateDefault));
-      /* load dynamic, override state from external url every 60 seconds */
+      /* update dynamic, override state from external url every 60 seconds */
       state.stateOverride = state.stateOverride || {};
       EXPORTS.setOptionsOverrides(state, state.stateOverride || {});
       state.stateOverrideUrl = state.stateOverrideUrl || '/state/stateOverride.json';
-      setTimeout(function () {
-        EXPORTS.clearCallSetInterval('configLoadOverride', function () {
-          EXPORTS.ajax({
-            dataType: 'json',
-            headers: { authorization: 'Basic ' + state.securityBasicAuthSecret },
-            url: state.stateOverrideUrl
-          }, function (error, data) {
-            if (error) {
-              EXPORTS.onEventErrorDefault(error);
-              return;
-            }
-            EXPORTS.setOptionsOverrides(state.stateOverride, data);
-            EXPORTS.setOptionsOverrides(state, EXPORTS.objectCopyDeep(state.stateOverride));
-            console.log('loaded override config from ' + state.stateOverrideUrl);
-          });
-        }, 5 * 60 * 1000);
-      });
-      /* load file */
+      if (state.serverPort) {
+        setTimeout(function () {
+          EXPORTS.clearCallSetInterval('stateOverrideUpdate', function () {
+            EXPORTS.ajax({
+              dataType: 'json',
+              debugFlag: true,
+              headers: { authorization: 'Basic ' + state.securityBasicAuthSecret },
+              url: state.stateOverrideUrl
+            }, function (error, data) {
+              if (error) {
+                EXPORTS.onEventErrorDefault(error);
+                return;
+              }
+              EXPORTS.setOptionsOverrides(state.stateOverride, data);
+              EXPORTS.setOptionsOverrides(state, EXPORTS.objectCopyDeep(state.stateOverride));
+              console.log('loaded override config from ' + state.stateOverrideUrl);
+            });
+          }, 5 * 60 * 1000);
+        });
+      }
+      /* load js files */
       if (state.loadFiles) {
         state.loadFiles.split(',').forEach(function (file) {
           /*jslint stupid: true*/
@@ -2359,23 +2368,19 @@ integrate forever-webui
       onEventError();
     },
 
-    _moduleInitOnceNodejs: function (module, local2, exports) {
+    requireModules: function (modules) {
       /*
-        this function runs extra nodejs initializations
+        this function requires the given modules and caches them in the global.required object
       */
-      if (exports.__filename || !(module && module.filename)) {
-        return;
-      }
-      exports.__filename = exports.__filename || module.filename;
-      exports.__dirname = exports.__dirname || EXPORTS.fsDirname(exports.__filename);
-      module.exports = exports;
-      /* watch module */
-      EXPORTS.fsWatch({ action: ['lint', function (file, content, content2) {
-        exports._fileContent = content2;
-        exports._fileContentBrowser = global.__coverage__ ? content2
-          : (content2 + '\n(function moduleNodejs() {\n}());\n')
-            .replace((/\n\(function module\w*Nodejs\([\S\s]*/), '').trim();
-      }, 'eval'], name: exports.__filename });
+      modules.forEach(function (module) {
+        var module2;
+        module2 = module.replace((/\W/g), '_');
+        try {
+          required[module2] = required[module2] || require(module);
+        } catch (errorRequire) {
+          console.log('module not loaded - ' + module);
+        }
+      });
     },
 
     shell: function (options) {
@@ -2432,7 +2437,7 @@ integrate forever-webui
         this function returns amout of timeout remaining before process.exit
       */
       return state.timeExit - Date.now();
-    },
+    }
 
   };
   local._init();
@@ -2725,7 +2730,7 @@ integrate forever-webui
         /* default error-handling behavior */
         onEventError(error);
       });
-    },
+    }
 
   };
   local._init();
@@ -2857,7 +2862,7 @@ integrate forever-webui
       + '<input id="inputAdminUpload" type="file"/>\n'
       + '<script src="/public/assets/utility2-external/external.rollup.auto.js"></script>\n'
       + '<script src="/public/assets/utility2.js"></script>\n'
-      + '</body></html>',
+      + '</body></html>'
 
   };
   local._init();
@@ -2888,14 +2893,10 @@ integrate forever-webui
 
     _ajaxNodejs: function (options, onEventError) {
       /*
-        this function is the nodejs implementation of the ajax function
+        this function implements the ajax function in nodejs
       */
       /* localhost */
-      var _onEventError,
-        request,
-        response,
-        timeout,
-        urlParsed;
+      var _onEventError, timeout, urlParsed;
       _onEventError = function (error, data) {
         if (timeout < 0) {
           return;
@@ -2907,12 +2908,21 @@ integrate forever-webui
           console.log([
             '_ajaxNodejs',
             options.url,
-            response && response.statusCode,
-            response && response.headers
+            options.response && options.response.statusCode,
+            options.response && options.response.headers
           ]);
         }
         onEventError(error, data, options);
       };
+      /* set timeout */
+      timeout = setTimeout(_onEventError,
+        options.timeout || state.timeoutDefault,
+        EXPORTS.createErrorTimeout());
+      /* file uri scheme */
+      if (options.url.slice(0, 7) === 'file://') {
+        local._ajaxNodejsFile(options, _onEventError);
+        return;
+      }
       if (options.url[0] === '/') {
         EXPORTS.deferCallback('serverDefer', 'defer', function (error) {
           if (error) {
@@ -2920,7 +2930,7 @@ integrate forever-webui
             return;
           }
           options.url = state.localhost + options.url;
-          EXPORTS.ajax(options, onEventError);
+          EXPORTS.ajax(options, _onEventError);
         });
         return;
       }
@@ -2928,7 +2938,7 @@ integrate forever-webui
       urlParsed = required.url.parse(options.proxy || options.url || '');
       /* assert valid http / https url */
       if (!(/^https*:$/).test(urlParsed.protocol)) {
-        onEventError(new Error('invalid url - ' + (options.proxy || options.url)));
+        _onEventError(new Error('invalid url - ' + (options.proxy || options.url)));
         return;
       }
       options.hostname = urlParsed.hostname;
@@ -2947,107 +2957,23 @@ integrate forever-webui
         console.log(['_ajaxNodejs', options]);
         return;
       }
-      /* set timeout */
-      timeout = setTimeout(_onEventError, options.timeout || state.timeoutDefault,
-        EXPORTS.createErrorTimeout());
       /* socks5 */
       if (required.utility2._socks5Ajax(options, _onEventError)) {
         return;
       }
-      request = options.protocol === 'https:' ? required.https : required.http;
-      request = request.request(options, function (_response) {
-        var readStream;
-        response = _response;
-        if (options.dataType === 'response') {
-          _onEventError(null, response);
-          return;
-        }
-        if (options.redirect !== false) {
-          /* http redirect */
-          switch (response.statusCode) {
-          case 300:
-          case 301:
-          case 302:
-          case 303:
-          case 307:
-          case 308:
-            options.redirected = options.redirected || 0;
-            options.redirected += 1;
-            if (options.redirected >= 8) {
-              _onEventError(new Error('too many http redirects - '
-                + response.headers.location));
-              return;
-            }
-            options.url = response.headers.location;
-            if (options.url[0] === '/') {
-              options.url = options.protocol + '//' + options.hostname + options.url;
-            }
-            if (response.statusCode === 303) {
-              options.data = null;
-              options.method = 'GET';
-            }
-            EXPORTS.ajax(options, _onEventError);
-            return;
-          }
-        }
-        switch (options.dataType) {
-        case 'headers':
-          _onEventError(null, response.headers);
-          return;
-        case 'statusCode':
-          _onEventError(null, response.statusCode);
-          return;
-        }
-        readStream = response;
-        switch (response.headers['content-encoding']) {
-        case 'deflate':
-          readStream = response.pipe(required.zlib.createInflate());
-          break;
-        case 'gzip':
-          readStream = response.pipe(required.zlib.createGunzip());
-          break;
-        }
-        readStream.on('error', _onEventError);
-        EXPORTS.streamReadOnEventError(readStream, function (error, data) {
-          if (error) {
-            _onEventError(error);
-            return;
-          }
-          if (response.statusCode >= 400) {
-            _onEventError(new Error((options.method || 'GET') + ' - ' + options.url
-              + ' - ' + response.statusCode + ' - ' + data.toString()));
-            return;
-          }
-          switch (options.dataType) {
-          case 'binary':
-            break;
-          /* try to JSON.parse the response */
-          case 'json':
-            data = EXPORTS.jsonParseOrError(data);
-            if (data instanceof Error) {
-              /* or if parsing fails, pass an error with offending url */
-              _onEventError(new Error('invalid json data from ' + options.url));
-              return;
-            }
-            break;
-          default:
-            data = data.toString();
-          }
-          _onEventError(null, data);
-        });
-      }).on('error', _onEventError);
-      if (options.file) {
-        options.readStream = options.readStream || required.fs.createReadStream(options.file);
-      }
-      if (options.readStream) {
-        options.readStream.on('error', _onEventError).pipe(request.on('error', _onEventError));
-      } else {
-        request.end(options.data);
-      }
-      /* debug */
-      if (options.debugFlag || state.debugFlag) {
-        console.log(['_ajaxNodejs', options]);
-      }
+      local._ajaxNodejsRequest(options, _onEventError);
+    },
+
+    _ajaxNodejs_fileUriScheme_test: function (onEventError) {
+      /*
+        this function tests ajaxNodejs's file uri scheme behavior
+      */
+      EXPORTS.ajax({
+        encoding: 'utf8',
+        url: 'file://localhost/' + state.fsFileTestHelloJson
+      }, function (error, data) {
+        onEventError(error || (data !== '"hello world"'));
+      });
     },
 
     __ajaxNodejs_serverResumeError_test: function (onEventError) {
@@ -3076,6 +3002,117 @@ integrate forever-webui
         onEventError(EXPORTS.isErrorTimeout(error) ? null : new Error());
       });
     },
+
+    _ajaxNodejsFile: function (options, onEventError) {
+      /*
+        this function implements the ajax function in nodejs for the file uri scheme
+      */
+      required.fs.readFile(options.url.replace(/^file:\/\/[^\/]*/, ''),
+        options.encoding,
+        onEventError);
+    },
+
+    _ajaxNodejsRequest: function (options, onEventError) {
+      /*
+        this function runs the actual ajax request
+      */
+      var request;
+      request = options.protocol === 'https:' ? required.https : required.http;
+      request = request.request(options, function (response) {
+        var readStream;
+        options.response = response;
+        if (options.dataType === 'response') {
+          onEventError(null, response);
+          return;
+        }
+        if (options.redirect !== false) {
+          /* http redirect */
+          switch (response.statusCode) {
+          case 300:
+          case 301:
+          case 302:
+          case 303:
+          case 307:
+          case 308:
+            options.redirected = options.redirected || 0;
+            options.redirected += 1;
+            if (options.redirected >= 8) {
+              onEventError(new Error('too many http redirects - '
+                + response.headers.location));
+              return;
+            }
+            options.url = response.headers.location;
+            if (options.url[0] === '/') {
+              options.url = options.protocol + '//' + options.hostname + options.url;
+            }
+            if (response.statusCode === 303) {
+              options.data = null;
+              options.method = 'GET';
+            }
+            EXPORTS.ajax(options, onEventError);
+            return;
+          }
+        }
+        switch (options.dataType) {
+        case 'headers':
+          onEventError(null, response.headers);
+          return;
+        case 'statusCode':
+          onEventError(null, response.statusCode);
+          return;
+        }
+        switch (response.headers['content-encoding']) {
+        case 'deflate':
+          readStream = response.pipe(required.zlib.createInflate());
+          break;
+        case 'gzip':
+          readStream = response.pipe(required.zlib.createGunzip());
+          break;
+        default:
+          readStream = response;
+        }
+        readStream.on('error', onEventError);
+        EXPORTS.streamReadOnEventError(readStream, function (error, data) {
+          if (error) {
+            onEventError(error);
+            return;
+          }
+          if (response.statusCode >= 400) {
+            onEventError(new Error((options.method || 'GET') + ' - ' + options.url
+              + ' - ' + response.statusCode + ' - ' + data.toString()));
+            return;
+          }
+          switch (options.dataType) {
+          case 'binary':
+            break;
+          /* try to JSON.parse the response */
+          case 'json':
+            data = EXPORTS.jsonParseOrError(data);
+            if (data instanceof Error) {
+              /* or if parsing fails, pass an error with offending url */
+              onEventError(new Error('invalid json data from ' + options.url));
+              return;
+            }
+            break;
+          default:
+            data = data.toString();
+          }
+          onEventError(null, data);
+        });
+      }).on('error', onEventError);
+      if (options.file) {
+        options.readStream = options.readStream || required.fs.createReadStream(options.file);
+      }
+      if (options.readStream) {
+        options.readStream.on('error', onEventError).pipe(request.on('error', onEventError));
+      } else {
+        request.end(options.data);
+      }
+      /* debug */
+      if (options.debugFlag || state.debugFlag) {
+        console.log(['_ajaxNodejs', options]);
+      }
+    }
 
   };
   local._init();
@@ -3125,23 +3162,21 @@ integrate forever-webui
       /*
         this function lints a js script for errors
       */
-      var ast, lint;
-      if (required.jslint_linter && !global.__coverage__) {
-        lint = required.jslint_linter.lint(script, { maxerr: 8 });
-        if (!lint.ok) {
-          required.jslint_reporter.report(file, lint);
-        }
-      }
-      /* uglify-js - warn unused variables */
-      if (file.slice(-3) === '.js' && required.uglify_js) {
-        try {
-          ast = required.uglify_js.parse(script, { filename: file });
-          ast.figure_out_scope();
-          /* uglify-js - warn unused variables */
-          ast.transform(required.uglify_js_compressor);
-        } catch (errorUglifyjs) {
-          EXPORTS.onEventErrorDefault(errorUglifyjs);
-        }
+      var JSLINT, pad;
+      JSLINT = global.JSLINT;
+      if (!global.__coverage__ && !JSLINT(script)) {
+        console.log('\n' + file);
+        JSLINT.errors.forEach(function (error, ii) {
+          pad = "#" + String(ii + 1);
+          while (pad.length < 3) {
+            pad = ' ' + pad;
+          }
+          if (error) {
+            console.log(pad + ' ' + error.reason);
+            console.log('    ' + (error.evidence || '').replace(/^\s+|\s+$/, "") + ' \/\/ Line '
+              + error.line + ', Pos ' + error.character);
+          }
+        });
       }
       return script;
     },
@@ -3176,7 +3211,7 @@ integrate forever-webui
       EXPORTS.lintScript('foo.js', '\n');
       global.__coverage__ = coverage;
       onEventError();
-    },
+    }
 
   };
   local._init();
@@ -3373,7 +3408,7 @@ integrate forever-webui
       content = content.replace((/[\t\r ]+$/gm), '').trim();
       /* write to file */
       EXPORTS.fsWriteFileAtomic(file, content, null, onEventError);
-    },
+    }
 
   };
   local._init();
@@ -3494,7 +3529,7 @@ integrate forever-webui
       /*
         this function tests _socks5Ajax's socks5 behavior
       */
-      if (!state.socks5ServerPort) {
+      if (!(state.socks5ServerPort && state.isNpmTest)) {
         onEventError('skip');
         return;
       }
@@ -3514,7 +3549,7 @@ integrate forever-webui
       pair.on('secure', function () {
         onEventError(pair.ssl.verifyError(), pair.cleartext.on('error', onEventError));
       });
-    },
+    }
 
   };
   local._init();
@@ -3684,7 +3719,7 @@ integrate forever-webui
           }
         });
       }, 1000, state.timeoutDefault);
-    },
+    }
 
   };
   local._init();
@@ -3827,7 +3862,7 @@ integrate forever-webui
         state.repl.context.EXPORTS = EXPORTS;
         state.repl.context.required = required;
       }
-    },
+    }
 
   };
   local._init();
@@ -4185,7 +4220,7 @@ integrate forever-webui
       state.serverPort2 = state.serverPort2 || EXPORTS.serverPortRandom();
       state.localhost2 = state.localhost2 || 'http://localhost:' + state.serverPort2;
       _listen(state.serverPort2);
-    },
+    }
 
   };
   local._init();
@@ -4278,7 +4313,7 @@ integrate forever-webui
       state.phantomjsPort = EXPORTS.serverPortRandom();
       /* instrument file if coverage is enabled */
       file = file || required.utility2.__filename;
-      if (global.__coverage__ && file === required.utility2.__filename) {
+      if (required.istanbul && global.__coverage__ && file === required.utility2.__filename) {
         required.fs.readFile(file, 'utf8', function (error, content) {
           /*jslint stupid: true*/
           var file2;
@@ -4372,7 +4407,7 @@ integrate forever-webui
       EXPORTS.nop(state.isNpmTest
         ? EXPORTS.phantomjsTestUrl('/test/test.html#testWatch=1', onEventError)
         : onEventError('skip'));
-    },
+    }
 
   };
   local._init();
@@ -4465,7 +4500,7 @@ integrate forever-webui
       EXPORTS.onEventErrorDefault(error);
       response.statusCode = 500;
       local._serverRespondData(request, response);
-    },
+    }
 
   };
   local._init();
@@ -4495,8 +4530,14 @@ integrate forever-webui
     },
 
     _initOnce: function () {
+      /*jslint stupid: true */
+      /* create mock json test file */
+      state.fsFileTestHelloJson = state.fsDirTmp + '/test.hello.json';
+      required.fs.writeFileSync(state.fsFileTestHelloJson, '"hello world"');
+      /* npm test */
       setTimeout(local._testNpm);
-      setTimeout(local._testCoveralls);
+      /* upload coverage to http://coveralls.io */
+      setTimeout(local._coverageCoverallsUpload);
     },
 
     _initTest: function () {
@@ -4542,7 +4583,7 @@ integrate forever-webui
       */
       EXPORTS.testMock({
         global: { setTimeout: EXPORTS.callCallback },
-        routerTestDict: { '/test/test.timeout': local['routerDict_/test/test.timeout'] },
+        routerTestDict: { '/test/test.timeout': local['routerDict_/test/test.timeout'] }
       }, function () {
         state.middlewareTest({ url: '/test/test.timeout' }, { end: onEventError });
       });
@@ -4575,7 +4616,7 @@ integrate forever-webui
         EXPORTS: { streamReadOnEventError: function (_, onEventError) {
           onEventError(new Error());
         } },
-        routerTestDict: { '/test/test.upload': local['routerDict_/test/test.upload'] },
+        routerTestDict: { '/test/test.upload': local['routerDict_/test/test.upload'] }
       }, function () {
         state.middlewareTest({ url: '/test/test.upload' }, {}, function (error) {
           onEventError(!error);
@@ -4719,7 +4760,7 @@ integrate forever-webui
       onEventError();
     },
 
-    _testCoveralls: function () {
+    _coverageCoverallsUpload: function () {
       /*
         this function uploads code coverage info to http://coveralls.io
       */
@@ -4735,29 +4776,29 @@ integrate forever-webui
       }
     },
 
-    _testCoveralls_default_test: function (onEventError) {
+    _coverageCoverallsUpload_default_test: function (onEventError) {
       /*
-        this function tests testCoveralls's default behavior
+        this function tests _coverageCoverallsUpload's default behavior
       */
       EXPORTS.testMock({
         process: { env: { TRAVIS: false } },
         state: { isCoveralls: true }
       }, function () {
-        local._testCoveralls();
+        local._coverageCoverallsUpload();
         onEventError();
       });
     },
 
-    _testCoveralls_travisCi_test: function (onEventError) {
+    _coverageCoverallsUpload_travisCi_test: function (onEventError) {
       /*
-        this function tests testCoveralls's travis-ci behavior
+        this function tests _coverageCoverallsUpload's travis-ci behavior
       */
       EXPORTS.testMock({
         global: { setTimeout: EXPORTS.callCallback },
         process: { env: { TRAVIS: true } },
         state: { isCoveralls: true }
       }, function () {
-        local._testCoveralls();
+        local._coverageCoverallsUpload();
         onEventError();
       });
     },
@@ -4870,7 +4911,7 @@ integrate forever-webui
       }, function (error) {
         onEventError(!error);
       });
-    },
+    }
 
   };
   local._init();
