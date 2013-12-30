@@ -52,8 +52,6 @@ integrate forever-webui
         if (process.versions.node) {
           state.isNodejs = true;
           EXPORTS.require = EXPORTS.require || require;
-          /* nodejs underscore */
-          global.underscore = global.underscore || require('underscore');
         }
         /* nodejs node-webkit */
         state.isNodeWebkit = process.versions['node-webkit'];
