@@ -44,8 +44,8 @@ integrate forever-webui
           this global function is used purely for temporary debugging,
           and jslint will nag you to remove it
         */
-        console._log('\n\n\n\ndebugPrint');
-        console._log.apply(console, arguments);
+        console.log('\n\n\n\ndebugPrint');
+        console.log.apply(console, arguments);
       };
       if (global.process && process.versions) {
         /* nodejs */
@@ -370,7 +370,7 @@ integrate forever-webui
     },
 
     _debugPrint_default_test: function (onEventError) {
-      EXPORTS.testMock({ console: { _log: EXPORTS.nop } }, function () {
+      EXPORTS.testMock({ console: { log: EXPORTS.nop } }, function () {
         onEventError(global.debugPrint('hello world'));
       });
     },
@@ -2104,7 +2104,6 @@ integrate forever-webui
         'zlib',
         /* require external */
         'connect',
-        'csslint',
         'cssmin',
         'graceful-fs',
         'istanbul',
@@ -2119,7 +2118,7 @@ integrate forever-webui
       required.utility2_external = required.utility2_external
         || require(__dirname + '/bower_components/utility2-external');
       [
-        'utility2.external.shared.js'
+        'utility2-external.shared.js'
       ].forEach(function (file) {
         EXPORTS.jsEvalFileSyncOnEventError(
           required.utility2_external.__dirname + '/' + file,
@@ -2191,12 +2190,11 @@ integrate forever-webui
       state.stateOverride = state.stateOverride || {};
       EXPORTS.setOptionsOverrides(state, state.stateOverride || {});
       state.stateOverrideUrl = state.stateOverrideUrl || '/state/stateOverride.json';
-      if (state.serverPort) {
+      EXPORTS.deferCallback('serverDefer', 'defer', function () {
         setTimeout(function () {
           EXPORTS.clearCallSetInterval('stateOverrideUpdate', function () {
             EXPORTS.ajax({
               dataType: 'json',
-              debugFlag: true,
               headers: { authorization: 'Basic ' + state.securityBasicAuthSecret },
               url: state.stateOverrideUrl
             }, function (error, data) {
@@ -2210,7 +2208,7 @@ integrate forever-webui
             });
           }, 5 * 60 * 1000);
         });
-      }
+      });
       /* load js files */
       if (state.loadFiles) {
         state.loadFiles.split(',').forEach(function (file) {
@@ -2496,37 +2494,11 @@ integrate forever-webui
       EXPORTS.testModule(local);
     },
 
-    createFsCacheFilename: function () {
+    createFsCacheFilename: function (dir, key) {
       /*
         this function creates a temp filename in the cache directory
       */
-      return state.fsDirCache + '/' + EXPORTS.dateAndSalt();
-    },
-
-    fsAppendFile: function (file, data, onEventError) {
-      /*
-        this function appends data to a file, while auto-creating missing directories
-      */
-      required.fs.appendFile(file, data, function (error) {
-        if (!error) {
-          onEventError();
-          return;
-        }
-        /* fallback - retry after creating missing directory */
-        if (error.code === 'ENOENT') {
-          EXPORTS.fsMkdirp(EXPORTS.fsDirname(file), function (error) {
-            if (error) {
-              onEventError(error);
-              return;
-            }
-            /* retry */
-            required.fs.appendFile(file, data, onEventError);
-          });
-          return;
-        }
-        /* default behavior */
-        onEventError(error);
-      });
+      return (dir || state.fsDirCache) + '/' + encodeURIComponent(key || EXPORTS.dateAndSalt());
     },
 
     _fsCacheCleanup: function () {
@@ -2687,11 +2659,7 @@ integrate forever-webui
       cache = EXPORTS.createFsCacheFilename();
       required.fs.rename(dir, cache, function (error) {
         if (error) {
-          if (error.code === 'ENOENT') {
-            onEventError();
-            return;
-          }
-          onEventError(error);
+          onEventError(error.code === 'ENOENT' && error);
           return;
         }
         /* recursively remove file / directory after rename */
@@ -2898,18 +2866,21 @@ integrate forever-webui
       /* localhost */
       var _onEventError, timeout, urlParsed;
       _onEventError = function (error, data) {
+        var response;
         if (timeout < 0) {
           return;
         }
         clearTimeout(timeout);
         timeout = -1;
         /* debug */
+        response = options.response;
+        options.response = null;
         if (options.debugFlag) {
           console.log([
             '_ajaxNodejs',
             options.url,
-            options.response && options.response.statusCode,
-            options.response && options.response.headers
+            response && response.statusCode,
+            response && response.headers
           ]);
         }
         onEventError(error, data, options);
@@ -2918,6 +2889,20 @@ integrate forever-webui
       timeout = setTimeout(_onEventError,
         options.timeout || state.timeoutDefault,
         EXPORTS.createErrorTimeout());
+      /* cached file */
+      if (options.cache && options.cache !== 'miss') {
+        required.fs.readFile(EXPORTS.createFsCacheFilename(options.cacheDir, options.url0),
+          function (error, data) {
+            options.cache = 'miss';
+            if (error) {
+              local._ajaxNodejs(options, _onEventError);
+              return;
+            }
+            options.cache = 'hit';
+            local._onEventErrorData(options, _onEventError, null, data);
+          });
+        return;
+      }
       /* file uri scheme */
       if (options.url.slice(0, 7) === 'file://') {
         local._ajaxNodejsFile(options, _onEventError);
@@ -2964,12 +2949,29 @@ integrate forever-webui
       local._ajaxNodejsRequest(options, _onEventError);
     },
 
+    _isTest: 1,
+
+    _ajaxNodejs_cache_test: function (onEventError) {
+      /*
+        this function tests ajaxNodejs's cache behavior
+      */
+      var url;
+      url = '/test/test.echo?' + EXPORTS.uuid4();
+      EXPORTS.ajax({ cache: true, url: url }, function (error, data, options) {
+        error = error || options.cache !== 'cached';
+        EXPORTS.nop(error ? onEventError(error) : (function () {
+          EXPORTS.ajax({ cache: true, url: url }, function (error, data, options) {
+            onEventError(error || options.cache !== 'hit');
+          });
+        }()));
+      });
+    },
+
     _ajaxNodejs_fileUriScheme_test: function (onEventError) {
       /*
         this function tests ajaxNodejs's file uri scheme behavior
       */
       EXPORTS.ajax({
-        encoding: 'utf8',
         url: 'file://localhost/' + state.fsFileTestHelloJson
       }, function (error, data) {
         onEventError(error || (data !== '"hello world"'));
@@ -3008,8 +3010,10 @@ integrate forever-webui
         this function implements the ajax function in nodejs for the file uri scheme
       */
       required.fs.readFile(options.url.replace(/^file:\/\/[^\/]*/, ''),
-        options.encoding,
-        onEventError);
+        options,
+        function (error, data) {
+          local._onEventErrorData(options, onEventError, error, data);
+        });
     },
 
     _ajaxNodejsRequest: function (options, onEventError) {
@@ -3019,86 +3023,7 @@ integrate forever-webui
       var request;
       request = options.protocol === 'https:' ? required.https : required.http;
       request = request.request(options, function (response) {
-        var readStream;
-        options.response = response;
-        if (options.dataType === 'response') {
-          onEventError(null, response);
-          return;
-        }
-        if (options.redirect !== false) {
-          /* http redirect */
-          switch (response.statusCode) {
-          case 300:
-          case 301:
-          case 302:
-          case 303:
-          case 307:
-          case 308:
-            options.redirected = options.redirected || 0;
-            options.redirected += 1;
-            if (options.redirected >= 8) {
-              onEventError(new Error('too many http redirects - '
-                + response.headers.location));
-              return;
-            }
-            options.url = response.headers.location;
-            if (options.url[0] === '/') {
-              options.url = options.protocol + '//' + options.hostname + options.url;
-            }
-            if (response.statusCode === 303) {
-              options.data = null;
-              options.method = 'GET';
-            }
-            EXPORTS.ajax(options, onEventError);
-            return;
-          }
-        }
-        switch (options.dataType) {
-        case 'headers':
-          onEventError(null, response.headers);
-          return;
-        case 'statusCode':
-          onEventError(null, response.statusCode);
-          return;
-        }
-        switch (response.headers['content-encoding']) {
-        case 'deflate':
-          readStream = response.pipe(required.zlib.createInflate());
-          break;
-        case 'gzip':
-          readStream = response.pipe(required.zlib.createGunzip());
-          break;
-        default:
-          readStream = response;
-        }
-        readStream.on('error', onEventError);
-        EXPORTS.streamReadOnEventError(readStream, function (error, data) {
-          if (error) {
-            onEventError(error);
-            return;
-          }
-          if (response.statusCode >= 400) {
-            onEventError(new Error((options.method || 'GET') + ' - ' + options.url
-              + ' - ' + response.statusCode + ' - ' + data.toString()));
-            return;
-          }
-          switch (options.dataType) {
-          case 'binary':
-            break;
-          /* try to JSON.parse the response */
-          case 'json':
-            data = EXPORTS.jsonParseOrError(data);
-            if (data instanceof Error) {
-              /* or if parsing fails, pass an error with offending url */
-              onEventError(new Error('invalid json data from ' + options.url));
-              return;
-            }
-            break;
-          default:
-            data = data.toString();
-          }
-          onEventError(null, data);
-        });
+        local._onEventResponse(options, onEventError, response);
       }).on('error', onEventError);
       if (options.file) {
         options.readStream = options.readStream || required.fs.createReadStream(options.file);
@@ -3112,6 +3037,110 @@ integrate forever-webui
       if (options.debugFlag || state.debugFlag) {
         console.log(['_ajaxNodejs', options]);
       }
+    },
+
+    _onEventErrorData: function (options, onEventError, error, data) {
+      /*
+        this function handles error / data received by ajax request
+      */
+      if (error) {
+        onEventError(error);
+        return;
+      }
+      if (options.response && options.response.statusCode >= 400) {
+        onEventError(new Error((options.method || 'GET') + ' - ' + options.url
+          + ' - ' + options.response.statusCode + ' - ' + data.toString()));
+        return;
+      }
+      /* cache data */
+      if (options.cache === 'miss') {
+        EXPORTS.fsWriteFileAtomic(EXPORTS.createFsCacheFilename(options.cacheDir, options.url0),
+          data,
+          null,
+          function (error) {
+            options.cache = error ? 'error' : 'cached';
+            local._onEventErrorData(options, onEventError, error, data);
+          });
+        return;
+      }
+      switch (options.dataType) {
+      case 'binary':
+        break;
+      /* try to JSON.parse the response */
+      case 'json':
+        data = EXPORTS.jsonParseOrError(data);
+        if (data instanceof Error) {
+          /* or if parsing fails, pass an error with offending url */
+          onEventError(new Error('invalid json data from ' + options.url));
+          return;
+        }
+        break;
+      default:
+        data = data.toString();
+      }
+      onEventError(null, data);
+    },
+
+    _onEventResponse: function (options, onEventError, response) {
+      /*
+        this function handles the response object received by ajax request
+      */
+      var readStream;
+      options.response = response;
+      if (options.dataType === 'response') {
+        onEventError(null, response);
+        return;
+      }
+      if (options.redirect !== false) {
+        /* http redirect */
+        switch (response.statusCode) {
+        case 300:
+        case 301:
+        case 302:
+        case 303:
+        case 307:
+        case 308:
+          options.redirected = options.redirected || 0;
+          options.redirected += 1;
+          if (options.redirected >= 8) {
+            onEventError(new Error('too many http redirects - '
+              + response.headers.location));
+            return;
+          }
+          options.url = response.headers.location;
+          if (options.url[0] === '/') {
+            options.url = options.protocol + '//' + options.hostname + options.url;
+          }
+          if (response.statusCode === 303) {
+            options.data = null;
+            options.method = 'GET';
+          }
+          EXPORTS.ajax(options, onEventError);
+          return;
+        }
+      }
+      switch (options.dataType) {
+      case 'headers':
+        onEventError(null, response.headers);
+        return;
+      case 'statusCode':
+        onEventError(null, response.statusCode);
+        return;
+      }
+      switch (response.headers['content-encoding']) {
+      case 'deflate':
+        readStream = response.pipe(required.zlib.createInflate());
+        break;
+      case 'gzip':
+        readStream = response.pipe(required.zlib.createGunzip());
+        break;
+      default:
+        readStream = response;
+      }
+      readStream.on('error', onEventError);
+      EXPORTS.streamReadOnEventError(readStream, function (error, data) {
+        local._onEventErrorData(options, onEventError, error, data);
+      });
     }
 
   };
@@ -3145,16 +3174,14 @@ integrate forever-webui
       /*
         this function lints a css script for errors
       */
-      if (required.csslint) {
-        console.log(required.csslint.CSSLint.getFormatter('text').formatResults(
-          required.csslint.CSSLint.verify(
-            script || '',
-            { ignore: 'ids' }
-          ),
-          file,
-          { quiet: true }
-        ));
-      }
+      console.log(global.CSSLint.getFormatter('text').formatResults(
+        global.CSSLint.verify(
+          script || '',
+          { ignore: 'ids' }
+        ),
+        file,
+        { quiet: true }
+      ));
       return script;
     },
 
@@ -3254,7 +3281,7 @@ integrate forever-webui
         }
         if (error) {
           remaining = -1;
-          _onEventError(error);
+          EXPORTS.onEventErrorDefault(error);
           process.exit();
           return;
         }
@@ -3294,7 +3321,6 @@ integrate forever-webui
         }
         var dict, options;
         dict = {};
-        // content = (/\/\* listing start \*\/\n([\S\s]+\n)\/\* listing end \*\/\n/).exec(content);
         content = (/[\S\s]+?\n\}\(\)\);\n/).exec(content);
         content = EXPORTS.lintScript(file + '.js', content && content[0].trim());
         EXPORTS.jsEvalOnEventError(file, content, function (error, data) {
@@ -3305,6 +3331,8 @@ integrate forever-webui
           options = data;
         });
         EXPORTS.ajaxMultiUrls({
+          cache: true,
+          cacheDir: state.fsDirTmp + '/rollup',
           urls: options.urls
         }, function (error, data, options, remaining) {
           if (error) {
@@ -3368,6 +3396,8 @@ integrate forever-webui
         });
         remaining += 1;
         EXPORTS.ajaxMultiUrls({
+          cache: true,
+          cacheDir: state.fsDirTmp + '/rollup',
           dataType: 'binary',
           urls: Object.keys(dataUris)
         }, function (error, data, options2, remaining2) {
@@ -3770,6 +3800,9 @@ integrate forever-webui
         EXPORTS.ajax({ debugFlag: true, redirect: false, url: bb },
           EXPORTS.onEventErrorDefault);
         return;
+      case 'ajaxCache':
+        EXPORTS.ajax({ cache: true, url: bb }, EXPORTS.onEventErrorDefault);
+        return;
       case 'ajax':
         EXPORTS.ajax({ url: bb }, EXPORTS.onEventErrorDefault);
         return;
@@ -4039,6 +4072,15 @@ integrate forever-webui
       */
       EXPORTS.serverRespondFile(response, required.utility2_external.__dirname
         + request.urlPathNormalized.replace('/utility2-external', ''), next);
+    },
+
+    'routerAssetsDict_/public/assets/utility2-external.shared.js': function (request, response, next) {
+      /*
+        this function serves public, external assets
+      */
+      EXPORTS.serverRespondFile(response,
+        required.utility2_external.__dirname + '/utility2-external.shared.js',
+        next);
     },
 
     'routerAssetsDict_/public/assets/utility2.js': function (request, response) {
@@ -4713,6 +4755,7 @@ integrate forever-webui
 
       + [
         '/public/assets/utility2-external/external.rollup.auto.js',
+        '/public/assets/utility2-external.shared.js',
         '/public/assets/utility2.js'
       ].map(function (url) {
         return '<script src="' + url + '"></script>\n';
@@ -4891,7 +4934,9 @@ integrate forever-webui
       });
       xml += '</testsuites>\n';
       /* write test report */
-      EXPORTS.fsWriteFileAtomic(state.fsDirTmp + '/test/' + EXPORTS.dateAndSalt()
+      EXPORTS.fsWriteFileAtomic(state.fsDirTmp
+        + '/test/result.'
+        + encodeURIComponent(EXPORTS.dateAndSalt())
         + '.xml', xml, null, EXPORTS.onEventErrorDefault);
     },
 

@@ -6,7 +6,6 @@
   "dependencies": {
     "bower": "1.2.8",
     "connect": "*",
-    "csslint": "*",
     "cssmin": "*",
     "graceful-fs": "*",
     "mime": "*",
@@ -34,5 +33,5 @@
   "stateDefault": {
     "coverallsUrl": "https://coveralls.io/r/kaizhu256/utility2"
   },
-  "version": "2013.12.28-1"
+  "version": "2013.12.30-1"
 }
