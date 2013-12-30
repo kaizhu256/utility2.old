@@ -2105,7 +2105,6 @@ integrate forever-webui
         'cssmin',
         'graceful-fs',
         'istanbul',
-        'jslint',
         'mime',
         'moment',
         'phantomjs',
@@ -2133,9 +2132,6 @@ integrate forever-webui
         required.istanbul_Instrumenter = required.istanbul_Instrumenter
           || new required.istanbul.Instrumenter();
       }
-      /* init jslint */
-      required.jslint_linter = required.jslint_linter || require('jslint/lib/linter');
-      required.jslint_reporter = required.jslint_reporter || require('jslint/lib/reporter');
       /* init sqlite3 */
       state.dbSqlite3 = new required.sqlite3.cached.Database(':memory:');
       /* init uglify-js*/
