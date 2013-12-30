@@ -4,20 +4,19 @@
     "email": "kaizhu256@gmail.com"
   }],
   "dependencies": {
-    "bower": "1.2.8",
-    "connect": "*",
-    "cssmin": "*",
-    "graceful-fs": "*",
-    "mime": "*",
-    "moment": "*",
-    "phantomjs": "*",
-    "sqlite3": "*",
-    "uglify-js": "*"
+    "bower": "1.2.x",
+    "connect": "2.11.x",
+    "cssmin": "0.4.x",
+    "graceful-fs": "2.0.x",
+    "mime": "1.2.x",
+    "phantomjs": "1.9.x",
+    "sqlite3": "2.1.x",
+    "uglify-js": "2.4.x"
   },
   "description": "common, shared nodejs utilities",
   "devDependencies": {
-    "coveralls": "*",
-    "istanbul": "*"
+    "coveralls": "2.5.x",
+    "istanbul": "0.2.x"
   },
   "main": "utility2.js",
   "name": "utility2",
@@ -26,7 +25,7 @@
     "url" : "https://github.com/kaizhu256/utility2.git"
   },
   "scripts": {
-    "postinstall": "./node_modules/bower/bin/bower install",
+    "postinstall": "bower=node_modules/bower/bin/bower; bower install",
     "start": "./utility2.js --repl --serverPort random --test",
     "test": "npm install; utility2=./utility2.js; $utility2 --npm-test $utility2 --timeout-default 8000 --timeout-exit 16000; sleep 2; $utility2 --coveralls"
   },

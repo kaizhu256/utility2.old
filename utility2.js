@@ -2106,7 +2106,6 @@ integrate forever-webui
         'graceful-fs',
         'istanbul',
         'mime',
-        'moment',
         'phantomjs',
         'sqlite3',
         'uglify-js'
