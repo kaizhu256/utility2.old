@@ -4848,7 +4848,7 @@ integrate forever-webui
         if (process.env.TRAVIS) {
           script = 'cat ' + state.fsDirTest + '/coverage/lcov.info'
             + ' | node_modules/coveralls/bin/coveralls.js'
-            + ' && kill ' + process.pid;
+            + '; kill ' + process.pid;
           EXPORTS.shell(script);
           EXPORTS.timeoutSetTimeout(EXPORTS.exit,
             state.timeoutDefault,
