@@ -6,7 +6,6 @@ utility2.js
 common, shared utilities for both browser and nodejs
 
 todo:
-integrate ioAggregate into testModule
 fix redundant debugFlag in ajax
 remove rollup cache for local tests
 add timeout for deferCallback
