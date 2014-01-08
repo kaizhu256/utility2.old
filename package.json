@@ -25,9 +25,9 @@
     "url" : "https://github.com/kaizhu256/utility2.git"
   },
   "scripts": {
-    "postinstall": "bower=node_modules/bower/bin/bower; bower install",
-    "start": "./utility2.js --repl --serverPort random --test",
-    "test": "npm install; utility2=./utility2.js; $utility2 --npm-test $utility2 --timeout-default 8000 --timeout-exit 16000; sleep 2; $utility2 --coveralls"
+    "postinstall": "bower=node_modules/bower/bin/bower; $bower install",
+    "start": "./utility2.js --repl --serverPort random",
+    "test": "utility2=./utility2.js; $utility2 --npm-test-mode start --npm-test-script $utility2 --timeout-default 4000 --timeout-exit 16000; $utility2 --coveralls; $utility2 --npm-test-mode end"
   },
   "stateDefault": {
     "coverallsUrl": "https://coveralls.io/r/kaizhu256/utility2"
