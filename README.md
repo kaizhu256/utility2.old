@@ -4,6 +4,7 @@
 ## demo usage
 ```
 npm install utility2.js
+cd node_modules/utility2
 npm test
 ```
 
