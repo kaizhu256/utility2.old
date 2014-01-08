@@ -13,6 +13,9 @@ npm test
 * https://coveralls.io/r/kaizhu256/utility2 (code coverage status)
 
 ## changelog
+#### 2014.01.09-1
+* remove npm mime dependency
+
 #### 2014.01.08-1
 * integrate ioAggregate with testModule
 * add localhost testing for socks5

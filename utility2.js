@@ -570,10 +570,11 @@ integrate forever-webui
       /*
         this function returns the file's mime-type
       */
-      if (required.mime) {
-        return required.mime.lookup(file);
+      file = EXPORTS.fsExtname(file).slice(1);
+      if (state.mimeTypesDict) {
+        return state.mimeTypesDict[file] || 'application/octet-stream';
       }
-      switch ((/[^\.]*$/).exec(file)[0]) {
+      switch (file) {
       case 'css':
         return 'text/css';
       case 'html':
@@ -593,12 +594,12 @@ integrate forever-webui
       /*
         this function tests mimeLookup's default handling behavior
       */
-      EXPORTS.assert(EXPORTS.mimeLookup('css') === 'text/css');
-      EXPORTS.assert(EXPORTS.mimeLookup('html') === 'text/html');
-      EXPORTS.assert(EXPORTS.mimeLookup('js') === 'application/javascript');
-      EXPORTS.assert(EXPORTS.mimeLookup('json') === 'application/json');
-      EXPORTS.assert(EXPORTS.mimeLookup('txt') === 'text/plain');
-      EXPORTS.assert(EXPORTS.mimeLookup('') === 'application/octet-stream');
+      EXPORTS.assert(EXPORTS.mimeLookup('foo.css') === 'text/css');
+      EXPORTS.assert(EXPORTS.mimeLookup('foo.html') === 'text/html');
+      EXPORTS.assert(EXPORTS.mimeLookup('foo.js') === 'application/javascript');
+      EXPORTS.assert(EXPORTS.mimeLookup('foo.json') === 'application/json');
+      EXPORTS.assert(EXPORTS.mimeLookup('foo.txt') === 'text/plain');
+      EXPORTS.assert(EXPORTS.mimeLookup('foo') === 'application/octet-stream');
       onEventError();
     },
 
@@ -2239,12 +2240,14 @@ integrate forever-webui
     _name: 'utility2.moduleInitNodejs',
 
     _init: function () {
-      if (state.isNodejs) {
-        EXPORTS.initModule(module, local);
+      if (!state.isNodejs) {
+        return;
       }
+      EXPORTS.initModule(module, local);
     },
 
     _initOnce: function () {
+      /*jslint stupid: true*/
       /* require */
       EXPORTS.requireModules([
         /* require nodejs modules */
@@ -2261,7 +2264,6 @@ integrate forever-webui
         /* require npm modules */
         'connect', 'cssmin',
         'graceful-fs',
-        'mime',
         'phantomjs',
         'sqlite3',
         'uglify-js'
@@ -2269,14 +2271,25 @@ integrate forever-webui
       /* require utility2-external */
       required.utility2_external = required.utility2_external
         || require(__dirname + '/bower_components/utility2-external');
-      [
-        'utility2-external.shared.js'
-      ].forEach(function (file) {
-        EXPORTS.evalFileSyncOnEventError(
-          required.utility2_external.__dirname + '/' + file,
-          EXPORTS.onEventErrorDefault
-        );
-      });
+      EXPORTS.evalFileSyncOnEventError(required.utility2_external.__dirname
+        + '/utility2-external.shared.js',
+        EXPORTS.onEventErrorDefault);
+      required.fs.readFileSync(required.utility2_external.__dirname
+        + '/utility2-external.nodejs.txt', 'utf8')
+        .replace((/\n\/\* module start - (.*) \*\/\n([\S\s]*?)\n\/\* module end \*\//g),
+          function (_, url, text) {
+            /* export mime.types */
+            if (url.slice(-11) === '/mime.types') {
+              state.mimeTypesDict = {};
+              text.replace((/^(\w\S+)\s+(.*)$/gm), function (_, value, keys) {
+                keys.split(' ').forEach(function (key) {
+                  if (key) {
+                    state.mimeTypesDict[key] = value;
+                  }
+                });
+              });
+            }
+          });
       /* require underscore */
       global.underscore = global.underscore || EXPORTS._;
       /* maxSockets */
@@ -2324,7 +2337,6 @@ integrate forever-webui
       });
       /* load package.json file */
       EXPORTS.tryCatch(function () {
-        /*jslint stupid: true*/
         state.packageJson = {};
         state.packageJson = JSON.parse(required.fs.readFileSync(process.cwd()
           + '/package.json'));
@@ -3850,7 +3862,8 @@ integrate forever-webui
             argList = text;
             /* concat text to content */
             options.urlList.forEach(function (url, ii) {
-              content += '\n\n/* module - ' + url + ' */\n' + argList[ii].trim();
+              content += '\n\n/* module start - ' + url + ' */\n' + argList[ii].trim()
+                + '\n/* module end */';
             });
             /* remove trailing whitespace */
             content = content.replace((/[\t\r ]+$/gm), '').trim();
@@ -4572,8 +4585,8 @@ integrate forever-webui
           return;
         }
         utility2._socks5AjaxResume({
-          hostname: 'localhost',
-          url: 'http://localhost'
+          hostname: 'www.google.com',
+          url: 'http://www.google.com'
         }, function (error) {
           if (error && error.code === 'ECONNREFUSED') {
             return;
