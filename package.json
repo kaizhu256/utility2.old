@@ -13,13 +13,14 @@
     "sqlite3": "2.1.x",
     "uglify-js": "2.4.x"
   },
-  "description": "standalone, browser-side, test and code coverage framework",
+  "description": "utility2 - standalone, browser test and code coverage framework for nodejs",
   "devDependencies": {
     "coveralls": "2.5.x",
     "istanbul": "0.2.x"
   },
   "main": "utility2.js",
   "name": "utility2",
+  "readme": "# utility2\n#### standalone, browser test and code coverage framework for nodejs\n\n## demo usage\n```\nnpm install utility2.js\nnpm test\n```\n\n## build and code coverage status\n* https://travis-ci.org/kaizhu256/utility2 (build status)\n* https://coveralls.io/r/kaizhu256/utility2 (code coverage status)\n\n## changelog\n#### 2014.01.08-1\n* integrate ioAggregate with testModule\n* add localhost testing for socks5\n* integrate ioAggregate with moduleRollup\n* modularize ajaxNodejs\n* rewrite EXPORTS.ioAggregate and add moduleInstrumentScript\n\n#### 2013.12.30-1\n* add changelog\n* add versioning for npm dependencies\n",
   "repository" : {
     "type" : "git",
     "url" : "https://github.com/kaizhu256/utility2.git"
@@ -32,5 +33,5 @@
   "stateDefault": {
     "coverallsUrl": "https://coveralls.io/r/kaizhu256/utility2"
   },
-  "version": "2013.12.30-1"
+  "version": "2014.01.08-1"
 }

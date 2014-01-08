@@ -12,6 +12,7 @@
 .vim
 .wafpickle-*
 CVS
+README.*
 artifacts
 bower_components
 node_modules

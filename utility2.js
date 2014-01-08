@@ -3713,7 +3713,10 @@ integrate forever-webui
       return '(' + script + '\n)';
     },
 
-    _replParse_default_test: function (onEventError) {
+    _parse_default_test: function (onEventError) {
+      /*
+        this function tests parse's default behavior
+      */
       EXPORTS.testMock({
         EXPORTS: { ajax: EXPORTS.nop, phantomjsEval: EXPORTS.nop },
         console: { log: EXPORTS.nop },
