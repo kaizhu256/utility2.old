@@ -4,19 +4,18 @@
     "email": "kaizhu256@gmail.com"
   }],
   "dependencies": {
-    "bower": "1.2.x",
     "connect": "2.11.x",
     "cssmin": "0.4.x",
     "graceful-fs": "2.0.x",
-    "mime": "1.2.x",
-    "phantomjs": "1.9.x",
     "sqlite3": "2.1.x",
-    "uglify-js": "2.4.x"
+    "uglify-js": "2.4.x",
+    "utility2-external": "2014.x.x"
   },
-  "description": "utility2 - standalone, browser test and code coverage framework for nodejs",
+  "description": "utility2.js - standalone, browser test and code coverage framework for nodejs",
   "devDependencies": {
     "coveralls": "2.5.x",
-    "istanbul": "0.2.x"
+    "istanbul": "0.2.x",
+    "phantomjs": "1.9.x"
   },
   "main": "utility2.js",
   "name": "utility2",
@@ -26,12 +25,12 @@
     "url" : "https://github.com/kaizhu256/utility2.git"
   },
   "scripts": {
-    "postinstall": "bower=node_modules/bower/bin/bower; $bower install",
+    "postinstall": "npm update utility2-external",
     "start": "./utility2.js --repl --serverPort random",
     "test": "utility2=./utility2.js; $utility2 --npm-test-mode start --npm-test-script $utility2 --timeout-default 8000 --timeout-exit 16000; $utility2 --coveralls; $utility2 --npm-test-mode end"
   },
   "stateDefault": {
     "coverallsUrl": "https://coveralls.io/r/kaizhu256/utility2"
   },
-  "version": "2014.01.08-1"
+  "version": "2014.01.10-1"
 }

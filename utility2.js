@@ -1,20 +1,9 @@
 #!/usr/bin/env node
 /*jslint browser: true, indent: 2, maxerr: 8, node: true, nomen: true, regexp: true, todo: true, unparam: true*/
-/*global EXPORTS, global, required, state, underscore, utility2, $*/
+/*global EXPORTS, global, required, state, underscore, $*/
 /*
 utility2.js
-common, shared utilities for both browser and nodejs
-
-todo:
-integrate ioAggregate into testModule
-fix redundant debugFlag in ajax
-remove rollup cache for local tests
-add timeout for deferCallback
-rewrite EXPORTS.deferCallback to use event emitters instead
-recursively backup / override mock objects
-emulate localStorage
-add heroku dynamic config server
-integrate forever-webui
+standalone, browser test and code coverage framework for nodejs",
 */
 
 
@@ -30,29 +19,27 @@ integrate forever-webui
     _name: 'utility2.moduleInitShared',
 
     _init: function () {
-      try {
-        window.global = window.global || window;
-      } catch (ignore) {
-      }
-      /* exports */
+      /* export global objects */
+      (function () {
+        try {
+          window.global = window.global || window;
+        } catch (ignore) {
+        }
+      }());
       global.EXPORTS = global.EXPORTS || {};
       global.exports = global.exports || global.EXPORTS;
       global.module = global.module || {};
       global.required = global.required || {};
       global.state = global.state || {};
-      /* make console.log callable without context */
-      console._log = console._log || console.log;
-      console.log = function () {
-        console._log.apply(console, arguments);
-      };
       /* debug print */
-      global[['debug', 'Print'].join('')] = EXPORTS.zxqjDp = function () {
+      global[['debug', 'Print'].join('')] = EXPORTS._zxqjDp = function () {
         /*
           this global function is used purely for temporary debugging,
           and jslint will nag you to remove it
         */
         console.log('\n\n\n\ndebug' + 'Print');
         console.log.apply(console, arguments);
+        console.log();
       };
       /* javascript platform */
       state.javascriptPlatform = 'unknown';
@@ -82,7 +69,6 @@ integrate forever-webui
     _initOnce: function () {
       /* exports */
       EXPORTS.errorIgnore = EXPORTS.errorIgnore || new Error();
-      global.utility2 = global.utility2 || required.utility2;
       state.timeoutDefault = state.timeoutDefault || 30 * 1000;
       /* debug */
       global.onEventError = EXPORTS.onEventErrorDefault;
@@ -197,7 +183,7 @@ integrate forever-webui
           EXPORTS.deferCallback('untilServerReady', 'resume');
         }
         EXPORTS.deferCallback('untilServerReady', 'defer', local2._initTest || function () {
-          EXPORTS.testModule2(local2);
+          EXPORTS.testModule(local2);
         });
       });
     },
@@ -419,12 +405,16 @@ integrate forever-webui
       onEventError();
     },
 
-    _zxqjDp_default_test: function (onEventError) {
+    _isTest: 1,
+
+    _debug_print_default_test: function (onEventError) {
       /*
         this function tests debug print's default behavior
       */
-      EXPORTS.testMock({ console: { log: EXPORTS.nop } }, function () {
-        onEventError(EXPORTS.zxqjDp('hello world'));
+      EXPORTS.testMock(onEventError, [
+        { mock: { log: EXPORTS.nop }, state: console }
+      ], function (onEventError) {
+        onEventError(EXPORTS._zxqjDp('hello world'));
       });
     },
 
@@ -447,16 +437,9 @@ integrate forever-webui
         this function evals the script in a try-catch block with error handling
       */
       /*jslint evil: true*/
-      var data;
-      try {
-        data = state.isNodejs ? required.vm.runInThisContext(script, file) : eval(script);
-      } catch (error) {
-        /* debug error */
-        state.error = error;
-        onEventError(error);
-        return;
-      }
-      onEventError(null, data);
+      EXPORTS.tryCatch(function () {
+        return state.isNodejs ? required.vm.runInThisContext(script, file) : eval(script);
+      }, onEventError);
     },
 
     _evalOnEventError_default_test: function (onEventError) {
@@ -493,6 +476,22 @@ integrate forever-webui
       return match ? match[0] : '';
     },
 
+    jsonCopy: function (object) {
+      /*
+        this function deep copies the json object using JSON.parse(JSON.stringify(object))
+      */
+      return JSON.parse(JSON.stringify(object));
+    },
+
+    jsonLog: function (argList) {
+      /*
+        this function uses JSON.stringify to give a consistent print format across browsers
+      */
+      console.log(argList.map(function (arg) {
+        return typeof arg === 'string' ? arg : EXPORTS.jsonStringifyCircular(arg);
+      }).join(', ').replace((/, \n, /g), ',\n'));
+    },
+
     jsonParseOrError: function (data) {
       /*
         this function returns JSON.parse(data) or an error
@@ -515,43 +514,12 @@ integrate forever-webui
       /*
         this function JSON.stringify's an object, ignoring circular references
       */
-      try {
-        return JSON.stringify(value, replacer, space);
-      } catch (error) {
+      return EXPORTS.tryCatch(function () {
         return JSON.stringify(local._jsonStringifyCircularRecurse(value, []), replacer, space);
-      }
-    },
-
-    _jsonStringifyCircularRecurse: function (value, history) {
-      /*
-        this function JSON.stringify's an object, ignoring circular references
-      */
-      var result;
-      if (value && history.indexOf(value) >= 0) {
-        return;
-      }
-      try {
-        JSON.stringify(value);
-        return value;
-      } catch (ignore) {
-      }
-      try {
-        /* fallback */
-        history.push(value);
-        /* array */
-        if (Array.isArray(value)) {
-          return value.map(function (element) {
-            return local._jsonStringifyCircularRecurse(element, history);
-          });
-        }
-        /* object */
-        result = {};
-        Object.keys(value).forEach(function (key) {
-          result[key] = local._jsonStringifyCircularRecurse(value[key], history);
-        });
-        return result;
-      } catch (ignore) {
-      }
+      }, function (error, data) {
+        EXPORTS.onEventErrorDefault(error);
+        return error ? undefined : data;
+      });
     },
 
     _jsonStringifyCircular_default_test: function (onEventError) {
@@ -567,14 +535,53 @@ integrate forever-webui
       onEventError();
     },
 
+    _jsonStringifyCircularRecurse: function (value, circularValueList) {
+      /*
+        this function JSON.stringify's an object, ignoring circular references
+      */
+      var result;
+      /* return the value if its falsey */
+      if (!value) {
+        return value;
+      }
+      /* return undefined if the value is circular */
+      if (circularValueList.indexOf(value) >= 0) {
+        return;
+      }
+      /* return the value if JSON.stringify succeeds */
+      EXPORTS.tryCatch(function () {
+        JSON.stringify(value);
+        result = value;
+      }, EXPORTS.nop);
+      if (result) {
+        return result;
+      }
+      /* fallback code if JSON.stringify fails */
+      /* add the value to circularValueList */
+      circularValueList.push(value);
+      /* the value is an array */
+      if (Array.isArray(value)) {
+        return value.map(function (element) {
+          return local._jsonStringifyCircularRecurse(element, circularValueList);
+        });
+      }
+      /* the value is an object */
+      result = {};
+      Object.keys(value).forEach(function (key) {
+        result[key] = local._jsonStringifyCircularRecurse(value[key], circularValueList);
+      });
+      return result;
+    },
+
     mimeLookup: function (file) {
       /*
         this function returns the file's mime-type
       */
-      if (required.mime) {
-        return required.mime.lookup(file);
+      file = EXPORTS.fsExtname(file).slice(1);
+      if (state.mimeTypesDict) {
+        return state.mimeTypesDict[file] || 'application/octet-stream';
       }
-      switch ((/[^\.]*$/).exec(file)[0]) {
+      switch (file) {
       case 'css':
         return 'text/css';
       case 'html':
@@ -594,12 +601,12 @@ integrate forever-webui
       /*
         this function tests mimeLookup's default handling behavior
       */
-      EXPORTS.assert(EXPORTS.mimeLookup('css') === 'text/css');
-      EXPORTS.assert(EXPORTS.mimeLookup('html') === 'text/html');
-      EXPORTS.assert(EXPORTS.mimeLookup('js') === 'application/javascript');
-      EXPORTS.assert(EXPORTS.mimeLookup('json') === 'application/json');
-      EXPORTS.assert(EXPORTS.mimeLookup('txt') === 'text/plain');
-      EXPORTS.assert(EXPORTS.mimeLookup('') === 'application/octet-stream');
+      EXPORTS.assert(EXPORTS.mimeLookup('foo.css') === 'text/css');
+      EXPORTS.assert(EXPORTS.mimeLookup('foo.html') === 'text/html');
+      EXPORTS.assert(EXPORTS.mimeLookup('foo.js') === 'application/javascript');
+      EXPORTS.assert(EXPORTS.mimeLookup('foo.json') === 'application/json');
+      EXPORTS.assert(EXPORTS.mimeLookup('foo.txt') === 'text/plain');
+      EXPORTS.assert(EXPORTS.mimeLookup('foo') === 'application/octet-stream');
       onEventError();
     },
 
@@ -617,13 +624,6 @@ integrate forever-webui
       onEventError(EXPORTS.nop());
     },
 
-    jsonCopy: function (object) {
-      /*
-        this function deep copies the json object using JSON.parse(JSON.stringify(object))
-      */
-      return JSON.parse(JSON.stringify(object));
-    },
-
     onEventErrorDefault: function (error, data) {
       /*
         this function gives a default, error and data handling callback.
@@ -633,10 +633,12 @@ integrate forever-webui
         if (error !== EXPORTS.errorIgnore) {
           /* debug error */
           state.error = error;
-          console.error(error.stack || error.message || error);
+          console.error('\nonEventErrorDefault - error\n'
+            + (error.stack || error.message || error)
+            + '\n');
         }
-      } else if (data !== undefined) {
-        console.log((global.Buffer && global.Buffer.isBuffer(data)) ? data.toString() : data);
+      } else if (data !== undefined && data !== '') {
+        console.log('\nonEventErrorDefault - data\n' + String(data) + '\n');
       }
       return error;
     },
@@ -645,7 +647,9 @@ integrate forever-webui
       /*
         this function tests onEventErrorDefault's error handling behavior
       */
-      EXPORTS.testMock({ console: { error: EXPORTS.nop } }, function () {
+      EXPORTS.testMock(onEventError, [
+        { mock: { error: EXPORTS.nop }, state: console }
+      ], function (onEventError) {
         onEventError(!EXPORTS.onEventErrorDefault(new Error()));
       });
     },
@@ -654,8 +658,26 @@ integrate forever-webui
       /*
         this function tests onEventErrorDefault's default handling behavior
       */
-      EXPORTS.testMock({ console: { log: EXPORTS.nop } }, function () {
+      EXPORTS.testMock(onEventError, [
+        { mock: { log: EXPORTS.nop }, state: console }
+      ], function (onEventError) {
         onEventError(EXPORTS.onEventErrorDefault(null, null));
+      });
+    },
+
+    requireModules: function (moduleList) {
+      /*
+        this function requires the modules in the list,
+        and caches them in the global.required object
+      */
+      moduleList.forEach(function (module) {
+        var key;
+        key = module.replace((/\W/g), '_');
+        try {
+          required[key] = required[key] || require(module);
+        } catch (errorRequire) {
+          EXPORTS.jsonLog(['requireModules - cannot load module', module]);
+        }
       });
     },
 
@@ -667,10 +689,10 @@ integrate forever-webui
       return (Math.random() * 0xffff) | 0x8000;
     },
 
-    setOptionsDefaults: function (options, defaults) {
+    stateDefault: function (options, defaults) {
       /*
-        this function recursively walks through the defaults-object tree,
-        and uses it to set default values for unset leaf nodes in the options-object tree
+        this function recursively walks through the defaults object,
+        and uses it to set default values for unset leaf nodes in the options object
       */
       Object.keys(defaults || {}).forEach(function (key) {
         var defaults2, options2;
@@ -687,18 +709,18 @@ integrate forever-webui
             && options2
             && typeof options2 === 'object'
             && !Array.isArray(options2)) {
-          local.setOptionsDefaults(options2, defaults2);
+          local.stateDefault(options2, defaults2);
         }
       });
       return options;
     },
 
-    _setOptionsDefaults_default_test: function (onEventError) {
+    _stateDefault_default_test: function (onEventError) {
       /*
-        this function tests setOptionsDefault's default handling behavior
+        this function tests stateDefault's default handling behavior
       */
       var options;
-      options = EXPORTS.setOptionsDefaults(
+      options = EXPORTS.stateDefault(
         { aa: 1, bb: {}, cc: [] },
         { aa: 2, bb: { cc: 2 }, cc: [1, 2] }
       );
@@ -708,44 +730,79 @@ integrate forever-webui
       onEventError();
     },
 
-    setOptionsOverrides: function (options, overrides) {
+    stateOverride: function (state, override, backup, depth) {
       /*
-        this function recursively walks through the overrides-object tree,
-        and sets override values to the options-object tree
+        this function recursively overrides the state object with the override object,
+        and optionally saves the original state object to the backup object,
+        and optionally accepts the depth recursion limit
       */
-      Object.keys(overrides || {}).forEach(function (key) {
-        var options2, overrides2;
-        overrides2 = overrides[key];
-        if (overrides2 === undefined) {
-          return;
-        }
-        if (typeof overrides2 !== 'object' || overrides === null || Array.isArray(overrides2)) {
-          options[key] = overrides2;
-          return;
-        }
-        options2 = options[key];
-        if (!options2 || typeof options2 !== 'object') {
-          options2 = options[key] = {};
-        }
-        local.setOptionsOverrides(options2, overrides2);
-      });
-      return options;
+      if (!(depth <= 0)) {
+        local._stateOverrideRecurse(state, override, backup || {}, depth);
+      }
+      return state;
     },
 
-    _setOptionsOverrides_default_test: function (onEventError) {
+    _stateOverrideRecurse: function (state, override, backup, depth) {
       /*
-        this function tests setOptionsDefault's default handling behavior
+        this function
+        1. save the state item to the backup object
+        2. set the override item to the state object
+        3. recurse the override object
       */
-      var options;
-      options = EXPORTS.setOptionsOverrides(
-        { aa: 1, bb: { cc: 2 }, dd: [3, 4] },
-        { aa: 5, bb: { dd: 6 }, dd: [7, 8], ff: {} }
+      var state2, override2;
+      Object.keys(override).forEach(function (key) {
+        state2 = state[key];
+        override2 = backup[key] = override[key];
+        if (depth <= 1
+            /* override2 is not a plain object */
+            || !(override2 && typeof override2 === 'object' && !Array.isArray(override2))
+            /* state2 is not a plain object */
+            || !(state2 && typeof state2 === 'object' && !Array.isArray(state2))) {
+          /* 1. save the state item to the backup object */
+          backup[key] = state2;
+          /* 2. set the override item to the state object */
+          state[key] = override2;
+          return;
+        }
+        /* 3. recurse the override object */
+        local._stateOverrideRecurse(state2, override2, override2 || {}, depth - 1);
+      });
+    },
+
+    _stateOverride_default_test: function (onEventError) {
+      /*
+        this function tests stateOverride's default handling behavior
+      */
+      var backup, state;
+      backup = {};
+      /* test override */
+      state = EXPORTS.stateOverride(
+        { aa: 1, bb: { cc: 2 }, dd: [3, 4], ee: { ff: { gg: 5, hh: 6 } } },
+        { aa: 2, bb: { dd: 3 }, dd: [4, 5], ee: { ff: { gg: 6 } } },
+        backup,
+        2
       );
-      EXPORTS.assert(options.aa === 5);
-      EXPORTS.assert(options.bb.cc === 2);
-      EXPORTS.assert(options.bb.dd === 6);
-      EXPORTS.assert(JSON.stringify(options.dd) === '[7,8]');
-      EXPORTS.assert(JSON.stringify(options.ff) === '{}');
+      EXPORTS.assert(state.aa === 2);
+      EXPORTS.assert(state.bb.cc === 2);
+      EXPORTS.assert(state.bb.dd === 3);
+      EXPORTS.assert(JSON.stringify(state.dd) === '[4,5]');
+      EXPORTS.assert(state.ee.ff.gg === 6);
+      EXPORTS.assert(state.ee.ff.hh === undefined);
+      /* test backup */
+      EXPORTS.assert(backup.aa === 1);
+      EXPORTS.assert(backup.bb.cc === undefined);
+      EXPORTS.assert(backup.bb.dd === undefined);
+      EXPORTS.assert(JSON.stringify(backup.dd) === '[3,4]');
+      EXPORTS.assert(backup.ee.ff.gg === 5);
+      EXPORTS.assert(backup.ee.ff.hh === 6);
+      /* test restore */
+      EXPORTS.stateOverride(state, backup);
+      EXPORTS.assert(state.aa === 1);
+      EXPORTS.assert(state.bb.cc === 2);
+      EXPORTS.assert(state.bb.dd === undefined);
+      EXPORTS.assert(JSON.stringify(state.dd) === '[3,4]');
+      EXPORTS.assert(state.ee.ff.gg === 5);
+      EXPORTS.assert(state.ee.ff.hh === 6);
       onEventError();
     },
 
@@ -788,6 +845,24 @@ integrate forever-webui
       EXPORTS.assert(EXPORTS.templateFormat('{{aa}}', { aa: 1 }) === '{{aa}}');
       EXPORTS.assert(EXPORTS.templateFormat('{{aa}}', { aa: 'bb' }) === 'bb');
       onEventError();
+    },
+
+    throwError: function () {
+      /*
+        this function throws a new Error for testing purposes
+      */
+      throw new Error('throwError');
+    },
+
+    _throwError_default_test: function (onEventError) {
+      /*
+        this function tests throwError's default handling behavior
+      */
+      EXPORTS.tryCatch(function () {
+        EXPORTS.throwError();
+      }, function (error) {
+        onEventError(!error);
+      });
     },
 
     tryCatch: function (callback, onEventError) {
@@ -897,7 +972,7 @@ integrate forever-webui
   var local;
   local = {
 
-    _name: 'utility2.moduleAjaxShared',
+    _name: 'required.utility2.moduleAjaxShared',
 
     _init: function () {
       EXPORTS.initModule(module, local);
@@ -913,11 +988,11 @@ integrate forever-webui
       }
       /* browser */
       if (state.isBrowser) {
-        utility2._ajaxProgressOnEventError(options, onEventError);
+        required.utility2._ajaxProgressOnEventError(options, onEventError);
         return;
       }
       /* nodejs */
-      utility2._ajaxNodejs(options, onEventError);
+      required.utility2._ajaxNodejs(options, onEventError);
     },
 
     _ajax_default_test: function (onEventError) {
@@ -1032,9 +1107,7 @@ integrate forever-webui
       */
       var remainingList;
       if (!(options
-        && options.urlList
-        && Array.isArray(options.urlList)
-        && options.urlList.length)) {
+        && Array.isArray(options.urlList))) {
         onEventError(new Error('ajaxMultiUrls - invalid options.urlList'));
         return;
       }
@@ -1054,8 +1127,9 @@ integrate forever-webui
             }
             /* debug remainingList */
             remainingList.splice(remainingList.indexOf(options2.url0), 1);
-            console.log('ajaxMultiUrls - received: ' + options2.url0 + ', remainingList: ['
-              + remainingList.slice(0, 2) + (remainingList.length ? ', ...]' : ']'));
+            EXPORTS.jsonLog(['ajaxMultiUrls - fetched / remaining',
+              options2.url0,
+              JSON.stringify(remainingList.slice(0, 2)).replace(']', ',...]')]);
             argList[ii] = data;
             _onEventError();
           });
@@ -1251,6 +1325,60 @@ integrate forever-webui
       EXPORTS.initModule(module, local);
     },
 
+    mapAsync: function (argList, argHandler, onEventError) {
+      /*
+        this function asynchronously maps the argList with the argHandler and returns a
+        resultList to the onEventError callback
+        argHandler = function (arg, function (error, result))
+        onEventError = function (error, resultList)
+      */
+      var _onEventError, remaining, resultList, timeout;
+      _onEventError = function (error, result, ii) {
+        remaining -= 1;
+        if (remaining < 0) {
+          EXPORTS.onEventErrorDefault(error);
+          return;
+        }
+        if (error) {
+          remaining = 0;
+        } else if (ii !== undefined) {
+          resultList[ii] = result;
+        }
+        if (remaining === 0) {
+          /* clear timeout */
+          clearTimeout(timeout);
+          onEventError(error, resultList);
+        }
+      };
+      remaining = argList.length;
+      resultList = [];
+      /* set timeout */
+      timeout = EXPORTS.timeoutSetTimeout(_onEventError, state.timeoutDefault, 'mapAsync');
+      /* case - empty argList */
+      if (argList.length === 0) {
+        remaining = 1;
+        _onEventError();
+        return;
+      }
+      /* case - non-empty argList */
+      argList.forEach(function (arg, ii) {
+        argHandler(arg, function (error, result) {
+          _onEventError(error, result, ii);
+        });
+      });
+    },
+
+    _mapAsync_default_test: function (onEventError) {
+      /*
+        this function tests mapAsync's default behavior
+      */
+      EXPORTS.mapAsync([1, 2, 3, 4], function (arg, onEventError) {
+        onEventError(null, arg + 1);
+      }, function (error, result) {
+        onEventError(JSON.stringify(result) === '[1,2,3,4]');
+      });
+    },
+
     ioAggregate: function (argList, argHandler, onEventError) {
       /*
         this function aggregates the multiple argHandler calls to the argList
@@ -1347,14 +1475,14 @@ integrate forever-webui
       /*
         this function lints a css script using csslint
       */
-      console.log(global.CSSLint.getFormatter('text').formatResults(
-        global.CSSLint.verify(
-          script || '',
-          { ignore: 'ids' }
-        ),
-        file,
-        { quiet: true }
-      ));
+      var error;
+      error = global.CSSLint.getFormatter('text').formatResults(global.CSSLint.verify(
+        script || '',
+        { ignore: 'ids' }
+      ), file, { quiet: true }).trim();
+      if (error) {
+        console.log('\n_lintCss\n' + error + '\n');
+      }
       return script;
     },
 
@@ -1362,20 +1490,21 @@ integrate forever-webui
       /*
         this function lints a js script using jslint
       */
-      var pad;
+      var _;
       if (!global.__coverage__ && !global.JSLINT(script)) {
-        console.log('\n' + file);
+        console.log('\n_lintJs\n' + file);
         global.JSLINT.errors.forEach(function (error, ii) {
-          pad = "#" + String(ii + 1);
-          while (pad.length < 3) {
-            pad = ' ' + pad;
+          _ = '#' + String(ii + 1) + ' ';
+          while (_.length < 4) {
+            _ = ' ' + _;
           }
           if (error) {
-            console.log(pad + ' ' + error.reason);
-            console.log('    ' + (error.evidence || '').replace(/^\s+|\s+$/, "") + ' \/\/ Line '
-              + error.line + ', Pos ' + error.character);
+            console.log(_ + error.reason);
+            console.log('    ' + (error.evidence || '').trim() + ' \/\/ Line ' + error.line
+              + ', Pos ' + error.character);
           }
         });
+        console.log();
       }
       return script;
     },
@@ -1436,37 +1565,37 @@ integrate forever-webui
 
     _setTimeout: setTimeout,
 
-    testMock: function (global2, test) {
+    testMock: function (onEventError, mockList, test) {
       /*
-        this function mocks the global state while running tests
+        this function mocks the state given in the mockList while running the test callback
       */
-      var backup;
-      /* mock global state */
-      backup = {};
-      /* additional mocks */
-      utility2._testMock(global2);
-      Object.keys(EXPORTS.setOptionsDefaults(global2, {
-        global: { setInterval: EXPORTS.testThrowError, setTimeout: EXPORTS.testThrowError }
-      })).forEach(function (key1) {
-        backup[key1] = {};
-        Object.keys(global2[key1]).forEach(function (key2) {
-          backup[key1][key2] = global[key1][key2];
-          global[key1][key2] = global2[key1][key2];
+      var throwError;
+      throwError = EXPORTS.throwError;
+      /* prepend mandatory mocks */
+      mockList = [
+        { mock: { setInterval: throwError, setTimeout: throwError },
+          state: global },
+        { mock: { exit: throwError, shell: throwError }, state: EXPORTS },
+        { mock: { exit: throwError }, state: global.process || {} }
+      ].concat(mockList);
+      EXPORTS.tryCatch(function () {
+        /* mock state */
+        mockList.forEach(function (mock) {
+          mock.backup = {};
+          EXPORTS.stateOverride(mock.state, mock.mock, mock.backup, 1);
         });
-      });
-      /* run test */
-      EXPORTS.tryCatch(test, EXPORTS.onEventErrorDefault);
-      /* restore global state */
-      Object.keys(backup).forEach(function (key1) {
-        Object.keys(backup[key1]).forEach(function (key2) {
-          global[key1][key2] = backup[key1][key2];
+        /* run test */
+        test(onEventError);
+      }, function (error) {
+        /* restore state */
+        mockList.reverse().forEach(function (mock) {
+          EXPORTS.stateOverride(mock.state, mock.backup, null, 1);
         });
+        EXPORTS.nop(error && onEventError(error));
       });
     },
 
-    _testMock: EXPORTS.nop,
-
-    testModule2: function (local2) {
+    testModule: function (local2) {
       /*
         this function runs tests on the module's local2 object
       */
@@ -1475,7 +1604,6 @@ integrate forever-webui
         return;
       }
       testModule = {
-        javascriptPlatform: state.javascriptPlatform,
         failures: 0,
         name: state.javascriptPlatform + '.' + local2._name,
         skipped: 0,
@@ -1488,10 +1616,15 @@ integrate forever-webui
       EXPORTS.ioAggregate(Object.keys(local2).filter(function (test) {
         return test.slice(-5) === '_test';
       }), function (test, ii, argList, onEventError) {
-        var _onEventError, timeout;
+        var _onEventError;
         _onEventError = function (error) {
-          EXPORTS.onEventErrorDefault(error);
-          if (testModule.ended || timeout === true) {
+          /* clear timeout */
+          clearTimeout(test.timeout);
+          if (error && error !== 'skip') {
+            console.error('\ntestModule - test failed, ' + test.name);
+            EXPORTS.onEventErrorDefault(error);
+          }
+          if (testModule.ended || test.timeout === true) {
             return;
           }
           test.ended = test.ended || 0;
@@ -1513,25 +1646,26 @@ integrate forever-webui
           /* test failed */
           } else if (error) {
             testModule.failures += 1;
-            console.error('\n' + testModule.javascriptPlatform + ' test failed - '
-              + local2._name + '.' + test.name);
             test.failure = error.stack || error.message || error;
           }
           if (test.ended === 1) {
-            /* clear timeout */
-            clearTimeout(timeout);
             onEventError();
           }
         };
-        /* set timeout */
-        timeout = EXPORTS.timeoutSetTimeout(function (error) {
-          _onEventError(error);
-          timeout = true;
-        }, state.timeoutDefault, test.name);
         /* enqueue test */
-        test = testModule.testCases[test] = { name: test, time: Date.now() };
+        test = testModule.testCases[test] = {
+          name: testModule.name + '.' + test,
+          test: local2[test],
+          time: Date.now()
+        };
+        /* set timeout */
+        test.timeout = EXPORTS.timeoutSetTimeout(function (error) {
+          _onEventError(error);
+          test.timeout = true;
+        }, state.timeoutDefault, test.name);
+        clearTimeout(test.timeout);
         EXPORTS.tryCatch(function () {
-          local2[test.name](_onEventError);
+          test.test(_onEventError);
         }, function (error) {
           EXPORTS.nop(error && _onEventError(error));
         });
@@ -1552,17 +1686,20 @@ integrate forever-webui
       /*
         this function creates a test report
       */
-      console.log('\n');
+      console.log('\ntestReport');
       state.testModuleList.sort(function (arg1, arg2) {
         arg1 = arg1.name;
         arg2 = arg2.name;
         return arg1 < arg2 ? -1 : arg1 > arg2 ? 1 : 0;
       }).forEach(function (testModule) {
-        console.log([testModule.javascriptPlatform, 'tests -',
-          testModule.failures, 'failed /',
-          testModule.skipped, 'skipped /',
-          Object.keys(testModule.testCases).length, 'passed in', testModule.name].join(' '));
+        console.log(testModule.failures + ' failed, '
+          + testModule.skipped + ' skipped, '
+          + (Object.keys(testModule.testCases).length
+            - testModule.failures
+            - testModule.skipped)
+          + ' passed in', testModule.name);
       });
+      console.log();
       if (state.isBrowser) {
         /* upload test report */
         EXPORTS.ajax({
@@ -1577,7 +1714,7 @@ integrate forever-webui
           global.__coverage__ = {};
         }
       }
-      if (state.npmTestMode !== 'running') {
+      if (!state.npmTestMode) {
         state.testModuleList.length = 0;
       }
     }
@@ -1604,10 +1741,10 @@ integrate forever-webui
 
     clearCallSetInterval: function (key, callback, interval, timeout) {
       /*
-        this function:
-          1. clear interval key
-          2. run callback
-          3. set interval key to callback
+        this function
+        1. clear interval key
+        2. run callback
+        3. set interval key to callback
       */
       var dict;
       dict = state.setIntervalDict = state.setIntervalDict || {};
@@ -1815,9 +1952,10 @@ integrate forever-webui
     _name: 'utility2.moduleAdminBrowser',
 
     _init: function () {
-      if (state.isBrowser) {
-        EXPORTS.initModule(module, local);
+      if (!state.isBrowser) {
+        return;
       }
+      EXPORTS.initModule(module, local);
     },
 
     _initOnce: function () {
@@ -1896,9 +2034,10 @@ integrate forever-webui
     _name: 'utility2.moduleXhrProgressBrowser',
 
     _init: function () {
-      if (state.isBrowser) {
-        EXPORTS.initModule(module, local);
+      if (!state.isBrowser) {
+        return;
       }
+      EXPORTS.initModule(module, local);
     },
 
     _initOnce: function () {
@@ -1973,7 +2112,7 @@ integrate forever-webui
       }
       /* debug */
       if (options.debugFlag || state.debugFlag) {
-        console.log(options);
+        EXPORTS.jsonLog(['_ajaxProgressOnEventError - options', options]);
       }
       $.ajax(options).done(function (data, textStatus, xhr) {
         switch (options.dataType) {
@@ -2169,7 +2308,7 @@ integrate forever-webui
       }
       EXPORTS.initModule(module, local);
       /* require underscore */
-      global.underscore = global.underscore || global._;
+      global.underscore = global.underscore || EXPORTS._ || global._;
     },
 
     _initOnce: function () {
@@ -2178,7 +2317,7 @@ integrate forever-webui
         state[target.id] = state[target.id] || $(target);
       });
       /* override globals */
-      EXPORTS.setOptionsOverrides(global, global.globalOverride);
+      EXPORTS.stateOverride(global, EXPORTS.jsonCopy(global.globalOverride));
       /*
         bug - phantomjs - new Blob() throws error
         https://github.com/ariya/phantomjs/issues/11013
@@ -2240,51 +2379,60 @@ integrate forever-webui
     _name: 'utility2.moduleInitNodejs',
 
     _init: function () {
-      if (state.isNodejs) {
-        EXPORTS.initModule(module, local);
+      if (!state.isNodejs) {
+        return;
       }
+      EXPORTS.initModule(module, local);
     },
 
     _initOnce: function () {
-      /* require */
+      /*jslint stupid: true*/
+      /* require modules */
       EXPORTS.requireModules([
-        /* require nodejs modules */
+        /* require internal nodejs modules */
         'child_process', 'crypto',
-        'fs',
+        'graceful-fs',
         'http', 'https',
         'net',
         'path',
+        'repl',
         'stream',
         'tls',
         'url', 'util',
         'vm',
         'zlib',
-        /* require npm modules */
-        'connect', 'cssmin',
-        'graceful-fs',
-        'mime',
+        /* require external npm modules */
+        'connect', 'coveralls', 'cssmin',
+        'istanbul',
         'phantomjs',
         'sqlite3',
-        'uglify-js'
+        'uglify-js',
+        'utility2-external'
       ]);
-      /* require utility2-external */
-      required.utility2_external = required.utility2_external
-        || require(__dirname + '/bower_components/utility2-external');
-      [
-        'utility2-external.shared.js'
-      ].forEach(function (file) {
-        EXPORTS.evalFileSyncOnEventError(
-          required.utility2_external.__dirname + '/' + file,
-          EXPORTS.onEventErrorDefault
-        );
-      });
-      /* require underscore */
-      global.underscore = global.underscore || EXPORTS._;
-      /* maxSockets */
-      required.http.globalAgent.maxSockets = 256;
-      required.https.globalAgent.maxSockets = 256;
       /* override required.fs with required.graceful_fs */
       required.fs = required.graceful_fs;
+      /* require underscore */
+      global.underscore = global.underscore || EXPORTS._ || global._;
+      /* require utility2-external */
+      EXPORTS.evalFileSyncOnEventError(required.utility2_external.__dirname
+        + '/utility2-external.shared.js',
+        EXPORTS.onEventErrorDefault);
+      required.fs.readFileSync(required.utility2_external.__dirname
+        + '/utility2-external.nodejs.txt', 'utf8')
+        .replace((/\n\/\* module start - (.*) \*\/\n([\S\s]*?)\n\/\* module end \*\//g),
+          function (_, url, text) {
+            /* export mime.types */
+            if (url.slice(-11) === '/mime.types') {
+              state.mimeTypesDict = {};
+              text.replace((/^(\w\S+)\s+(.*)$/gm), function (_, value, keys) {
+                keys.split(' ').forEach(function (key) {
+                  if (key) {
+                    state.mimeTypesDict[key] = value;
+                  }
+                });
+              });
+            }
+          });
       /* init sqlite3 */
       state.dbSqlite3 = new required.sqlite3.cached.Database(':memory:');
       /* init uglify-js*/
@@ -2324,18 +2472,17 @@ integrate forever-webui
         }
       });
       /* load package.json file */
+      state.packageJson = state.packageJson || {};
       EXPORTS.tryCatch(function () {
-        /*jslint stupid: true*/
-        state.packageJson = {};
         state.packageJson = JSON.parse(required.fs.readFileSync(process.cwd()
           + '/package.json'));
-      }, EXPORTS.onEventErrorDefault);
+      }, EXPORTS.nop);
       /* load default state */
       state.stateDefault = state.packageJson.stateDefault || {};
-      EXPORTS.setOptionsDefaults(state, EXPORTS.jsonCopy(state.stateDefault));
+      EXPORTS.stateDefault(state, EXPORTS.jsonCopy(state.stateDefault));
       /* update dynamic, override state from external url every 60 seconds */
       state.stateOverride = state.stateOverride || {};
-      EXPORTS.setOptionsOverrides(state, state.stateOverride || {});
+      EXPORTS.stateOverride(state, EXPORTS.jsonCopy(state.stateOverride || {}));
       state.stateOverrideUrl = state.stateOverrideUrl || '/state/stateOverride.json';
       EXPORTS.deferCallback('untilServerReady', 'defer', function () {
         EXPORTS.clearCallSetInterval('stateOverrideUpdate', function () {
@@ -2348,9 +2495,9 @@ integrate forever-webui
               EXPORTS.onEventErrorDefault(error);
               return;
             }
-            EXPORTS.setOptionsOverrides(state.stateOverride, data);
-            EXPORTS.setOptionsOverrides(state, EXPORTS.jsonCopy(state.stateOverride));
-            console.log('loaded override config from ' + state.stateOverrideUrl);
+            EXPORTS.stateOverride(state.stateOverride, data);
+            EXPORTS.stateOverride(state, EXPORTS.jsonCopy(state.stateOverride));
+            EXPORTS.jsonLog(['loaded override config from', state.stateOverrideUrl]);
           });
         }, 5 * 60 * 1000);
       });
@@ -2378,10 +2525,10 @@ integrate forever-webui
         return;
       }
       state.debugProcessOnced = true;
-      console.log(['process.cwd()', process.cwd()]);
-      console.log(['process.pid', process.pid]);
-      console.log(['process.argv', process.argv]);
-      console.log(['process.env', process.env]);
+      EXPORTS.jsonLog(['debugProcessOnce - process.cwd()', process.cwd()]);
+      EXPORTS.jsonLog(['debugProcessOnce - process.pid', process.pid]);
+      EXPORTS.jsonLog(['debugProcessOnce - process.argv', process.argv]);
+      EXPORTS.jsonLog(['debugProcessOnce - process.env', process.env]);
     },
 
     _uglifyScriptJs: function (file, script) {
@@ -2424,29 +2571,13 @@ integrate forever-webui
       });
     },
 
-    requireModules: function (moduleList) {
-      /*
-        this function requires the modules in the list,
-        and caches them in the global.required object
-      */
-      moduleList.forEach(function (module) {
-        var key;
-        key = module.replace((/\W/g), '_');
-        try {
-          required[key] = required[key] || require(module);
-        } catch (errorRequire) {
-          console.log('module not loaded - ' + module);
-        }
-      });
-    },
-
     shell: function (options) {
       /*
         this function gives a quick and dirty way to execute shell scripts
       */
       var child;
       if (options.verbose !== false) {
-        console.log(['shell', options]);
+        EXPORTS.jsonLog(['shell - options', options]);
       }
       if (typeof options === 'string') {
         options = { script: options };
@@ -2506,17 +2637,16 @@ integrate forever-webui
     _name: 'utility2.moduleInitPhantomjs',
 
     _init: function () {
-      if (state.isPhantomjs) {
-        EXPORTS.initModule(module, local);
+      if (!state.isPhantomjs) {
+        return;
       }
+      EXPORTS.initModule(module, local);
     },
 
     _initOnce: function () {
       var tmp;
-      /* require */
-      required.system = require('system');
-      required.webpage = require('webpage');
-      required.webserver = require('webserver');
+      /* require modules */
+      EXPORTS.requireModules(['system', 'webpage', 'webserver']);
       /* state */
       tmp = JSON.parse(EXPORTS.base64Decode(required.system.args[1]));
       Object.keys(tmp).forEach(function (key) {
@@ -2533,7 +2663,8 @@ integrate forever-webui
           EXPORTS.nop(error && local._serverRespondError(request, response, error));
         });
       });
-      console.log('phantomjs server started on port ' + state.phantomjsPort);
+      EXPORTS.jsonLog(['phantomjs - server started on port',
+        state.phantomjsPort]);
     },
 
     'routerDict_/': function (request, response) {
@@ -2554,9 +2685,11 @@ integrate forever-webui
       var page;
       local._serverRespondData(request, response);
       page = required.webpage.create();
-      page.onConsoleMessage = console.log;
+      page.onConsoleMessage = function () {
+        console.log.apply(console, arguments);
+      };
       page.open(data.url, function (status) {
-        console.log('phantomjs open -', status, '-', data.url);
+        EXPORTS.jsonLog(['phantomjs - testUrl', status, data.url]);
       });
       /* page timeout */
       setTimeout(page.close, state.timeoutDefault);
@@ -2600,9 +2733,10 @@ integrate forever-webui
     _name: 'utility2.moduleAdminNodejs',
 
     _init: function () {
-      if (state.isNodejs) {
-        EXPORTS.initModule(module, local);
+      if (!state.isNodejs) {
+        return;
       }
+      EXPORTS.initModule(module, local);
     },
 
     'routerSecurityDict_/admin': function (request, response, next) {
@@ -2702,11 +2836,12 @@ integrate forever-webui
     },
 
     _adminHtml: '<!DOCTYPE html><html><head>\n'
-      + '<link href="/public/assets/utility2-external/external.rollup.auto.css" rel="stylesheet"/>\n'
+      + '<link href="/public/assets/utility2-external.browser.css" rel="stylesheet"/>\n'
       + '<style>\n'
       + '</style></head><body>\n'
       + '<input id="inputAdminUpload" type="file"/>\n'
-      + '<script src="/public/assets/utility2-external/external.rollup.auto.js"></script>\n'
+      + '<script src="/public/assets/utility2-external.shared.js"></script>\n'
+      + '<script src="/public/assets/utility2-external.browser.js"></script>\n'
       + '<script src="/public/assets/utility2.js"></script>\n'
       + '</body></html>'
 
@@ -2727,9 +2862,10 @@ integrate forever-webui
     _name: 'utility2.moduleAjaxNodejs',
 
     _init: function () {
-      if (state.isNodejs) {
-        EXPORTS.initModule(module, local);
+      if (!state.isNodejs) {
+        return;
       }
+      EXPORTS.initModule(module, local);
     },
 
     _ajaxNodejs: function (options, onEventError) {
@@ -2743,7 +2879,7 @@ integrate forever-webui
         clearTimeout(timeout);
         /* debug */
         if (options.debugFlag) {
-          console.log(['_ajaxNodejs',
+          EXPORTS.jsonLog(['_ajaxNodejs - response',
             options.url,
             options.responseStatusCode,
             options.responseHeaders]);
@@ -2785,7 +2921,7 @@ integrate forever-webui
       }
       options.port = urlParsed.port;
       /* ajax - socks5 */
-      if (!utility2._socks5Ajax(options, _onEventError)) {
+      if (!required.utility2._socks5Ajax(options, _onEventError)) {
         return;
       }
       local._ajaxRequest(options, _onEventError);
@@ -2902,7 +3038,7 @@ integrate forever-webui
       }
       /* debug */
       if (options.debugFlag || state.debugFlag) {
-        console.log(['_ajaxNodejs', options]);
+        EXPORTS.jsonLog(['_ajaxNodejs - options', options]);
       }
     },
 
@@ -3027,9 +3163,10 @@ integrate forever-webui
     _name: 'utility2.moduleExitNodejs',
 
     _init: function () {
-      if (state.isNodejs) {
-        EXPORTS.initModule(module, local);
+      if (!state.isNodejs) {
+        return;
       }
+      EXPORTS.initModule(module, local);
     },
 
     _initOnce: function () {
@@ -3080,9 +3217,10 @@ integrate forever-webui
     _name: 'utility2.moduleFsNodejs',
 
     _init: function () {
-      if (state.isNodejs) {
-        EXPORTS.initModule(module, local);
+      if (!state.isNodejs) {
+        return;
       }
+      EXPORTS.initModule(module, local);
     },
 
     _initOnce: function () {
@@ -3120,7 +3258,7 @@ integrate forever-webui
         this function cleans up the cache dir
       */
       /* remove files from cache dir */
-      console.log('_fsCacheCleanup - cleaning cache dir - ' + state.fsDirCache);
+      EXPORTS.jsonLog(['_fsCacheCleanup - cleaning cache dir' + state.fsDirCache]);
       (state.fsDirCacheList || []).forEach(function (file) {
         local._fsRmr(state.fsDirCache + '/' + file, EXPORTS.onEventErrorDefault);
       });
@@ -3327,6 +3465,7 @@ integrate forever-webui
             /* eval the file in global context */
             case 'eval':
               if (mode !== 'noEval') {
+                console.log('\n>\n>\n>\n> fsWatch - eval, ' + file.name + '\n');
                 EXPORTS.evalOnEventError(file.name, content2, EXPORTS.onEventErrorDefault);
               }
               break;
@@ -3417,12 +3556,8 @@ integrate forever-webui
         return;
       }
       EXPORTS.initModule(module, local);
-      /* require modules */
-      EXPORTS.requireModules(['istanbul']);
-      /* init istanbul */
-      if (required.istanbul) {
-        local._instrumenter = new required.istanbul.Instrumenter();
-      }
+      /* init istanbul instrumenter */
+      local._instrumenter = required.istanbul && new required.istanbul.Instrumenter();
     },
 
     instrumentScript: function (file, script) {
@@ -3430,7 +3565,7 @@ integrate forever-webui
         this file instruments a script using the istanbul npm module
       */
       /*jslint stupid: true*/
-      return (EXPORTS.fsExtname(file) === '.js') && global.__coverage__ && local._instrumenter
+      return (local._instrumenter && EXPORTS.fsExtname(file) === '.js') && global.__coverage__
         ? local._instrumenter.instrumentSync(script, file)
         : script;
     }
@@ -3452,13 +3587,14 @@ integrate forever-webui
     _name: 'utility2.modulePhantomjsNodejs',
 
     _init: function () {
-      if (state.isNodejs) {
-        EXPORTS.deferCallback('untilServerReady', 'defer', function (error) {
-          EXPORTS.nop(error
-            ? EXPORTS.onEventErrorDefault(error)
-            : EXPORTS.initModule(module, local));
-        });
+      if (!state.isNodejs) {
+        return;
       }
+      EXPORTS.deferCallback('untilServerReady', 'defer', function (error) {
+        EXPORTS.nop(error
+          ? EXPORTS.onEventErrorDefault(error)
+          : EXPORTS.initModule(module, local));
+      });
     },
 
     _initOnce: function () {
@@ -3468,7 +3604,7 @@ integrate forever-webui
     _initTest: function () {
       EXPORTS.deferCallback('untilPhantomjsServerReady', 'defer', function (error) {
         if (!error) {
-          EXPORTS.testModule2(local);
+          EXPORTS.testModule(local);
         }
       });
     },
@@ -3513,11 +3649,11 @@ integrate forever-webui
       /*
         this function spawns a phantomjs test server
       */
-      file = file || utility2.__filename;
+      file = file || required.utility2.__filename;
       EXPORTS.deferCallback('untilPhantomjsServerReady', 'reset');
       state.phantomjsPort = EXPORTS.serverPortRandom();
       /* instrument utility2.js */
-      if (global.__coverage__ && file === utility2.__filename) {
+      if (global.__coverage__ && file === required.utility2.__filename) {
         required.fs.readFile(file, 'utf8', function (error, content) {
           content = EXPORTS.instrumentScript(file, content);
           file = EXPORTS.createFsCacheFilename() + '.js';
@@ -3595,7 +3731,7 @@ integrate forever-webui
       /*
         this function tests phantomjsTestUrl's testWatch behavior
       */
-      EXPORTS.nop(state.npmTestMode === 'running'
+      EXPORTS.nop(state.npmTestMode
         ? EXPORTS.phantomjsTestUrl('/test/test.html#testWatch=1', onEventError)
         : onEventError('skip'));
     }
@@ -3617,14 +3753,13 @@ integrate forever-webui
     _name: 'utility2.moduleReplNodejs',
 
     _init: function () {
-      if (state.isNodejs) {
-        EXPORTS.initModule(module, local);
+      if (!state.isNodejs) {
+        return;
       }
+      EXPORTS.initModule(module, local);
     },
 
     _initOnce: function () {
-      /* require modules */
-      EXPORTS.requireModules(['repl']);
       /* start interactive interpreter / debugger */
       if (state.isRepl === true && !state.repl) {
         state.repl = required.repl.start({
@@ -3633,6 +3768,12 @@ integrate forever-webui
           },
           useGlobal: true
         });
+      }
+    },
+
+    _initTest: function () {
+      if (state.repl) {
+        EXPORTS.testModule(local);
       }
     },
 
@@ -3717,16 +3858,14 @@ integrate forever-webui
       /*
         this function tests parse's default behavior
       */
-      EXPORTS.testMock({
-        EXPORTS: { ajax: EXPORTS.nop, phantomjsEval: EXPORTS.nop },
-        console: { log: EXPORTS.nop },
-        state: {
-          dbSqlite3: { all: function (_, onEventError) {
-            onEventError(null, true);
-          } },
-          repl: state.repl || { eval: EXPORTS.nop }
-        }
-      }, function () {
+      EXPORTS.testMock(onEventError, [
+        { mock: { ajax: EXPORTS.nop, phantomjsEval: EXPORTS.nop, shell: EXPORTS.nop },
+          state: EXPORTS },
+        { mock: { log: EXPORTS.nop }, state: console },
+        { mock: { dbSqlite3: { all: function (_, onEventError) {
+          onEventError(null, true);
+        } } }, state: state }
+      ], function (onEventError) {
         /*jslint evil: true*/
         state.repl.eval(null, null, null, EXPORTS.nop);
         state.repl.eval('($ ls\n)', null, null, EXPORTS.nop);
@@ -3763,13 +3902,14 @@ integrate forever-webui
     _name: 'utility2.moduleRollupNodejs',
 
     _init: function () {
-      if (state.isNodejs) {
-        EXPORTS.initModule(module, local);
+      if (!state.isNodejs) {
+        return;
       }
+      EXPORTS.initModule(module, local);
     },
 
     _initOnce: function () {
-      EXPORTS.nop(require.main === module && utility2._rollupFileCommandLine());
+      EXPORTS.nop(require.main === module && required.utility2._rollupFileCommandLine());
     },
 
     _rollupFileCommandLine: function () {
@@ -3792,7 +3932,7 @@ integrate forever-webui
         remaining -= 1;
         if (remaining === 0) {
           remaining = -1;
-          console.log('finished rolling up files');
+          EXPORTS.jsonLog('_rollupFileCommandLine - finished rolling up files');
           EXPORTS.exit();
         }
       };
@@ -3814,7 +3954,7 @@ integrate forever-webui
       /*
         this function rolls up a css / js file
       */
-      console.log('updating rollup file - ' + file);
+      EXPORTS.jsonLog(['_rollupFile - rolling up file', file]);
       required.fs.readFile(file, 'utf8', function (error, content) {
         if (error) {
           onEventError(error);
@@ -3851,7 +3991,8 @@ integrate forever-webui
             argList = text;
             /* concat text to content */
             options.urlList.forEach(function (url, ii) {
-              content += '\n\n/* module - ' + url + ' */\n' + argList[ii].trim();
+              content += '\n\n/* module start - ' + url + ' */\n' + argList[ii].trim()
+                + '\n/* module end */';
             });
             /* remove trailing whitespace */
             content = content.replace((/[\t\r ]+$/gm), '').trim();
@@ -3946,9 +4087,10 @@ integrate forever-webui
     _name: 'utility2.moduleServerNodejs',
 
     _init: function () {
-      if (state.isNodejs) {
-        EXPORTS.initModule(module, local);
+      if (!state.isNodejs) {
+        return;
       }
+      EXPORTS.initModule(module, local);
     },
 
     _initOnce: function () {
@@ -3972,7 +4114,7 @@ integrate forever-webui
       state.middlewareAssets = state.middlewareAssets
         || local._createMiddleware(state.routerAssetsDict);
       /* 6. middleware test */
-      global.routerTestDict = global.routerTestDict || {};
+      global.routerTestDict = state.routerTestDict = state.routerTestDict || {};
       state.middlewareTest = state.middlewareTest
         || local._createMiddleware(global.routerTestDict);
       /* start server */
@@ -4031,13 +4173,13 @@ integrate forever-webui
       /*
         this function tests routerSecurityDict_/signin_default_test's default handling behavior
       */
-      EXPORTS.testMock({
-        routerTestDict: { '/signin': local['routerSecurityDict_/signin'] }
-      }, function () {
-        state.middlewareTest({
-          headers: { host: 'localhost' },
-          url: '/signin'
-        }, {}, onEventError);
+      EXPORTS.testMock(onEventError, [
+        { mock: { '/signin': local['routerSecurityDict_/signin'] },
+          state: state.routerTestDict  }
+      ], function (onEventError) {
+        state.middlewareTest({ headers: { host: 'localhost' }, url: '/signin' },
+          {},
+          onEventError);
       });
     },
 
@@ -4093,17 +4235,33 @@ integrate forever-webui
       EXPORTS.serverRespondFile(response, process.cwd() + request.urlPathNormalized, next);
     },
 
-    'routerAssetsDict_/public/assets/utility2-external': function (request, response, next) {
+    'routerAssetsDict_/public/assets/utility2-external.browser.css': function (request,
+      response,
+      next) {
       /*
-        this function serves public, external assets
+        this function serves the asset utility2-external.browser.css
       */
-      EXPORTS.serverRespondFile(response, required.utility2_external.__dirname
-        + request.urlPathNormalized.replace('/utility2-external', ''), next);
+      EXPORTS.serverRespondFile(response,
+        required.utility2_external.__dirname + '/utility2-external.browser.css',
+        next);
     },
 
-    'routerAssetsDict_/public/assets/utility2-external.shared.js': function (request, response, next) {
+    'routerAssetsDict_/public/assets/utility2-external.browser.js': function (request,
+      response,
+      next) {
       /*
-        this function serves public, external assets
+        this function serves the asset utility2-external.browser.js
+      */
+      EXPORTS.serverRespondFile(response,
+        required.utility2_external.__dirname + '/utility2-external.browser.js',
+        next);
+    },
+
+    'routerAssetsDict_/public/assets/utility2-external.shared.js': function (request,
+      response,
+      next) {
+      /*
+        this function serves the asset utility2-external.shared.js
       */
       EXPORTS.serverRespondFile(response,
         required.utility2_external.__dirname + '/utility2-external.shared.js',
@@ -4115,7 +4273,7 @@ integrate forever-webui
         this function serves the asset utility2.js
       */
       EXPORTS.serverRespondDefault(response, 200, 'application/javascript',
-        utility2._fileContentBrowser);
+        required.utility2._fileContentBrowser);
     },
 
     _createMiddleware: function (routerDict) {
@@ -4234,8 +4392,7 @@ integrate forever-webui
         break;
       /* error */
       case 500:
-        data = data.stack || data;
-        console.error(data);
+        EXPORTS.onEventErrorDefault(data);
         break;
       }
       if (!response.headersSent) {
@@ -4279,7 +4436,7 @@ integrate forever-webui
         remaining += 1;
         state.server.listen(port, function () {
           remaining -= 1;
-          console.log('server started on port ' + port);
+          EXPORTS.jsonLog(['serverStart - server started on port', port]);
           if (remaining === 0) {
             EXPORTS.deferCallback('untilServerReady', 'resume');
           }
@@ -4308,9 +4465,10 @@ integrate forever-webui
     _name: 'utility2.moduleSocks5AjaxNodejs',
 
     _init: function () {
-      if (state.isNodejs) {
-        EXPORTS.initModule(module, local);
+      if (!state.isNodejs) {
+        return;
       }
+      EXPORTS.initModule(module, local);
     },
 
     _socks5Ajax: function (options, onEventError) {
@@ -4404,7 +4562,7 @@ integrate forever-webui
       /*
         this function tests _socks5Ajax's socks5 behavior
       */
-      EXPORTS.nop(state.socks5ServerPort && state.npmTestMode === 'running'
+      EXPORTS.nop(state.socks5ServerPort && state.npmTestMode
         ? EXPORTS.ajax({ url: state.localhost2 + '/test/test.echo' }, onEventError)
         : onEventError('skip'));
     },
@@ -4441,13 +4599,14 @@ integrate forever-webui
     _name: 'utility2.moduleSocks5ServerNodejs',
 
     _init: function () {
-      if (state.isNodejs) {
-        EXPORTS.initModule(module, local);
+      if (!state.isNodejs) {
+        return;
       }
+      EXPORTS.initModule(module, local);
     },
 
     _initOnce: function () {
-      EXPORTS.socks5ServerRestart(state.socks5ServerPort, state.socks5SshHost);
+      EXPORTS.restartSocks5Server(state.socks5ServerPort, state.socks5SshHost);
     },
 
     _socks5ServerOnEventSocket: function (self) {
@@ -4469,7 +4628,7 @@ integrate forever-webui
         /* create proxy socket */
         host = chunk.slice(8, 8 + chunk[7]).toString();
         port = chunk.readUInt16BE(8 + chunk[7]);
-        console.log('_socks5ServerOnEventSocket - proxying ' + host + ':' + port);
+        EXPORTS.jsonLog(['_socks5ServerOnEventSocket - proxying', host + ':' + port]);
         proxy = required.net.connect(port, host).on('error', _onEventError);
         /* write leftover chunk from current read to proxy connection */
         proxy.write(chunk.slice(8 + chunk[7] + 2));
@@ -4495,7 +4654,9 @@ integrate forever-webui
       /*
         this function tests _socks5ServerOnEventSocket's error handling behavior
       */
-      EXPORTS.testMock({ console: { error: EXPORTS.nop } }, function () {
+      EXPORTS.testMock(onEventError, [
+        { mock: { error: EXPORTS.nop }, state: console }
+      ], function (onEventError) {
         local._socks5ServerOnEventSocket({
           end: EXPORTS.nop,
           on: function (event, onEvent) {
@@ -4513,11 +4674,11 @@ integrate forever-webui
       });
     },
 
-    socks5ServerRestart: function (port, sshHost) {
+    restartSocks5Server: function (port, sshHost) {
       /*
         this function restarts the socks5 server
       */
-      if (state.npmTestMode === 'running') {
+      if (state.npmTestMode) {
         sshHost = null;
       }
       state.socks5ServerPort = port || state.socks5ServerPort || (sshHost ? 'random' : null);
@@ -4534,7 +4695,7 @@ integrate forever-webui
       EXPORTS.deferCallback('untilSocks5PortReady', 'pause');
       /* start ssh socks5 proxy server */
       if (sshHost) {
-        local._socks5ServerRestartSsh(sshHost);
+        local._restartSocks5ServerSsh(sshHost);
         return;
       }
       /* close old socks5 server */
@@ -4545,11 +4706,12 @@ integrate forever-webui
       state.socks5Server = required.net.createServer(local._socks5ServerOnEventSocket);
       state.socks5Server.listen(state.socks5ServerPort, function () {
         EXPORTS.deferCallback('untilSocks5PortReady', 'resume');
-        console.log('socks5 server started on port ' + state.socks5ServerPort);
+        EXPORTS.jsonLog(['restartSocks5Server - socks5 server started on port',
+          state.socks5ServerPort]);
       });
     },
 
-    _socks5ServerRestartSsh: function (sshHost) {
+    _restartSocks5ServerSsh: function (sshHost) {
       /*
         this function restart the socks5 ssh server
       */
@@ -4572,9 +4734,9 @@ integrate forever-webui
           EXPORTS.deferCallback('untilSocks5PortReady', 'error', timeout);
           return;
         }
-        utility2._socks5AjaxResume({
-          hostname: 'localhost',
-          url: 'http://localhost'
+        required.utility2._socks5AjaxResume({
+          hostname: 'www.google.com',
+          url: 'http://www.google.com'
         }, function (error) {
           if (error && error.code === 'ECONNREFUSED') {
             return;
@@ -4602,9 +4764,10 @@ integrate forever-webui
     _name: 'utility2.moduleTestNodejs',
 
     _init: function () {
-      if (state.isNodejs) {
-        EXPORTS.initModule(module, local);
+      if (!state.isNodejs) {
+        return;
       }
+      EXPORTS.initModule(module, local);
     },
 
     _initOnce: function () {
@@ -4658,10 +4821,10 @@ integrate forever-webui
       /*
         this function tests routerDict_/test/test.timeout's default handling behavior
       */
-      EXPORTS.testMock({
-        global: { setTimeout: EXPORTS.callCallback },
-        routerTestDict: { '/test/test.timeout': local['routerDict_/test/test.timeout'] }
-      }, function () {
+      EXPORTS.testMock(onEventError, [
+        { mock: { setTimeout: EXPORTS.callCallback }, state: global },
+        { mock: { '/test/test.timeout': local['routerDict_/test/test.timeout'] }, state: state.routerTestDict }
+      ], function (onEventError) {
         state.middlewareTest({ url: '/test/test.timeout' }, { end: onEventError });
       });
     },
@@ -4683,16 +4846,17 @@ integrate forever-webui
       });
     },
 
-    '_routerDict_/test/report.upload_default_test': function (onEventError) {
+    '_routerDict_/test/report.upload_error_test': function (onEventError) {
       /*
-        this function tests routerDict_/test/report.upload's default handling behavior
+        this function tests routerDict_/test/report.upload's error handling behavior
       */
-      EXPORTS.testMock({
-        EXPORTS: { streamReadOnEventError: function (_, onEventError) {
-          onEventError(new Error());
-        } },
-        routerTestDict: { '/test/report.upload': local['routerDict_/test/report.upload'] }
-      }, function () {
+      EXPORTS.testMock(onEventError, [
+        { mock: { streamReadOnEventError: function (_, onEventError) {
+          onEventError(null, 'syntax error');
+        } }, state: EXPORTS },
+        { mock: { '/test/report.upload': local['routerDict_/test/report.upload'] },
+          state: state.routerTestDict }
+      ], function (onEventError) {
         state.middlewareTest({ url: '/test/report.upload' }, {}, function (error) {
           onEventError(!error);
         });
@@ -4722,10 +4886,11 @@ integrate forever-webui
       /*
         this function tests routerDict_/test/test.watch's default handling behavior
       */
-      EXPORTS.testMock({
-        routerTestDict: { '/test/test.watch': local['routerDict_/test/test.watch'] },
-        state: { testWatchList: new global.Array(256) }
-      }, function () {
+      EXPORTS.testMock(onEventError, [
+        { mock: { testWatchList: new global.Array(256) }, state: state },
+        { mock: { '/test/test.watch': local['routerDict_/test/test.watch'] },
+          state: state.routerTestDict }
+      ], function (onEventError) {
         state.middlewareTest({
           headers: { accept: 'text/event-stream' },
           url: '/test/test.watch'
@@ -4780,25 +4945,15 @@ integrate forever-webui
       + '}\n'),
 
     _assetTestHtml: '<!DOCTYPE html><html><head>\n'
-      + [
-        '/public/assets/utility2-external/external.rollup.auto.css'
-      ].map(function (url) {
-        return '<link href="' + url + '" rel="stylesheet" />\n';
-      }).join('')
-
+      + '<link href="/public/assets/utility2-external.browser.css" rel="stylesheet"/>\n'
       + '<style>\n'
       + EXPORTS.lintScript('test.css', '\n')
       + '</style></head><body>\n'
       + '<div id="divTest"></div>\n'
       + '<script>window.globalOverride = {{globalOverride}};</script>\n'
-
-      + [
-        '/public/assets/utility2-external/external.rollup.auto.js',
-        '/public/assets/utility2-external.shared.js',
-        '/public/assets/utility2.js'
-      ].map(function (url) {
-        return '<script src="' + url + '"></script>\n';
-      }).join('')
+      + '<script src="/public/assets/utility2-external.shared.js"></script>\n'
+      + '<script src="/public/assets/utility2-external.browser.js"></script>\n'
+      + '<script src="/public/assets/utility2.js"></script>\n'
       + '</body></html>\n',
 
     coverageExtend: function (coverage1, coverage2) {
@@ -4847,7 +5002,7 @@ integrate forever-webui
         this function uploads code coverage info to http://coveralls.io
       */
       var script;
-      if (state.isCoveralls) {
+      if (required.coveralls && state.isCoveralls) {
         if (process.env.TRAVIS) {
           script = 'cat ' + state.fsDirTest + '/coverage/lcov.info'
             + ' | node_modules/coveralls/bin/coveralls.js'
@@ -4866,12 +5021,12 @@ integrate forever-webui
       /*
         this function tests _coverageCoverallsUpload's default handling behavior
       */
-      EXPORTS.testMock({
-        process: { env: { TRAVIS: false } },
-        state: { isCoveralls: true }
-      }, function () {
+      EXPORTS.testMock(onEventError, [
+        { mock: { exit: onEventError }, state: EXPORTS },
+        { mock: { TRAVIS: '' }, state: process.env },
+        { mock: { isCoveralls: true }, state: state }
+      ], function (onEventError) {
         local._coverageCoverallsUpload();
-        onEventError();
       });
     },
 
@@ -4879,31 +5034,15 @@ integrate forever-webui
       /*
         this function tests _coverageCoverallsUpload's travis-ci behavior
       */
-      EXPORTS.testMock({
-        global: { setTimeout: EXPORTS.nop },
-        process: { env: { TRAVIS: true } },
-        state: { isCoveralls: true }
-      }, function () {
+      EXPORTS.testMock(onEventError, [
+        { mock: { exit: onEventError, shell: EXPORTS.nop },
+          state: EXPORTS },
+        { mock: { TRAVIS: '1' }, state: process.env },
+        { mock: { setTimeout: EXPORTS.callCallback }, state: global },
+        { mock: { isCoveralls: true }, state: state }
+      ], function (onEventError) {
         local._coverageCoverallsUpload();
-        onEventError();
       });
-    },
-
-    _testMock: function (global2) {
-      /*
-        this function mocks the nodejs global state
-      */
-      EXPORTS.setOptionsDefaults(global2, {
-        EXPORTS: { exit: EXPORTS.nop, shell: local._testMock_shell },
-        process: { exit: EXPORTS.nop }
-      });
-    },
-
-    _testMock_shell: function () {
-      /*
-        this function mocks the nodejs function shell
-      */
-      return required.child_process.spawn('echo');
     },
 
     _npmTest: function () {
@@ -4958,10 +5097,10 @@ integrate forever-webui
       /*
         this function tests _npmTest's default handling behavior
       */
-      EXPORTS.testMock({
-        global: { setTimeout: EXPORTS.callCallback },
-        state: { npmTest: true }
-      }, function () {
+      EXPORTS.testMock(onEventError, [
+        { state: global, mock: { setTimeout: EXPORTS.callCallback } },
+        { state: state, mock: { npmTest: true } }
+      ], function (onEventError) {
         local._npmTest();
         onEventError();
       });
@@ -4984,12 +5123,6 @@ integrate forever-webui
         ['failures', 'name', 'passed', 'skipped', 'tests'].forEach(function (attribute) {
           xml += attribute + '="' + testModule[attribute] + '" ';
         });
-        xml += '>\n<properties>\n';
-        ['javascriptPlatform'].forEach(function (property) {
-          xml += '<property name="' + property
-            + '" value=' + JSON.stringify(testModule[property]) + '/>\n';
-        });
-        xml += '</properties>\n';
         Object.keys(testModule.testCases).forEach(function (test) {
           test = testModule.testCases[test];
           xml += '<testcase ';
@@ -5008,24 +5141,6 @@ integrate forever-webui
       });
       xml += '</testsuites>\n';
       return xml;
-    },
-
-    testThrowError: function () {
-      /*
-        this function throws a new Error for testing purposes
-      */
-      throw new Error('testThrowError');
-    },
-
-    _testThrowError_default_test: function (onEventError) {
-      /*
-        this function tests testThrowError's default handling behavior
-      */
-      EXPORTS.tryCatch(function () {
-        EXPORTS.testThrowError();
-      }, function (error) {
-        onEventError(!error);
-      });
     }
 
   };
