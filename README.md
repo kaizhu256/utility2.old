@@ -26,7 +26,7 @@ npm test
 * integrate forever-webui
 
 #### 2014.xx.x
-* force http protocol
+* enable server to force https protocol using x-forwarded-proto
 
 #### 2014.01.10
 * revamp EXPORTS.testMock

@@ -638,6 +638,8 @@ standalone, browser test and code coverage framework for nodejs",
             + '\n');
         }
       } else if (data !== undefined && data !== '') {
+        /* debug data */
+        state.data = data;
         console.log('\nonEventErrorDefault - data\n' + String(data) + '\n');
       }
       return error;
@@ -1978,7 +1980,7 @@ standalone, browser test and code coverage framework for nodejs",
       /*
         this function remotely evals the javascript code on server
       */
-      EXPORTS.ajax({ data: script, url: "/admin/admin.eval" }, onEventError);
+      EXPORTS.ajax({ data: script, dataType: 'json', url: "/admin/admin.eval" }, onEventError);
     },
 
     _adminEval_default_test: function (onEventError) {
@@ -2747,7 +2749,7 @@ standalone, browser test and code coverage framework for nodejs",
         next();
         return;
       }
-      EXPORTS.serverRespondDefault(response, 303, 'text/plain', '/signin?redirect='
+      EXPORTS.serverRespondDefault(response, 303, null, '/signin?redirect='
         + encodeURIComponent(request.url));
     },
 
@@ -4114,9 +4116,9 @@ standalone, browser test and code coverage framework for nodejs",
       state.middlewareAssets = state.middlewareAssets
         || local._createMiddleware(state.routerAssetsDict);
       /* 6. middleware test */
-      global.routerTestDict = state.routerTestDict = state.routerTestDict || {};
+      state.routerTestDict = state.routerTestDict || {};
       state.middlewareTest = state.middlewareTest
-        || local._createMiddleware(global.routerTestDict);
+        || local._createMiddleware(state.routerTestDict);
       /* start server */
       EXPORTS.serverStart();
     },
@@ -4136,11 +4138,14 @@ standalone, browser test and code coverage framework for nodejs",
       /*
         this function handles default security
       */
+      if (EXPORTS.securityHttpsRedirect(request, response)) {
+        return;
+      }
       if (EXPORTS.securityBasicAuthValidate(request)) {
         next();
         return;
       }
-      EXPORTS.serverRespondDefault(response, 303, 'text/plain', '/signin?redirect='
+      EXPORTS.serverRespondDefault(response, 303, null, '/signin?redirect='
         + encodeURIComponent(request.url));
     },
 
@@ -4160,7 +4165,7 @@ standalone, browser test and code coverage framework for nodejs",
             next(redirect);
             return;
           }
-          EXPORTS.serverRespondDefault(response, 303, 'text/plain', redirect);
+          EXPORTS.serverRespondDefault(response, 303, null, redirect);
           return;
         }
         next();
@@ -4375,6 +4380,21 @@ standalone, browser test and code coverage framework for nodejs",
         === state.securityBasicAuthSecret;
     },
 
+    securityHttpsRedirect: function (request, response) {
+      /*
+        this function forces the server to redirect all non-https requests to https
+      */
+      var headers;
+      headers = request.headers;
+      if (state.isSecurityHttpsRedirect && headers['x-forwarded-proto'] !== 'https') {
+        EXPORTS.serverRespondDefault(response,
+          301,
+          null,
+          'https://' + headers.host + request.url);
+        return true;
+      }
+    },
+
     serverRespondDefault: function (response, statusCode, contentType, data) {
       /*
         this function handles an appropriate response for a given status code
@@ -4384,8 +4404,18 @@ standalone, browser test and code coverage framework for nodejs",
         + (required.http.STATUS_CODES[statusCode] || 'Unknown Status Code');
       switch (statusCode) {
       /* redirect */
+      case 301:
+      case 302:
       case 303:
-        response.setHeader('location', data);
+      case 304:
+      case 305:
+      case 306:
+      case 307:
+      case 308:
+      case 309:
+        if (data) {
+          response.setHeader('location', data);
+        }
         break;
       case 401:
         response.setHeader('www-authenticate', 'Basic realm="Authorization Required"');
