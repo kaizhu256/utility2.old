@@ -25,7 +25,10 @@ npm test
 * add heroku dynamic config server
 * integrate forever-webui
 
-#### 2014.01.10-1
+#### 2014.xx.x
+* force http protocol
+
+#### 2014.01.10
 * revamp EXPORTS.testMock
 * remove console.log hack
 * utility2-external - remove public/assets/external.rollup.auto.css
@@ -37,7 +40,7 @@ npm test
 * remove npm mime dependency
 * utility2-external - add utility2-external.nodejs.txt
 
-#### 2014.01.08-1
+#### 2014.01.08
 * integrate ioAggregate with testModule
 * add localhost testing for socks5
 * integrate ioAggregate with moduleRollup

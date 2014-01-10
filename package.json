@@ -7,6 +7,7 @@
     "connect": "2.11.x",
     "cssmin": "0.4.x",
     "graceful-fs": "2.0.x",
+    "phantomjs": "1.9.x",
     "sqlite3": "2.1.x",
     "uglify-js": "2.4.x",
     "utility2-external": "2014.x.x"
@@ -14,8 +15,7 @@
   "description": "utility2.js - standalone, browser test and code coverage framework for nodejs",
   "devDependencies": {
     "coveralls": "2.5.x",
-    "istanbul": "0.2.x",
-    "phantomjs": "1.9.x"
+    "istanbul": "0.2.x"
   },
   "main": "utility2.js",
   "name": "utility2",
@@ -32,5 +32,5 @@
   "stateDefault": {
     "coverallsUrl": "https://coveralls.io/r/kaizhu256/utility2"
   },
-  "version": "2014.01.10-1"
+  "version": "2014.01.10-2"
 }

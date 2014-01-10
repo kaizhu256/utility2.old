@@ -4794,7 +4794,7 @@ standalone, browser test and code coverage framework for nodejs",
       response.write(request.method + ' ' + request.url + ' http/' + request.httpVersion
         + '\n');
       Object.keys(request.headers).forEach(function (name) {
-        response.write(name + ': ' + JSON.stringify(request.headers[name]) + '\n');
+        response.write(name + ': ' + request.headers[name] + '\n');
       });
       response.write('\n');
       /* optimization - stream data */
