@@ -26,7 +26,7 @@ npm test
 * add heroku dynamic config server
 * integrate forever-webui
 
-#### 2014.xx.x
+#### 2014.01.21
 * migrate rollup api to use asyncRemote instead of ioAggregate
 * migrate ajaxMultiUrls to use asyncRemote instead of ioAggregate
 * add implicit mult-callback error handling for asyncPermute
