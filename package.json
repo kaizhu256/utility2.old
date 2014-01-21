@@ -26,10 +26,10 @@
   "scripts": {
     "postinstall": "npm update utility2-external",
     "start": "./utility2.js --repl --serverPort random",
-    "test": "utility2=./utility2.js; $utility2 --npm-test-mode start --npm-test-script $utility2 --timeout-default 8000 --timeout-exit 16000; $utility2 --coveralls; $utility2 --npm-test-mode end"
+    "test": "utility2=./utility2.js; $utility2 --npm-test-mode start --npm-test-script $utility2 --timeout-default 12000 --timeout-exit 24000; $utility2 --coveralls; $utility2 --npm-test-mode end"
   },
   "stateDefault": {
     "coverallsUrl": "https://coveralls.io/r/kaizhu256/utility2"
   },
-  "version": "2014.01.10-2"
+  "version": "2014.01.21-1"
 }
