@@ -5,7 +5,6 @@
   }],
   "dependencies": {
     "connect": "2.11.x",
-    "cssmin": "0.4.x",
     "graceful-fs": "2.0.x",
     "phantomjs": "1.9.x",
     "sqlite3": "2.1.x",

@@ -14,10 +14,11 @@ npm test
 
 ## changelog
 #### todo
+* add option to auto-remove test functions from module
+* add post-rollup regular expression replacment handling
+* move npm uglify-js dependency to utility2-external
 * auto-skip tests
 * prevent phantomjs from crashing during test errors
-* migrate from ioAggregate to mapAsync
-* move npm cssmin dependency to utility2-external
 * fix redundant debugFlag in ajax
 * remove rollup cache for local tests
 * add timeout for deferCallback
@@ -26,6 +27,15 @@ npm test
 * integrate forever-webui
 
 #### 2014.xx.x
+* migrate rollup api to use asyncRemote instead of ioAggregate
+* migrate ajaxMultiUrls to use asyncRemote instead of ioAggregate
+* add implicit mult-callback error handling for asyncPermute
+* migrate testLocal to use asyncRemote instead of ioAggregate
+* revamp tryCatch with arguments handling
+* merge moduleSocks5AjaxNodejs and moduleSocks5ServerNodejs into moduleSocks5Nodejs
+* security - run large asyncPermute calls over several event-loop-cycles to prevent cpu lock
+* modify testMock to use lists instead of dicts
+* move npm cssmin dependency to utility2-external
 * enable server to force https protocol using x-forwarded-proto
 
 #### 2014.01.10
