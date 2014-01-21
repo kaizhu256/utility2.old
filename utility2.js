@@ -741,8 +741,7 @@ standalone, browser test and code coverage framework for nodejs",
         EXPORTS.tryCatch(function () {
           required[key] = required[key] || require(module);
         }, function (error) {
-          EXPORTS.nop(error
-            && EXPORTS.jsonLog(['requireModules - cannot load module', module]));
+          EXPORTS.jsonLog(['requireModules - cannot load module', module]);
         });
       });
     },
@@ -2612,7 +2611,7 @@ standalone, browser test and code coverage framework for nodejs",
           state.response = response;
           state.routerDict[request.url](request, response, JSON.parse(request.post || '{}'));
         }, function (error) {
-          EXPORTS.nop(error && local._serverRespondError(request, response, error));
+          local._serverRespondError(request, response, error);
         });
       });
       EXPORTS.jsonLog(['phantomjs - server started on port',
