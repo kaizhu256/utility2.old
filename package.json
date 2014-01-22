@@ -11,7 +11,7 @@
     "phantomjs": "1.9.x",
     "sqlite3": "2.1.x",
     "uglify-js": "2.4.x",
-    "utility2-external": "2014.x.x"
+    "utility2-external": "<=2014.01.22"
   },
   "description": "utility2.js - standalone, browser test and code coverage framework for nodejs",
   "main": "utility2.js",
@@ -22,7 +22,7 @@
     "url" : "https://github.com/kaizhu256/utility2.git"
   },
   "scripts": {
-    "postinstall": "npm update utility2-external",
+    "postinstall": "utility2=./utility2.js; external=./node_modules/utility2-external/public/utility2-external; $utility2 --minify $external.browser.css,$external.browser.js,$external.shared.js",
     "start": "./utility2.js --repl --serverPort random",
     "test": "utility2=./utility2.js; $utility2 --npm-test-mode start --npm-test-script $utility2 --timeout-default 12000 --timeout-exit 24000; $utility2 --coveralls; $utility2 --npm-test-mode end"
   },

@@ -14,17 +14,21 @@ npm test
 
 ## changelog
 #### todo
+* move npm uglify-js dependency to utility2-external
 * add option to auto-remove test functions from module
 * add post-rollup regular expression replacment handling
-* move npm uglify-js dependency to utility2-external
 * auto-skip tests
 * prevent phantomjs from crashing during test errors
 * fix redundant debugFlag in ajax
-* remove rollup cache for local tests
 * add timeout for deferCallback
 * emulate localStorage
 * add heroku dynamic config server
 * integrate forever-webui
+
+#### 2014.xx.xx
+* add minified rollups and source map for utility2-external
+* remove rollup cache for local tests
+* add post processing for rollup files
 
 #### 2014.01.21
 * migrate rollup api to use asyncRemote instead of ioAggregate
