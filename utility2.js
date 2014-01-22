@@ -2576,6 +2576,7 @@ standalone, browser test and code coverage framework for nodejs",
           state.response = response;
           state.routerDict[request.url](request, response, JSON.parse(request.post || '{}'));
         }, function (error) {
+          console.error(request && request.url);
           local._serverRespondError(request, response, error);
         });
       });
@@ -3075,7 +3076,7 @@ standalone, browser test and code coverage framework for nodejs",
         this function performs default error handling and exits the process with an error code
       */
       EXPORTS.deferCallback('onEventExit', 'resume');
-      process.exit(isFinite(error) ? error : !EXPORTS.onEventErrorDefault(error));
+      process.exit(isFinite(error) ? error : error && EXPORTS.onEventErrorDefault(error));
     },
 
     timeoutExitRemaining: function () {
@@ -4918,8 +4919,8 @@ standalone, browser test and code coverage framework for nodejs",
       + '</style></head><body>\n'
       + '<div id="divTest"></div>\n'
       + '<script>window.globalOverride = {{globalOverride}};</script>\n'
-      + '<script src="/public/utility2-external/utility2-external.shared.min.js"></script>\n'
-      + '<script src="/public/utility2-external/utility2-external.browser.min.js"></script>\n'
+      + '<script src="/public/utility2-external/utility2-external.shared.js"></script>\n'
+      + '<script src="/public/utility2-external/utility2-external.browser.js"></script>\n'
       + '<script src="/public/utility2.js"></script>\n'
       + '</body></html>\n',
 
