@@ -79,7 +79,7 @@ standalone, browser test and code coverage framework for nodejs",
       /* override required.fs with required.graceful_fs */
       required.fs = required.graceful_fs;
       /* require utility2-external.shared.js */
-      EXPORTS.evalFileSyncOnEventError(required.utility2_external.__dirname
+      EXPORTS.evalFileOnEventError(required.utility2_external.__dirname
         + '/public/utility2-external.shared.js',
         EXPORTS.onEventErrorDefault);
     },
@@ -473,7 +473,7 @@ standalone, browser test and code coverage framework for nodejs",
       onEventError();
     },
 
-    evalFileSyncOnEventError: function (file, onEventError) {
+    evalFileOnEventError: function (file, onEventError) {
       /*
         this function synchronously evals the file with error handling
       */
@@ -1039,7 +1039,7 @@ standalone, browser test and code coverage framework for nodejs",
       /*
         this function runs the ajax request, and auto-concats the response stream into utf8 text
         usage:
-        local._ajaxBrowser({
+        EXPORTS.ajax({
           data: 'hello world',
           type: 'POST',
           url: '/upload/foo.txt'
@@ -1062,6 +1062,7 @@ standalone, browser test and code coverage framework for nodejs",
       options.contentType = options.contentType || 'application/octet-stream';
       options.dataType = options.dataType || 'text';
       options.type = options.type || options.method;
+      options.xhr = options.xhr || required.utility2._xhrProgress;
       if (options.params) {
         options.url = EXPORTS.urlParamsParsedJoin({
           params: options.params,
@@ -1070,25 +1071,11 @@ standalone, browser test and code coverage framework for nodejs",
       }
       /* debug */
       if (options.debugFlag || state.debugFlag) {
-        EXPORTS.jsonLog(['_ajaxBrowser - options', options]);
+        EXPORTS.jsonLog(['ajax - options', options]);
       }
-      $.ajax(options).done(function (data, textStatus, xhr) {
-        switch (options.dataType) {
-        case 'statusCode':
-          onEventError(null, xhr.status);
-          return;
-        }
+      $.ajax(options).done(function (data) {
         onEventError(null, data);
       }).fail(function (xhr, textStatus, errorMessage) {
-        switch (options.dataType) {
-        case 'statusCode':
-          /* ignore error, if all we want is the status code */
-          if (xhr.status) {
-            onEventError(null, xhr.status);
-            return;
-          }
-          break;
-        }
         onEventError(new Error(xhr.status + ' ' + textStatus + ' - ' + options.url + '\n'
           + (xhr.responseText || errorMessage)), null);
       });
@@ -1098,7 +1085,7 @@ standalone, browser test and code coverage framework for nodejs",
       /*
         this function tests ajax's default handling behavior
       */
-      EXPORTS.ajax({ url: state.localhost + '/test/test.echo' }, onEventError);
+      EXPORTS.ajax({ debugFlag: true, url: state.localhost + '/test/test.echo' }, onEventError);
     },
 
     _ajax_nullCase_test: function (onEventError) {
@@ -1169,9 +1156,9 @@ standalone, browser test and code coverage framework for nodejs",
       EXPORTS.ajaxPermuteParams({
         url: '/test/test.error'
       }, function (error, data, options) {
-        EXPORTS.assert(error instanceof Error
-          && options.mode === 'result'
-          && options.remaining === 0);
+        EXPORTS.assert(error instanceof Error);
+        EXPORTS.assert(options.mode === 'result');
+        EXPORTS.assert(options.remaining === 0);
         onEventError();
       });
     },
@@ -1198,8 +1185,8 @@ standalone, browser test and code coverage framework for nodejs",
       EXPORTS.ajaxPermuteParams({
         url: '/test/test.error?aa=1&aa=2&bb=3&bb=4&cc=5#dd=6'
       }, function (error, data, options) {
-        EXPORTS.assert(error instanceof Error
-          && options.mode === 'result');
+        EXPORTS.assert(error instanceof Error);
+        EXPORTS.assert(options.mode === 'result');
         if (options.remaining === 0) {
           onEventError();
         }
@@ -1275,9 +1262,6 @@ standalone, browser test and code coverage framework for nodejs",
     },
 
     ajaxValidateOptionsUrl: function (options, onEventError) {
-      if (typeof options === 'string') {
-        options = { url: options };
-      }
       if (!(options && typeof options.url === 'string')) {
         onEventError(new Error('ajaxValidateOptionsUrl - invalid options.url '
           + (options && options.url)));
@@ -1526,6 +1510,7 @@ standalone, browser test and code coverage framework for nodejs",
         } else {
           options.remaining -= 1;
         }
+        /* ignore results after timeout */
         if (options.remaining < 0) {
           return;
         }
@@ -1537,12 +1522,6 @@ standalone, browser test and code coverage framework for nodejs",
         onEventError(error, result, options);
         options.error = options.error || error;
       });
-    },
-
-    _onEventTimeout: function (error, options, onEventError) {
-      options.mode = 'timeout';
-      options.remaining = 0;
-      onEventError(error, null, options);
     },
 
     _onEventLoop: function (options, onEventError) {
@@ -1618,6 +1597,37 @@ standalone, browser test and code coverage framework for nodejs",
       EXPORTS.asyncPermute(options, onEventError2);
     },
 
+    _asyncPermute_multiError_test: function (onEventError) {
+      /*
+        this function tests asyncPermute's multi-error handling behavior
+      */
+      var remaining;
+      remaining = 2;
+      EXPORTS.asyncPermute({
+        argMatrix: [ [1] ],
+        timeout: 1
+      }, function (error, data, options, onEventResult) {
+        switch (options.mode) {
+        case 'arg':
+          /* call onEventResult multiple times */
+          onEventResult();
+          onEventResult();
+          break;
+        default:
+          remaining -= 1;
+          switch (remaining) {
+          case 0:
+            EXPORTS.assert(error instanceof Error);
+            onEventError();
+            break;
+          case 1:
+            EXPORTS.assert(!error);
+            break;
+          }
+        }
+      });
+    },
+
     _asyncPermute_error_test: function (onEventError) {
       /*
         this function tests asyncPermute's error handling behavior
@@ -1661,10 +1671,15 @@ standalone, browser test and code coverage framework for nodejs",
         this function tests asyncPermute's timeout handling behavior
       */
       EXPORTS.asyncPermute({
-        argMatrix: [ [0] ],
+        argMatrix: [ [1] ],
         timeout: 1
-      }, function (error, data, options) {
+      }, function (error, data, options, onEventResult) {
+        EXPORTS.assert(options.mode !== 'result');
         switch (options.mode) {
+        case 'arg':
+          /* test callback after timeout */
+          setTimeout(onEventResult, 1000);
+          break;
         case 'timeout':
           EXPORTS.assert(EXPORTS.isTimeoutError(error)
             && options.remaining === 0);
@@ -1815,6 +1830,23 @@ standalone, browser test and code coverage framework for nodejs",
       }, onEventError2);
     },
 
+    _testMock_error_test: function (onEventError) {
+      /* this function tests testMock's error handling behavior */
+      EXPORTS.testMock(onEventError, [
+        [state, { foo: 1 }]
+      ], function (onEventError) {
+        EXPORTS.testMock(function (error) {
+          EXPORTS.assert(error instanceof Error);
+          EXPORTS.assert(state.foo === 1);
+          onEventError();
+        }, [
+          [state, { foo: 2 }]
+        ], function () {
+          throw new Error();
+        });
+      });
+    },
+
     testLocal: function (local2) {
       /*
         this function runs tests on the module's local2 object
@@ -1906,6 +1938,7 @@ standalone, browser test and code coverage framework for nodejs",
       /*
         this function creates a test report
       */
+      var coverage;
       console.log('\ntestReport');
       state.testSuiteList.sort(function (arg1, arg2) {
         arg1 = arg1.name;
@@ -1921,22 +1954,18 @@ standalone, browser test and code coverage framework for nodejs",
       });
       console.log();
       if (state.isBrowser) {
-        /* upload test report */
-        EXPORTS.ajax({
-          data: JSON.stringify({
-            coverage: global.__coverage__,
-            testSuiteList: state.testSuiteList
-          }),
-          url: '/test/report.upload'
-        }, EXPORTS.onEventErrorDefault);
+        coverage = global.__coverage__;
         /* reset code coverage */
         if (global.__coverage__) {
           global.__coverage__ = {};
         }
+        /* upload test report */
+        EXPORTS.ajax({
+          data: JSON.stringify({ coverage: coverage, testSuiteList: state.testSuiteList }),
+          url: '/test/report.upload'
+        }, EXPORTS.onEventErrorDefault);
       }
-      if (!state.npmTestMode) {
-        state.testSuiteList.length = 0;
-      }
+      state.testSuiteList.length = state.npmTestMode ? state.testSuiteList.length : 0;
     }
 
   };
@@ -2178,22 +2207,6 @@ standalone, browser test and code coverage framework for nodejs",
       EXPORTS.initModule(module, local);
     },
 
-    _initOnce: function () {
-      if (!(state.isBrowser && location.pathname === '/admin/admin.html')) {
-        return;
-      }
-      /* event handling */
-      state.inputAdminUpload.on("change", function (event) {
-        EXPORTS.ajax({
-          file: event.target.files[0],
-          method: "POST",
-          url: "/admin/admin.upload"
-        });
-        /* reset input */
-        $(event.target).val('');
-      });
-    },
-
     adminEval: function (script, onEventError) {
       /*
         this function remotely evals the javascript code on server
@@ -2245,6 +2258,199 @@ standalone, browser test and code coverage framework for nodejs",
 
 
 
+(function moduleXhrProgressBrowser() {
+  /*
+    this browser module exports the xhr progress api
+  */
+  'use strict';
+  var local;
+  local = {
+
+    _name: 'utility2.moduleXhrProgressBrowser',
+
+    _init: function () {
+      if (!state.isBrowser) {
+        return;
+      }
+      EXPORTS.initModule(module, local);
+      required.utility2._xhrProgress = local._xhrProgress;
+    },
+
+    _initOnce: function () {
+      /* exports */
+      /* css */
+      $(document.head).append('<style>\n'
+        + EXPORTS.lintScript('moduleXhrProgressBrowser.css', '#divXhrProgress {\n'
+          + 'background-color: #fff;\n'
+          + 'border: 2px solid black;\n'
+          + 'border-radius: 5px;\n'
+          + 'cursor: pointer;\n'
+          + 'display: none;\n'
+          + 'left: 50%;\n'
+          + 'margin: 0px 0px 0px -64px;\n'
+          + 'padding: 0px 0px 0px 0px;\n'
+          + 'position: fixed;\n'
+          + 'top: 49%;\n'
+          + 'width: 128px;\n'
+          + 'z-index: 99999;\n'
+          + '}\n')
+        + '#divXhrProgress > .progress {\n'
+          + 'background-color: #777;\n'
+          + 'margin: 10px;\n'
+        + '}\n'
+        + '#divXhrProgress > .progress {\n'
+          + 'background-color: #777;\n'
+          + 'margin: 10px;\n'
+        + '}\n'
+        + '</style>\n');
+      /* init xhr progress container */
+      local._divXhrProgress = $('<div id="divXhrProgress">\n'
+        + '<div class="active progress progress-striped">\n'
+          + '<div class="progress-bar progress-bar-info">loading\n'
+        + '</div></div></a>\n');
+      $(document.body).append(local._divXhrProgress);
+      local._divXhrProgressBar = local._divXhrProgress.find('div.progress-bar');
+      /* event handling */
+      local._divXhrProgress.on('click', function () {
+        while (local._xhrList.length) {
+          local._xhrList.pop().abort();
+        }
+      });
+    },
+
+    __xhrProgress_abort_test: function (onEventError) {
+      /* this function tests _xhrProgress's abort behavior */
+      EXPORTS.clearCallSetInterval('__xhrProgress_abort_test', function () {
+        /* wait until no ajax io is in progress before initiating test */
+        if (!local._xhrList.length) {
+          EXPORTS.clearCallSetInterval('__xhrProgress_abort_test', 'clear');
+          EXPORTS.ajax({ url: '/test/test.timeout' });
+          local._divXhrProgress.click();
+          onEventError();
+        }
+      }, 1000);
+    },
+
+    _onEventEnd: function (event) {
+      /*
+        this function runs event handling for ending the ajax request
+      */
+      switch (event.type) {
+      case 'load':
+        local._progressUpdate('100%', 'progress-bar-success', 'success');
+        break;
+      default:
+        local._progressUpdate('100%', 'progress-bar-danger', event.type);
+      }
+      /* hide progress bar */
+      if (!local._xhrList.length) {
+        /* allow the final status to be shown for a short time before hiding */
+        setTimeout(function () {
+          if (!local._xhrList.length) {
+            local._divXhrProgress.hide();
+          }
+        }, 1000);
+      }
+    },
+
+    _onEventProgress: function () {
+      /*
+        this function increments progress in an indeterminate manner
+      */
+      local._progress += 0.25;
+      local._progressUpdate(
+        100 - 100 / (local._progress) + '%',
+        'progress-bar-info',
+        'loading'
+      );
+    },
+
+    _progressUpdate: function (width, type, label) {
+      /*
+        this function updates the visual progress bar
+      */
+      if (width) {
+        local._divXhrProgressBar.css('width', width);
+      }
+      if (type) {
+        local._divXhrProgressBar[0].className
+          = local._divXhrProgressBar[0].className.replace((/progress-bar-\w+/), type); /**/
+      }
+      if (label) {
+        local._divXhrProgressBar.html(label);
+      }
+    },
+
+    _xhrProgress: function () {
+      /*
+        this function creates a special xhr object with progress event handling
+      */
+      var xhr;
+      xhr = new XMLHttpRequest();
+      /* event handling */
+      function _onEvent(event) {
+        switch (event.type) {
+        case 'abort':
+        case 'error':
+        case 'timeout':
+          local._xhrListRemove(xhr);
+          local._onEventEnd(event);
+          break;
+        case 'load':
+          local._xhrListRemove(xhr);
+          if (local._xhrList.length) {
+            local._onEventProgress(event, xhr);
+          } else {
+            local._onEventEnd(event);
+          }
+          break;
+        case 'progress':
+          local._onEventProgress(event, xhr);
+          break;
+        }
+      }
+      xhr.addEventListener('abort', _onEvent);
+      xhr.addEventListener('error', _onEvent);
+      xhr.addEventListener('load', _onEvent);
+      xhr.addEventListener('progress', _onEvent);
+      /* show progress bar */
+      xhr._progressLoaded = 0;
+      xhr._progressRatio = 0;
+      if (!local._xhrList.length) {
+        local._progress = 1;
+        local._progressUpdate('0%', 'progress-bar-info', 'loading');
+        /* bug - delay displaying progress bar to prevent it from showing 100% width */
+        setTimeout(function () {
+          if (local._xhrList.length) {
+            local._divXhrProgress.show();
+          }
+        }, 1);
+      }
+      local._onEventProgress({}, xhr);
+      local._xhrList.push(xhr);
+      return xhr;
+    },
+
+    _xhrList: [],
+
+    _xhrListRemove: function (xhr) {
+      /*
+        this function removes the xhr from the progress list
+      */
+      var list, ii;
+      list = local._xhrList;
+      ii = list.indexOf(xhr);
+      if (ii >= 0) {
+        list.splice(ii, 1);
+      }
+    }
+
+  };
+  local._init();
+}());
+
+
+
 (function moduleInitBrowser() {
   /*
     this browser module inits utility2
@@ -2263,34 +2469,6 @@ standalone, browser test and code coverage framework for nodejs",
     },
 
     _initOnce: function () {
-      /* bug - phantomjs missing Function.prototype.bind
-       * https://code.google.com/p/phantomjs/issues/detail?id=522
-       * https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function/bind */
-      if (!Function.prototype.bind) {
-        Function.prototype.bind = function (oThis) {
-          if (typeof this !== "function") {
-            /* closest thing possible to the ECMAScript 5 internal IsCallable function */
-            throw new TypeError("Function.prototype.bind - what is trying to be bound is not callable");
-          }
-          var aArgs = Array.prototype.slice.call(arguments, 1),
-            fToBind = this,
-            FNOP = function () { return; },
-            fBound = function () {
-              return fToBind.apply(this instanceof FNOP && oThis ? this : oThis,
-                aArgs.concat(Array.prototype.slice.call(arguments)));
-            };
-          FNOP.prototype = this.prototype;
-          fBound.prototype = new FNOP();
-          return fBound;
-        };
-      }
-      /* bug - phantomjs - new Blob() throws error
-       * https://github.com/ariya/phantomjs/issues/11013 */
-      try {
-        EXPORTS.nop(new global.Blob());
-      } catch (error) {
-        global.Blob = local._Blob;
-      }
       /* cache element id */
       $('[id]').each(function (ii, target) {
         state[target.id] = state[target.id] || $(target);
@@ -2316,20 +2494,6 @@ standalone, browser test and code coverage framework for nodejs",
         state.isTest = 'once';
         return;
       }
-    },
-
-    _Blob: function (aFileParts, options) {
-      /*
-        this function replaces the buggy phantomjs Blob class constructor
-      */
-      var BlobBuilder, oBuilder;
-      BlobBuilder = global.BlobBuilder || global.WebKitBlobBuilder || global.MozBlobBuilder
-        || global.MSBlobBuilder;
-      oBuilder = new BlobBuilder();
-      if (aFileParts) {
-        oBuilder.append(aFileParts[0]);
-      }
-      return options ? oBuilder.getBlob(options.type) : oBuilder.getBlob();
     }
 
   };
@@ -2414,24 +2578,26 @@ standalone, browser test and code coverage framework for nodejs",
         });
       }
       /* init process.argv */
-      process.argv.forEach(function (arg, ii, argv) {
-        var value;
-        value = argv[ii + 1];
-        if ((/^--[a-z]/).test(arg)) {
-          /* --no-foo -> state.isFoo = false */
-          if ((/^--no-[a-z]/).test(arg)) {
-            state[EXPORTS.stringToCamelCase('is' + arg.slice(4))] = false;
-          /* --foo bar -> state.isFoo = bar */
-          } else if (value && !(/^--[a-z]/).test(value)) {
-            state[EXPORTS.stringToCamelCase(arg.slice(2))] = isFinite(Number(value))
-              ? Number(value)
-              : value;
-          /* --foo -> state.isFoo = true */
-          } else {
-            state[EXPORTS.stringToCamelCase('is' + arg.slice(1))] = true;
+      if (require.main === module || state.isProcessArgv) {
+        process.argv.forEach(function (arg, ii, argv) {
+          var value;
+          value = argv[ii + 1];
+          if ((/^--[a-z]/).test(arg)) {
+            /* --no-foo -> state.isFoo = false */
+            if ((/^--no-[a-z]/).test(arg)) {
+              state[EXPORTS.stringToCamelCase('is' + arg.slice(4))] = false;
+            /* --foo bar -> state.isFoo = bar */
+            } else if (value && !(/^--[a-z]/).test(value)) {
+              state[EXPORTS.stringToCamelCase(arg.slice(2))] = isFinite(Number(value))
+                ? Number(value)
+                : value;
+            /* --foo -> state.isFoo = true */
+            } else {
+              state[EXPORTS.stringToCamelCase('is' + arg.slice(1))] = true;
+            }
           }
-        }
-      });
+        });
+      }
       /* load package.json file */
       state.packageJson = state.packageJson || {};
       EXPORTS.tryCatch(function () {
@@ -2441,7 +2607,7 @@ standalone, browser test and code coverage framework for nodejs",
       /* load default state */
       state.stateDefault = state.packageJson.stateDefault || {};
       EXPORTS.stateDefault(state, EXPORTS.jsonCopy(state.stateDefault));
-      /* update dynamic, override state from external url every 60 seconds */
+      /* update dynamic, override state from external url every 5 minutes */
       state.stateOverride = state.stateOverride || {};
       EXPORTS.stateOverride(state, EXPORTS.jsonCopy(state.stateOverride || {}));
       state.stateOverrideUrl = state.stateOverrideUrl || '/state/stateOverride.json';
@@ -2452,20 +2618,26 @@ standalone, browser test and code coverage framework for nodejs",
             headers: { authorization: 'Basic ' + state.securityBasicAuthSecret },
             url: state.stateOverrideUrl
           }, function (error, data) {
-            if (error) {
-              EXPORTS.onEventErrorDefault(error);
-              return;
-            }
-            EXPORTS.stateOverride(state.stateOverride, data);
-            EXPORTS.stateOverride(state, EXPORTS.jsonCopy(state.stateOverride));
-            EXPORTS.jsonLog(['loaded override config from', state.stateOverrideUrl]);
+            EXPORTS.nop(error
+              ?  EXPORTS.onEventErrorDefault(error)
+              : (function () {
+                EXPORTS.stateOverride(state.stateOverride, data);
+                EXPORTS.stateOverride(state, EXPORTS.jsonCopy(state.stateOverride));
+                EXPORTS.jsonLog(['loaded override config from', state.stateOverrideUrl]);
+              }()));
           });
         }, 5 * 60 * 1000);
       });
       /* load js files */
-      if (state.loadFiles) {
-        state.loadFiles.split(',').forEach(function (file) {
-          EXPORTS.evalFileSyncOnEventError(file, EXPORTS.onEventErrorDefault);
+      if (state.loadFile) {
+        state.loadFile.split(',').forEach(function (file) {
+          EXPORTS.evalFileOnEventError(file, EXPORTS.onEventErrorDefault);
+        });
+      }
+      /* stringify file */
+      if (state.stringifyFile) {
+        required.fs.readFile(state.stringifyFile, 'utf8', function (error, data) {
+          console.log(JSON.stringify(data));
         });
       }
       if (state.isTest) {
@@ -2477,14 +2649,13 @@ standalone, browser test and code coverage framework for nodejs",
       /*
         this function prints debug info about the current process once
       */
-      if (state.debugAppOnced) {
-        return;
+      if (!state.debugAppOnced) {
+        state.debugAppOnced = true;
+        EXPORTS.jsonLog(['debugAppOnce - process.cwd()', process.cwd()]);
+        EXPORTS.jsonLog(['debugAppOnce - process.pid', process.pid]);
+        EXPORTS.jsonLog(['debugAppOnce - process.argv', process.argv]);
+        EXPORTS.jsonLog(['debugAppOnce - process.env', process.env]);
       }
-      state.debugAppOnced = true;
-      EXPORTS.jsonLog(['debugAppOnce - process.cwd()', process.cwd()]);
-      EXPORTS.jsonLog(['debugAppOnce - process.pid', process.pid]);
-      EXPORTS.jsonLog(['debugAppOnce - process.argv', process.argv]);
-      EXPORTS.jsonLog(['debugAppOnce - process.env', process.env]);
     },
 
     shell: function (options) {
@@ -2520,20 +2691,6 @@ standalone, browser test and code coverage framework for nodejs",
       }).on('error', onEventError).on('end', function () {
         onEventError(null, Buffer.concat(chunks));
       });
-    },
-
-    streamWriteSplice: function (writable, onEventData) {
-      /*
-        this function overrides the writable stream's internal _write function,
-        splicing the written chunk to onEventData
-      */
-      var _write;
-      _write = writable._write.bind(writable);
-      writable._write = function (chunk, encoding, callback) {
-        _write(chunk, encoding, callback);
-        /* splice chunk to onEventData */
-        onEventData(chunk);
-      };
     }
 
   };
@@ -2594,7 +2751,9 @@ standalone, browser test and code coverage framework for nodejs",
           local._serverRespondError(request, response, error);
           return;
         }
-        local._serverRespondData(request, response, EXPORTS.jsonStringifyCircular(data));
+        local._serverRespondData(request,
+          response,
+          EXPORTS.jsonStringifyCircular(data) || 'null');
       });
     },
 
@@ -3526,9 +3685,19 @@ standalone, browser test and code coverage framework for nodejs",
           return;
         }
         /* bug - headers are case-sensitive in phantomjs */
-        options.headers = { 'Content-Length': Buffer.byteLength(options.data) };
+        options.headers = { 'Content-Length': Buffer.byteLength(options.data || '') };
         options.url = 'http://localhost:' + state.phantomjsPort + options.url;
         EXPORTS.ajax(options, onEventError);
+      });
+    },
+
+    __phantomjsAjax_error_test: function (onEventError) {
+      /*
+        this function tests _phantomjsAjax's error handling behavior
+      */
+      local._phantomjsAjax({ url: '/invalid?error=silent' }, function (error) {
+        EXPORTS.assert(error instanceof Error);
+        onEventError();
       });
     },
 
@@ -3816,11 +3985,10 @@ standalone, browser test and code coverage framework for nodejs",
     },
 
     _initOnce: function () {
-      if (require.main !== module) {
-        return;
+      if (require.main === module) {
+        EXPORTS.minifyFileCommandLine();
+        EXPORTS.rollupFileCommandLine();
       }
-      EXPORTS.rollupFileCommandLine();
-      EXPORTS.minifyFileCommandLine();
     },
 
     rollupFileCommandLine: function () {
@@ -3831,9 +3999,7 @@ standalone, browser test and code coverage framework for nodejs",
         return;
       }
       EXPORTS.asyncMap({
-        argList: state.rollup.split(',').filter(function (file) {
-          return file;
-        })
+        argList: state.rollup.split(',')
       }, function (error, data, optionsPermute, onEventResult) {
         switch (optionsPermute.mode) {
         case 'arg':
@@ -3920,9 +4086,7 @@ standalone, browser test and code coverage framework for nodejs",
         return;
       }
       EXPORTS.asyncMap({
-        argList: state.minify.split(',').filter(function (file) {
-          return file;
-        })
+        argList: state.minify.split(',')
       }, function (error, data, optionsPermute, onEventResult) {
         switch (optionsPermute.mode) {
         case 'arg':
@@ -3958,7 +4122,7 @@ standalone, browser test and code coverage framework for nodejs",
       case '.js':
         file2 = file.slice(0, -3) + '.min.js';
         minified = required.uglify_js.minify(content,
-          { fromString: true, outSourceMap: file2 + '.map' });
+          { fromString: true, outSourceMap: file2 + '.map', output: { ascii_only: true } });
         break;
       }
       EXPORTS.asyncParallel({
@@ -3966,7 +4130,8 @@ standalone, browser test and code coverage framework for nodejs",
           function (onEventError) {
             if (minified && minified.code) {
               EXPORTS.fsWriteFileAtomic(file2,
-                '//@ sourceMappingURL=' + file2 + '.map\n' + minified.code,
+                '//@ sourceMappingURL=' + required.path.basename(file2) + '.map\n'
+                  + minified.code,
                 onEventError);
             } else {
               onEventError();
@@ -4919,8 +5084,8 @@ standalone, browser test and code coverage framework for nodejs",
       + '</style></head><body>\n'
       + '<div id="divTest"></div>\n'
       + '<script>window.globalOverride = {{globalOverride}};</script>\n'
-      + '<script src="/public/utility2-external/utility2-external.shared.js"></script>\n'
-      + '<script src="/public/utility2-external/utility2-external.browser.js"></script>\n'
+      + '<script src="/public/utility2-external/utility2-external.shared.min.js"></script>\n'
+      + '<script src="/public/utility2-external/utility2-external.browser.min.js"></script>\n'
       + '<script src="/public/utility2.js"></script>\n'
       + '</body></html>\n',
 
@@ -5035,7 +5200,13 @@ standalone, browser test and code coverage framework for nodejs",
           + ' --serverPort random'
           + ' --test'
           + ' --timeout-default ' + state.timeoutDefault
-          + ' --time-exit ' + (state.timeExit - 1000));
+          + ' --time-exit ' + (state.timeExit - 1000)
+          + (require.main === module
+            /* test option --load-file */
+            ? ' --load-file node_modules/utility2-external/public/hello.js'
+              /* test option --no-xxx */
+              + ' --no-' + EXPORTS.uuid4()
+            : ''));
         EXPORTS.deferCallback('onEventExit', 'defer', function () {
           EXPORTS.exit();
         });

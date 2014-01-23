@@ -25,7 +25,11 @@ npm test
 * add heroku dynamic config server
 * integrate forever-webui
 
-#### 2014.xx.xx
+#### 2014.01.23
+* re-add xhr progress feature for browser ajax
+* fix rollup minification utf8 bug
+
+#### 2014.01.22
 * add minified rollups and source map for utility2-external
 * remove rollup cache for local tests
 * add post processing for rollup files

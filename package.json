@@ -11,12 +11,12 @@
     "phantomjs": "1.9.x",
     "sqlite3": "2.1.x",
     "uglify-js": "2.4.x",
-    "utility2-external": "<=2014.01.22"
+    "utility2-external": "<=2014.01.23"
   },
   "description": "utility2.js - standalone, browser test and code coverage framework for nodejs",
   "main": "utility2.js",
   "name": "utility2",
-  "readme": "# utility2\n#### standalone, browser test and code coverage framework for nodejs\n\n## demo usage\n```\nnpm install utility2.js\ncd node_modules/utility2\nnpm test\n```\n\n## build and code coverage status\n* https://travis-ci.org/kaizhu256/utility2 (build status)\n* https://coveralls.io/r/kaizhu256/utility2 (code coverage status)\n\n## changelog\n#### 2014.01.08-1\n* integrate ioAggregate with testModule\n* add localhost testing for socks5\n* integrate ioAggregate with moduleRollup\n* modularize ajaxNodejs\n* rewrite EXPORTS.ioAggregate and add moduleInstrumentScript\n\n#### 2013.12.30-1\n* add changelog\n* add versioning for npm dependencies\n",
+  "readme": "# utility2.js\n#### standalone, browser test and code coverage framework for nodejs\n\n## demo usage\n```\nnpm install utility2.js\ncd node_modules/utility2\nnpm test\n```\n\n## build and code coverage status\n* https://travis-ci.org/kaizhu256/utility2 (build status)\n* https://coveralls.io/r/kaizhu256/utility2 (code coverage status)\n\n## changelog\n#### todo\n* move npm uglify-js dependency to utility2-external\n* add option to auto-remove test functions from module\n* add post-rollup regular expression replacment handling\n* auto-skip tests\n* prevent phantomjs from crashing during test errors\n* fix redundant debugFlag in ajax\n* add timeout for deferCallback\n* emulate localStorage\n* add heroku dynamic config server\n* integrate forever-webui\n\n#### 2014.01.23\n* re-add xhr progress feature for browser ajax\n* fix rollup minification utf8 bug\n\n#### 2014.01.22\n* add minified rollups and source map for utility2-external\n* remove rollup cache for local tests\n* add post processing for rollup files\n\n#### 2014.01.21\n* migrate rollup api to use asyncRemote instead of ioAggregate\n* migrate ajaxMultiUrls to use asyncRemote instead of ioAggregate\n* add implicit mult-callback error handling for asyncPermute\n* migrate testLocal to use asyncRemote instead of ioAggregate\n* revamp tryCatch with arguments handling\n* merge moduleSocks5AjaxNodejs and moduleSocks5ServerNodejs into moduleSocks5Nodejs\n* security - run large asyncPermute calls over several event-loop-cycles to prevent cpu lock\n* modify testMock to use lists instead of dicts\n* move npm cssmin dependency to utility2-external\n* enable server to force https protocol using x-forwarded-proto\n\n#### 2014.01.10\n* revamp EXPORTS.testMock\n* remove console.log hack\n* utility2-external - remove public/assets/external.rollup.auto.css\n* utility2-external - remove public/assets/external.rollup.auto.js\n* utility2-external - add utility2-external.browser.css\n* utility2-external - add shared npm module async\n* remove bower dependency for utility2-external\n* cleanup console.log and console.error messages\n* remove npm mime dependency\n* utility2-external - add utility2-external.nodejs.txt\n\n#### 2014.01.08\n* integrate ioAggregate with testModule\n* add localhost testing for socks5\n* integrate ioAggregate with moduleRollup\n* modularize ajaxNodejs\n* rewrite EXPORTS.ioAggregate and add moduleInstrumentScript\n\n#### 2013.12.30-1\n* add changelog\n* add versioning for npm dependencies\n",
   "repository" : {
     "type" : "git",
     "url" : "https://github.com/kaizhu256/utility2.git"
@@ -29,5 +29,5 @@
   "stateDefault": {
     "coverallsUrl": "https://coveralls.io/r/kaizhu256/utility2"
   },
-  "version": "2014.01.22-3"
+  "version": "2014.01.23-1"
 }
