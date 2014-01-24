@@ -25,6 +25,9 @@ npm test
 * add heroku dynamic config server
 * integrate forever-webui
 
+#### 2014.01.25
+* fix timeout not triggering in asyncPermute
+
 #### 2014.01.23
 * re-add xhr progress feature for browser ajax
 * fix rollup minification utf8 bug

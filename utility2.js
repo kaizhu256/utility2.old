@@ -1510,10 +1510,6 @@ standalone, browser test and code coverage framework for nodejs",
         } else {
           options.remaining -= 1;
         }
-        /* ignore results after timeout */
-        if (options.remaining < 0) {
-          return;
-        }
         if (options.remaining === 0) {
           /* clear timeout */
           clearTimeout(options._timeout);
@@ -1674,7 +1670,6 @@ standalone, browser test and code coverage framework for nodejs",
         argMatrix: [ [1] ],
         timeout: 1
       }, function (error, data, options, onEventResult) {
-        EXPORTS.assert(options.mode !== 'result');
         switch (options.mode) {
         case 'arg':
           /* test callback after timeout */
@@ -1889,6 +1884,7 @@ standalone, browser test and code coverage framework for nodejs",
           break;
         case 'timeout':
           options.mode = 'result';
+          options.remaining = 0;
           Object.keys(testSuite.testCaseList).forEach(function (test) {
             test = testSuite.testCaseList[test];
             if (!test.ended) {
@@ -1918,15 +1914,16 @@ standalone, browser test and code coverage framework for nodejs",
             testSuite.failures += 1;
           }
           /* testSuite ended */
-          if (options.remaining === 0) {
-            options.remaining = 1;
+          if (options.remaining <= 0) {
             /* wait for possible async surprises before finishing testing */
             local._setTimeout.call(global, function () {
-              testSuite.ended = true;
-              state.testSuiteRemaining -= 1;
-              if (state.testSuiteRemaining === 0) {
-                state.testSuiteRemaining = 0;
-                EXPORTS.testReport();
+              if (!testSuite.ended) {
+                testSuite.ended = true;
+                state.testSuiteRemaining -= 1;
+                if (state.testSuiteRemaining === 0) {
+                  state.testSuiteRemaining = 0;
+                  EXPORTS.testReport();
+                }
               }
             }, 1000);
           }
