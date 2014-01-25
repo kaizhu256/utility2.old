@@ -5132,7 +5132,6 @@ standalone, browser test and code coverage framework for nodejs",
         if (process.env.TRAVIS) {
           script = 'cat ' + state.fsDirTest + '/coverage/lcov.info'
             + ' | ' + required.utility2.__dirname + '/node_modules/.bin/coveralls '
-            + ' | node_modules/coveralls/bin/coveralls.js'
             + '; kill ' + process.pid;
           EXPORTS.shell(script);
           EXPORTS.timeoutSetTimeout(EXPORTS.exit,
