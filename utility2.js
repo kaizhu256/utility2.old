@@ -5131,6 +5131,7 @@ standalone, browser test and code coverage framework for nodejs",
       if (required.coveralls && state.isCoveralls) {
         if (process.env.TRAVIS) {
           script = 'cat ' + state.fsDirTest + '/coverage/lcov.info'
+            + ' | ' + required.utility2.__dirname + '/node_modules/.bin/coveralls '
             + ' | node_modules/coveralls/bin/coveralls.js'
             + '; kill ' + process.pid;
           EXPORTS.shell(script);
@@ -5179,8 +5180,9 @@ standalone, browser test and code coverage framework for nodejs",
       switch (state.npmTestMode) {
       /* start child process running npm test */
       case 'start':
-        EXPORTS.shell('rm -r ' + state.fsDirTest + '/coverage 2>/dev/null;'
-          + ' istanbul ' + (process.env.npm_config_cover === '' ? 'test' : 'cover')
+        EXPORTS.shell('rm -r ' + state.fsDirTest + '/coverage 2>/dev/null; '
+          + required.utility2.__dirname + '/node_modules/.bin/istanbul '
+          + (process.env.npm_config_cover === '' ? 'test' : 'cover')
           + ' --dir ' + state.fsDirTest + '/coverage'
           + ' -x **.min.**'
           + ' -x **.rollup.**'
