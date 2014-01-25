@@ -184,12 +184,11 @@ standalone, browser test and code coverage framework for nodejs",
       }
       /* run tests */
       setTimeout(function () {
-        if (!state.isNodejs) {
-          EXPORTS.deferCallback('untilServerReady', 'resume');
-        }
-        EXPORTS.deferCallback('untilServerReady', 'defer', local2._initTest || function () {
-          EXPORTS.testLocal(local2);
-        });
+        EXPORTS.deferCallback(state.isBrowser ? 'untilJqueryReady' : 'untilServerReady',
+          'defer',
+          local2._initTest || function () {
+            EXPORTS.testLocal(local2);
+          });
       });
     },
 
@@ -632,23 +631,19 @@ standalone, browser test and code coverage framework for nodejs",
       /*
         this function returns the file's mime-type
       */
-      file = EXPORTS.fsExtname(file).slice(1);
-      if (state.mimeTypesDict) {
-        return state.mimeTypesDict[file] || 'application/octet-stream';
-      }
-      switch (file) {
-      case 'css':
+      switch (EXPORTS.fsExtname(file)) {
+      case '.css':
         return 'text/css';
-      case 'html':
+      case '.html':
         return 'text/html';
-      case 'js':
-        return 'application/javascript';
-      case 'json':
+      case '.js':
+        return 'application/javascript; charset=utf-8';
+      case '.json':
         return 'application/json';
-      case 'txt':
+      case '.txt':
         return 'text/plain';
       default:
-        return 'application/octet-stream';
+        return (state.mimeTypesDict && state.mimeTypesDict[file]) || 'application/octet-stream';
       }
     },
 
@@ -658,7 +653,7 @@ standalone, browser test and code coverage framework for nodejs",
       */
       EXPORTS.assert(EXPORTS.mimeLookup('foo.css') === 'text/css');
       EXPORTS.assert(EXPORTS.mimeLookup('foo.html') === 'text/html');
-      EXPORTS.assert(EXPORTS.mimeLookup('foo.js') === 'application/javascript');
+      EXPORTS.assert(EXPORTS.mimeLookup('foo.js') === 'application/javascript; charset=utf-8');
       EXPORTS.assert(EXPORTS.mimeLookup('foo.json') === 'application/json');
       EXPORTS.assert(EXPORTS.mimeLookup('foo.txt') === 'text/plain');
       EXPORTS.assert(EXPORTS.mimeLookup('foo') === 'application/octet-stream');
@@ -1029,7 +1024,7 @@ standalone, browser test and code coverage framework for nodejs",
   var local;
   local = {
 
-    _name: 'required.utility2.moduleAjaxShared',
+    _name: 'utility2.moduleAjaxShared',
 
     _init: function () {
       EXPORTS.initModule(module, local);
@@ -1709,12 +1704,14 @@ standalone, browser test and code coverage framework for nodejs",
         this function lints a css script using csslint
       */
       var error;
-      error = required.CSSLint.getFormatter('text').formatResults(required.CSSLint.verify(
-        script || '',
-        { ignore: 'ids' }
-      ), file, { quiet: true }).trim();
-      if (error) {
-        console.error('\n_lintCss\n' + error + '\n');
+      if (required.CSSLint) {
+        error = required.CSSLint.getFormatter('text').formatResults(required.CSSLint.verify(
+          script || '',
+          { ignore: 'ids' }
+        ), file, { quiet: true }).trim();
+        if (error) {
+          console.error('\n_lintCss\n' + error + '\n');
+        }
       }
       return script;
     },
@@ -1724,7 +1721,7 @@ standalone, browser test and code coverage framework for nodejs",
         this function lints a js script using jslint
       */
       var _;
-      if (!global.__coverage__ && !required.JSLINT(script)) {
+      if (!global.__coverage__ && required.JSLINT && !required.JSLINT(script)) {
         console.error('\n_lintJs\n' + file);
         required.JSLINT.errors.forEach(function (error, ii) {
           _ = '#' + String(ii + 1) + ' ';
@@ -1956,6 +1953,7 @@ standalone, browser test and code coverage framework for nodejs",
         if (global.__coverage__) {
           global.__coverage__ = {};
         }
+        EXPORTS.testReportBrowser();
         /* upload test report */
         EXPORTS.ajax({
           data: JSON.stringify({ coverage: coverage, testSuiteList: state.testSuiteList }),
@@ -1963,7 +1961,9 @@ standalone, browser test and code coverage framework for nodejs",
         }, EXPORTS.onEventErrorDefault);
       }
       state.testSuiteList.length = state.npmTestMode ? state.testSuiteList.length : 0;
-    }
+    },
+
+    testReportBrowser: EXPORTS.nop
 
   };
   local._init();
@@ -2266,7 +2266,7 @@ standalone, browser test and code coverage framework for nodejs",
     _name: 'utility2.moduleXhrProgressBrowser',
 
     _init: function () {
-      if (!state.isBrowser) {
+      if (!(state.isBrowser && typeof $().modal === 'function')) {
         return;
       }
       EXPORTS.initModule(module, local);
@@ -2471,7 +2471,7 @@ standalone, browser test and code coverage framework for nodejs",
         state[target.id] = state[target.id] || $(target);
       });
       /* override globals */
-      EXPORTS.stateOverride(global, EXPORTS.jsonCopy(global.globalOverride));
+      EXPORTS.stateOverride(global, EXPORTS.jsonCopy(global.globalOverride || {}));
       /* browser test flag - watch */
       state.isTest = (/\btestWatch=(\d+)\b/).exec(location.hash);
       if (state.isTest) {
@@ -4395,10 +4395,8 @@ standalone, browser test and code coverage framework for nodejs",
     },
 
     'routerFileDict_/public/utility2.js': function (request, response) {
-      /*
-        this function serves the asset utility2.js
-      */
-      EXPORTS.serverRespondDefault(response, 200, 'application/javascript',
+      /* this function serves the file utility2.js */
+      EXPORTS.serverRespondDefault(response, 200, 'application/javascript; charset=utf-8',
         required.utility2._fileContentBrowser);
     },
 
@@ -5034,22 +5032,20 @@ standalone, browser test and code coverage framework for nodejs",
 
     'routerFileDict_/test/test.1x1.png': function (request, response) {
       /*
-        this function serves the asset test.1x1.png
+        this function serves the file test.1x1.png
       */
       EXPORTS.serverRespondDefault(response, 200, 'image/png', local._fileTest1x1Png);
     },
 
     'routerFileDict_/test/test.css': function (request, response) {
       /*
-        this function serves the asset test.css
+        this function serves the file test.css
       */
       EXPORTS.serverRespondDefault(response, 200, 'text/css', local._fileTestCss);
     },
 
     'routerFileDict_/test/test.html': function (request, response) {
-      /*
-        this function serves the asset test.html
-      */
+      /* this function serves the file test.html */
       EXPORTS.serverRespondDefault(response, 200, 'text/html',
         EXPORTS.templateFormat(local._fileTestHtml, { globalOverride: JSON.stringify({ state: {
           localhost: state.localhost
@@ -5058,9 +5054,9 @@ standalone, browser test and code coverage framework for nodejs",
 
     'routerFileDict_/test/test.js': function (request, response) {
       /*
-        this function serves the asset test.css
+        this function serves the file test.css
       */
-      EXPORTS.serverRespondDefault(response, 200, 'application/javascript',
+      EXPORTS.serverRespondDefault(response, 200, 'application/javascript; charset=utf-8',
         'console.log("hello world");');
     },
 
@@ -5190,6 +5186,7 @@ standalone, browser test and code coverage framework for nodejs",
           + ' -x **.rollup.**'
           + ' -x **/git_modules/**'
           + ' -x **/tmp/**'
+          + (state.isNpmTestUtility2 ? '' : ' -x utility2.js')
           + ' ' + state.npmTestScript + ' --'
           + ' --npm-test-mode running'
           + ' --repl'
@@ -5198,9 +5195,9 @@ standalone, browser test and code coverage framework for nodejs",
           + ' --test'
           + ' --timeout-default ' + state.timeoutDefault
           + ' --time-exit ' + (state.timeExit - 1000)
-          + (require.main === module
+          + (state.isNpmTestUtility2
             /* test option --load-file */
-            ? ' --load-file node_modules/utility2-external/public/hello.js'
+            ? ' --load-file ' + required.utility2_external.__dirname + '/public/hello.js'
               /* test option --no-xxx */
               + ' --no-' + EXPORTS.uuid4()
             : ''));

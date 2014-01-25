@@ -25,7 +25,10 @@ npm test
 * add heroku dynamic config server
 * integrate forever-webui
 
+#### 2014.xx.xx
+
 #### 2014.01.25
+* change javascript mimetype to 'application/javascript; charset=utf-8' in EXPORTS.mimeLookup
 * fix timeout not triggering in asyncPermute
 
 #### 2014.01.23
