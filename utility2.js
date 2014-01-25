@@ -1844,7 +1844,9 @@ standalone, browser test and code coverage framework for nodejs",
         this function runs tests on the module's local2 object
       */
       var testList, testSuite;
-      if (!(state.isTest || local2._isTest) || state.isPhantomjs) {
+      if (!(state.isTest || local2._isTest)
+          || state.isPhantomjs
+          || (local2._name.split('.')[0] === 'utility2' && !state.isNpmTestUtility2)) {
         return;
       }
       testList = Object.keys(local2).filter(function (test) {
@@ -1853,6 +1855,7 @@ standalone, browser test and code coverage framework for nodejs",
       if (!testList.length) {
         return;
       }
+      console.log('running tests...');
       testSuite = {
         failures: 0,
         name: state.javascriptPlatform + '.' + local2._name,
@@ -5187,7 +5190,8 @@ standalone, browser test and code coverage framework for nodejs",
           + ' -x **.rollup.**'
           + ' -x **/git_modules/**'
           + ' -x **/tmp/**'
-          + (state.isNpmTestUtility2 ? '' : ' -x utility2.js')
+          // + (state.isNpmTestUtility2 ? '' : ' -x utility2.js')
+          + (state.isNpmTestUtility2 ? '' : ' -x **/utility2.js')
           + ' ' + state.npmTestScript + ' --'
           + ' --npm-test-mode running'
           + ' --repl'
