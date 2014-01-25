@@ -1855,7 +1855,6 @@ standalone, browser test and code coverage framework for nodejs",
       if (!testList.length) {
         return;
       }
-      console.log('running tests...');
       testSuite = {
         failures: 0,
         name: state.javascriptPlatform + '.' + local2._name,
@@ -3765,6 +3764,7 @@ standalone, browser test and code coverage framework for nodejs",
       state.phantomjsPid = EXPORTS.shell(required.phantomjs.path + ' '
         + file + ' ' + EXPORTS.base64Encode(JSON.stringify({
           fsDirCache: state.fsDirCache,
+          isNpmTestUtility2: state.isNpmTestUtility2,
           localhost: state.localhost,
           phantomjsPort: state.phantomjsPort,
           serverPort: state.serverPort,
@@ -5051,6 +5051,7 @@ standalone, browser test and code coverage framework for nodejs",
       /* this function serves the file test.html */
       EXPORTS.serverRespondDefault(response, 200, 'text/html',
         EXPORTS.templateFormat(local._fileTestHtml, { globalOverride: JSON.stringify({ state: {
+          isNpmTestUtility2: state.isNpmTestUtility2,
           localhost: state.localhost
         } }) }));
     },
@@ -5190,10 +5191,10 @@ standalone, browser test and code coverage framework for nodejs",
           + ' -x **.rollup.**'
           + ' -x **/git_modules/**'
           + ' -x **/tmp/**'
-          // + (state.isNpmTestUtility2 ? '' : ' -x utility2.js')
           + (state.isNpmTestUtility2 ? '' : ' -x **/utility2.js')
           + ' ' + state.npmTestScript + ' --'
           + ' --npm-test-mode running'
+          + ' --' + (state.isNpmTestUtility2 ? '' : 'no-') + 'npm-test-utility2'
           + ' --repl'
           + ' --socks5-server-port random'
           + ' --serverPort random'
