@@ -24,7 +24,8 @@ npm test
 * add heroku dynamic config server
 * integrate forever-webui
 
-#### 2014.xx.xx
+#### 2014.01.26
+* remove global.EXPORTS and merge its contents into required.utility2
 
 #### 2014.01.25
 * change javascript mimetype to 'application/javascript; charset=utf-8' in EXPORTS.mimeLookup
