@@ -1901,7 +1901,8 @@ standalone, browser test and code coverage framework for nodejs",
           }
           test.ended += 1;
           if (test.ended === 1) {
-            test.time = (Date.now() - test.time) / 1000;
+            test.time = Date.now() - test.time;
+            testSuite.time = Math.max(test.time, 0);
           }
           /* test skipped */
           if (error === 'skip') {
@@ -1924,7 +1925,7 @@ standalone, browser test and code coverage framework for nodejs",
                   EXPORTS.testReport();
                 }
               }
-            }, 1000);
+            }, 4000);
           }
         }
       });
@@ -1941,12 +1942,13 @@ standalone, browser test and code coverage framework for nodejs",
         arg2 = arg2.name;
         return arg1 < arg2 ? -1 : arg1 > arg2 ? 1 : 0;
       }).forEach(function (testSuite) {
-        console.log(testSuite.failures + ' failed, '
-          + testSuite.skipped + ' skipped, '
+        console.log(('        ' + (testSuite.time || 0)).slice(-8) + ' ms | '
+          + testSuite.failures + ' failed | '
+          + testSuite.skipped + ' skipped | '
           + (Object.keys(testSuite.testCaseList).length
             - testSuite.failures
             - testSuite.skipped)
-          + ' passed in', testSuite.name);
+          + ' passed in ' + testSuite.name);
       });
       console.log();
       if (state.isBrowser) {

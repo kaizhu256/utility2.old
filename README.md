@@ -1,5 +1,5 @@
-[![Build Status](https://travis-ci.org/kaizhu256/utility2.png?branch=master)](https://travis-ci.org/kaizhu256/utility2)
 [![Coverage Status](https://coveralls.io/repos/kaizhu256/utility2/badge.png?branch=master)](https://coveralls.io/r/kaizhu256/utility2?branch=master)
+[![Build Status](https://travis-ci.org/kaizhu256/utility2.png?branch=master)](https://travis-ci.org/kaizhu256/utility2)
 [![Selenium Test Status](https://saucelabs.com/browser-matrix/utility2.svg)](https://saucelabs.com/u/utility2)
 # utility2.js
 #### standalone, browser test and code coverage framework for nodejs
@@ -10,10 +10,6 @@ npm install utility2.js
 cd node_modules/utility2
 npm test
 ```
-
-## build and code coverage status
-* https://travis-ci.org/kaizhu256/utility2 (build status)
-* https://coveralls.io/r/kaizhu256/utility2 (code coverage status)
 
 ## changelog
 #### todo
