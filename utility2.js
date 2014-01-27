@@ -2581,26 +2581,7 @@ standalone, browser test and code coverage framework for nodejs",
         });
       }
       /* init process.argv */
-      if (require.main === module || state.isProcessArgv) {
-        process.argv.forEach(function (arg, ii, argv) {
-          var value;
-          value = argv[ii + 1];
-          if ((/^--[a-z]/).test(arg)) {
-            /* --no-foo -> state.isFoo = false */
-            if ((/^--no-[a-z]/).test(arg)) {
-              state[utility2.stringToCamelCase('is' + arg.slice(4))] = false;
-            /* --foo bar -> state.isFoo = bar */
-            } else if (value && !(/^--[a-z]/).test(value)) {
-              state[utility2.stringToCamelCase(arg.slice(2))] = isFinite(Number(value))
-                ? Number(value)
-                : value;
-            /* --foo -> state.isFoo = true */
-            } else {
-              state[utility2.stringToCamelCase('is' + arg.slice(1))] = true;
-            }
-          }
-        });
-      }
+      local._initProcessArgv();
       /* load package.json file */
       state.packageJson = state.packageJson || {};
       utility2.tryCatch(function () {
@@ -2612,6 +2593,8 @@ standalone, browser test and code coverage framework for nodejs",
       utility2.stateDefault(state, utility2.jsonCopy(state.stateDefault));
       /* update dynamic, override state from external url every 5 minutes */
       state.stateOverride = state.stateOverride || {};
+      utility2.stateOverride(state.stateOverride,
+        JSON.parse(utility2.base64Decode(utility2.stateOverrideBase64 || '') || '{}'));
       utility2.stateOverride(state, utility2.jsonCopy(state.stateOverride || {}));
       state.stateOverrideUrl = state.stateOverrideUrl || '/state/stateOverride.json';
       utility2.deferCallback('untilServerReady', 'defer', function () {
@@ -2625,6 +2608,9 @@ standalone, browser test and code coverage framework for nodejs",
               ?  utility2.onEventErrorDefault(error)
               : (function () {
                 utility2.stateOverride(state.stateOverride, data);
+                utility2.stateOverride(state.stateOverride,
+                  JSON.parse(utility2.base64Decode(utility2.stateOverrideBase64 || '')
+                    || '{}'));
                 utility2.stateOverride(state, utility2.jsonCopy(state.stateOverride));
                 utility2.jsonLog(['loaded override config from', state.stateOverrideUrl]);
               }()));
@@ -2646,6 +2632,32 @@ standalone, browser test and code coverage framework for nodejs",
       if (state.isTest) {
         utility2.debugAppOnce();
       }
+    },
+
+    _initProcessArgv: function () {
+      if (!(require.main === module || state.isProcessArgv)) {
+        return;
+      }
+      process.argv.forEach(function (arg, ii, argv) {
+        var value;
+        arg = arg.split('=');
+        value = arg[1] || argv[ii + 1];
+        arg = arg[0];
+        if ((/^--[a-z]/).test(arg)) {
+          /* --no-foo -> state.isFoo = false */
+          if ((/^--no-[a-z]/).test(arg)) {
+            state[utility2.stringToCamelCase('is' + arg.slice(4))] = false;
+          /* --foo bar -> state.isFoo = bar */
+          } else if (value && !(/^--[a-z]/).test(value)) {
+            state[utility2.stringToCamelCase(arg.slice(2))] = isFinite(Number(value))
+              ? Number(value)
+              : value;
+          /* --foo -> state.isFoo = true */
+          } else {
+            state[utility2.stringToCamelCase('is' + arg.slice(1))] = true;
+          }
+        }
+      });
     },
 
     debugAppOnce: function () {
@@ -2720,14 +2732,10 @@ standalone, browser test and code coverage framework for nodejs",
     },
 
     _initOnce: function () {
-      var tmp;
       /* require modules */
       utility2.requireModules(['system', 'webpage', 'webserver']);
       /* state */
-      tmp = JSON.parse(utility2.base64Decode(required.system.args[1]));
-      Object.keys(tmp).forEach(function (key) {
-        state[key] = tmp[key];
-      });
+      utility2.stateOverride(state, JSON.parse(utility2.base64Decode(required.system.args[2])));
       /* phantomjs server */
       required.webserver.create().listen(state.phantomjsPort, function (request, response) {
         utility2.tryCatch(function () {
@@ -3768,7 +3776,7 @@ standalone, browser test and code coverage framework for nodejs",
       }, utility2.nop);
       /* spawn phantomjs process */
       state.phantomjsPid = utility2.shell(required.phantomjs.path + ' '
-        + file + ' ' + utility2.base64Encode(JSON.stringify({
+        + file + ' --state-override-base64 ' + utility2.base64Encode(JSON.stringify({
           fsDirCache: state.fsDirCache,
           isNpmTestUtility2: state.isNpmTestUtility2,
           localhost: state.localhost,

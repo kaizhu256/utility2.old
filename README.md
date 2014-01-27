@@ -25,6 +25,7 @@ npm test
 * integrate forever-webui
 
 #### 2014.01.27
+* enhance process.argv processing to handle '=' delimiter
 * dont do code coverage on utility2.js when testing external projects
 * add state.testReport
 * add testReport hook utility2.deferCallback('untilTestReportReady', 'resume');
