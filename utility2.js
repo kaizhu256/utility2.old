@@ -1938,11 +1938,15 @@ standalone, browser test and code coverage framework for nodejs",
       */
       var coverage;
       console.log('\ntestReport');
+      state.testReport = state.testReport || { failures: 0, passed: 0, skipped: 0 };
       state.testSuiteList.sort(function (arg1, arg2) {
         arg1 = arg1.name;
         arg2 = arg2.name;
         return arg1 < arg2 ? -1 : arg1 > arg2 ? 1 : 0;
       }).forEach(function (testSuite) {
+        state.testReport.failures += testSuite.failures;
+        state.testReport.passed += testSuite.passed;
+        state.testReport.skipped += testSuite.skipped;
         console.log(('        ' + (testSuite.time || 0)).slice(-8) + ' ms | '
           + testSuite.failures + ' failed | '
           + testSuite.skipped + ' skipped | '
@@ -1952,13 +1956,13 @@ standalone, browser test and code coverage framework for nodejs",
           + ' passed in ' + testSuite.name);
       });
       console.log();
+      utility2.deferCallback('untilTestReportReady', 'resume');
       if (state.isBrowser) {
         coverage = global.__coverage__;
         /* reset code coverage */
         if (global.__coverage__) {
           global.__coverage__ = {};
         }
-        utility2.testReportBrowser();
         /* upload test report */
         utility2.ajax({
           data: JSON.stringify({ coverage: coverage, testSuiteList: state.testSuiteList }),
@@ -1966,9 +1970,7 @@ standalone, browser test and code coverage framework for nodejs",
         }, utility2.onEventErrorDefault);
       }
       state.testSuiteList.length = state.npmTestMode ? state.testSuiteList.length : 0;
-    },
-
-    testReportBrowser: utility2.nop
+    }
 
   };
   local._init();
@@ -3515,7 +3517,7 @@ standalone, browser test and code coverage framework for nodejs",
             return;
           }
           /* bump up timestamp */
-          utility2.timestamp = new Date().toISOString();
+          state.timestamp = new Date().toISOString();
           /* test watch */
           state.testWatchList = state.testWatchList || [];
           state.testWatchList.forEach(function (response) {
@@ -4409,7 +4411,7 @@ standalone, browser test and code coverage framework for nodejs",
         this function creates a middleware app using the specified route dict
       */
       return function (request, response, next) {
-        var path, path0;
+        var path, path0, tryCatch;
         /* debug */
         state.request = request;
         state.response = response;
@@ -4422,19 +4424,22 @@ standalone, browser test and code coverage framework for nodejs",
         }
         /* parse url params */
         request.urlParsed = request.urlParsed || utility2.urlParamsParse(request.url);
+        tryCatch = function () {
+          utility2.tryCatch(function () {
+            routerDict[path](request, response, next);
+          }, next);
+        };
         /* dyanamic path handler */
-        for (path = request.urlPathNormalized; path !== path0; path = utility2.fsDirname(path)) {
+        for (path = request.urlPathNormalized;
+            path !== path0;
+            path = utility2.fsDirname(path)) {
           path0 = path = path || '/';
           /* found a handler matching request path */
           if (routerDict[path]) {
             /* debug */
             request.handler = routerDict[path];
             /* process request with error handling */
-            try {
-              routerDict[path](request, response, next);
-            } catch (error) {
-              next(error);
-            }
+            tryCatch();
             return;
           }
         }
@@ -4497,7 +4502,7 @@ standalone, browser test and code coverage framework for nodejs",
         atob('QWxhZGRpbjpvcGVuIHNlc2FtZQ==')
       */
       /* ignore localhost */
-      return (/^localhost\b/).test(request.headers.host)
+      return (/^(?::1|127.0.0.1|localhost)\b/).test(request.headers.host)
         /* basic auth validation */
         || (/\S*$/).exec(request.headers.authorization || '')[0]
         === state.securityBasicAuthSecret;
