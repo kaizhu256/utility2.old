@@ -24,6 +24,11 @@ npm test
 * add heroku dynamic config server
 * integrate forever-webui
 
+#### 2014.01.27
+* dont do code coverage on utility2.js when testing external projects
+* add state.testReport
+* add testReport hook utility2.deferCallback('untilTestReportReady', 'resume');
+
 #### 2014.01.26
 * remove global.EXPORTS and merge its contents into required.utility2
 

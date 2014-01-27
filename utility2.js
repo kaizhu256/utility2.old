@@ -3633,7 +3633,10 @@ standalone, browser test and code coverage framework for nodejs",
         this file instruments a script using the istanbul npm module
       */
       /*jslint stupid: true*/
-      return (local._instrumenter && utility2.fsExtname(file) === '.js') && global.__coverage__
+      return (local._instrumenter
+          && utility2.fsExtname(file) === '.js'
+          && global.__coverage__
+          && (required.path.basename(file) !== 'utility2.js' || state.isNpmTestUtility2))
         ? local._instrumenter.instrumentSync(script, file)
         : script;
     }
@@ -3781,13 +3784,15 @@ standalone, browser test and code coverage framework for nodejs",
           }
         }).pid;
       /* phantomjs code coverage */
-      setTimeout(function () {
-        utility2.phantomjsEval('global.__coverage__ || null', function (error, data) {
-          utility2.nop(error
-            ? utility2.onEventErrorDefault(error)
-            : utility2.coverageExtend(global.__coverage__, data));
-        });
-      }, utility2.timeoutExitRemaining() - 1000);
+      if (state.isNpmTestUtility2) {
+        setTimeout(function () {
+          utility2.phantomjsEval('global.__coverage__ || null', function (error, data) {
+            utility2.nop(error
+              ? utility2.onEventErrorDefault(error)
+              : utility2.coverageExtend(global.__coverage__, data));
+          });
+        }, utility2.timeoutExitRemaining() - 1000);
+      }
     },
 
     phantomjsTestUrl: function (url, onEventError) {
@@ -4919,6 +4924,10 @@ standalone, browser test and code coverage framework for nodejs",
       local._npmTest();
       /* upload coverage to http://coveralls.io */
       local._coverageCoverallsUpload();
+      /* gracefully handle signal interrupt */
+      if (state.npmTestMode) {
+        process.on('SIGINT', utility2.exit);
+      }
     },
 
     'routerDict_/test/test.echo': function (request, response) {
@@ -5192,11 +5201,7 @@ standalone, browser test and code coverage framework for nodejs",
           + utility2.__dirname + '/node_modules/.bin/istanbul '
           + (process.env.npm_config_cover === '' ? 'test' : 'cover')
           + ' --dir ' + state.fsDirTest + '/coverage'
-          + ' -x **.min.**'
-          + ' -x **.rollup.**'
-          + ' -x **/git_modules/**'
           + ' -x **/tmp/**'
-          + (state.isNpmTestUtility2 ? '' : ' -x **/utility2.js')
           + ' ' + state.npmTestScript + ' --'
           + ' --npm-test-mode running'
           + ' --' + (state.isNpmTestUtility2 ? '' : 'no-') + 'npm-test-utility2'
