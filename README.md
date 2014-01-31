@@ -24,6 +24,9 @@ npm test
 * add heroku dynamic config server
 * integrate forever-webui
 
+#### 2014.01.30
+* merge state.fsDirCache with state.fsDirTmp
+
 #### 2014.01.27
 * enhance process.argv processing to handle '=' delimiter
 * dont do code coverage on utility2.js when testing external projects

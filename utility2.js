@@ -2531,6 +2531,7 @@ standalone, browser test and code coverage framework for nodejs",
         'graceful-fs',
         'http', 'https',
         'net',
+        'os',
         'path',
         'repl',
         'stream',
@@ -2842,7 +2843,7 @@ standalone, browser test and code coverage framework for nodejs",
       /*
         this function evals the javascript code
       */
-      utility2.fsCacheWriteStream(request, null, function (error, tmp) {
+      utility2.fsTmpWriteStream(request, null, function (error, tmp) {
         if (error) {
           next(error);
           return;
@@ -2875,7 +2876,7 @@ standalone, browser test and code coverage framework for nodejs",
       /*
         this function runs shell scripts
       */
-      utility2.fsCacheWriteStream(request, null, function (error, tmp) {
+      utility2.fsTmpWriteStream(request, null, function (error, tmp) {
         if (error) {
           next(error);
           return;
@@ -3026,7 +3027,7 @@ standalone, browser test and code coverage framework for nodejs",
       if (!options.cache || options.cache === 'miss') {
         return true;
       }
-      options.cacheFile = utility2.createFsCacheFilename(options.cacheDir, options.url0);
+      options.cacheFile = utility2.createFsTmpFilename(options.cacheDir, options.url0);
       required.fs.readFile(options.cacheFile,
         function (error, data) {
           options.cache = 'miss';
@@ -3281,46 +3282,43 @@ standalone, browser test and code coverage framework for nodejs",
     _initOnce: function () {
       /*jslint stupid: true*/
       /* create tmp dir */
-      state.fsDirTmp = required.path.resolve(state.fsDirTmp || process.cwd() + '/tmp');
+      state.fsDirTmp = required.path.resolve(required.os.tmpdir()
+        + '/utility2.' + encodeURIComponent(process.cwd()));
       utility2.fsMkdirpSync(state.fsDirTmp);
-      /* create cache dir */
-      state.fsDirCache = state.fsDirTmp + '/cache';
-      utility2.fsMkdirpSync(state.fsDirCache);
       /* create pid dir */
-      state.fsDirPid = state.fsDirTmp + '/pid';
+      state.fsDirPid = state.fsDirTmp + '.pid';
       utility2.fsMkdirpSync(state.fsDirPid);
       /* kill old pid's from previous process */
       required.fs.readdirSync(state.fsDirPid).forEach(function (file) {
-        try {
+        utility2.tryCatch(function () {
           process.kill(file);
-        } catch (ignore) {
-        }
+        }, utility2.nop);
         required.fs.unlink(state.fsDirPid + '/' + file, utility2.nop);
       });
       /* periodically clean up the cache dir */
-      utility2.clearCallSetInterval('_fsCacheCleanup', local._fsCacheCleanup, 5 * 60 * 1000);
+      utility2.clearCallSetInterval('_fsTmpCleanup', local._fsTmpCleanup, 5 * 60 * 1000);
     },
 
-    createFsCacheFilename: function (dir, key) {
+    createFsTmpFilename: function (dir, key) {
       /*
         this function creates a temp filename in the cache dir
       */
-      return (dir || state.fsDirCache) + '/' + encodeURIComponent(key || utility2.dateAndSalt());
+      return (dir || state.fsDirTmp) + '/' + encodeURIComponent(key || utility2.dateAndSalt());
     },
 
-    fsCacheWriteStream: function (readable, options, onEventError) {
+    fsTmpWriteStream: function (readable, options, onEventError) {
       /*
         this function writes data from a readable stream to a unique cache file
       */
-      var cache;
-      cache = utility2.createFsCacheFilename();
+      var tmp;
+      tmp = utility2.createFsTmpFilename();
       options = options || {};
       options.flag = 'wx';
       /* write stream */
       readable.on('error', onEventError).pipe(
-        /* create cache writable stream */
-        required.fs.createWriteStream(cache, options).on('close', function () {
-          onEventError(null, cache);
+        /* create tmp writable stream */
+        required.fs.createWriteStream(tmp, options).on('close', function () {
+          onEventError(null, tmp);
         }).on('error', onEventError)
       );
     },
@@ -3399,29 +3397,29 @@ standalone, browser test and code coverage framework for nodejs",
       });
     },
 
-    _fsCacheCleanup: function () {
+    _fsTmpCleanup: function () {
       /*
         this function cleans up the cache dir
       */
       /* remove files from cache dir */
-      utility2.jsonLog(['_fsCacheCleanup - cleaning cache dir' + state.fsDirCache]);
-      (state.fsDirCacheList || []).forEach(function (file) {
-        local._fsRmr(state.fsDirCache + '/' + file);
+      utility2.jsonLog(['_fsTmpCleanup - cleaning cache dir ' + state.fsDirTmp]);
+      (state.fsDirTmpList || []).forEach(function (file) {
+        local._fsRmr(state.fsDirTmp + '/' + file);
       });
       /* get list of files to be removed for the next cycle */
-      required.fs.readdir(state.fsDirCache, function (error, files) {
+      required.fs.readdir(state.fsDirTmp, function (error, files) {
         if (error) {
           throw error;
         }
         /* first-time init - remove old cache files */
-        if (!state.fsDirCacheList) {
+        if (!state.fsDirTmpList) {
           files.forEach(function (file) {
-            local._fsRmr(state.fsDirCache + '/' + file);
+            local._fsRmr(state.fsDirTmp + '/' + file);
           });
-          state.fsDirCacheList = [];
+          state.fsDirTmpList = [];
           return;
         }
-        state.fsDirCacheList = files;
+        state.fsDirTmpList = files;
       });
     },
 
@@ -3440,7 +3438,7 @@ standalone, browser test and code coverage framework for nodejs",
             onEventError(error);
             return;
           }
-          utility2.asyncPermute([fileList], function (error,
+          utility2.asyncMap({ argList: fileList }, function (error,
             data,
             options,
             onEventResult) {
@@ -3467,7 +3465,7 @@ standalone, browser test and code coverage framework for nodejs",
         by first renaming it to the cache dir, where it will later be removed
       */
       utility2.fsRename(dir,
-        utility2.createFsCacheFilename(null, dir) + '.' + utility2.uuid4() + '.fsRmrAtomic',
+        utility2.createFsTmpFilename(null, dir) + '.' + utility2.uuid4() + '.fsRmrAtomic',
         function (error) {
           onEventError(error && error.code === 'ENOENT' ? null : error);
         });
@@ -3477,7 +3475,7 @@ standalone, browser test and code coverage framework for nodejs",
       /*
         this function tests fsRmrAtomic's default handling behavior
       */
-      var file = utility2.createFsCacheFilename();
+      var file = utility2.createFsTmpFilename();
       required.fs.writeFile(file, 'hello world', function (error) {
         utility2.assert(!error);
         utility2.fsRmrAtomic(file, function (error) {
@@ -3494,7 +3492,7 @@ standalone, browser test and code coverage framework for nodejs",
       /*
         this function tests fsRmrAtomic's error handling behavior
       */
-      var file = utility2.createFsCacheFilename();
+      var file = utility2.createFsTmpFilename();
       /* remove non-existent file */
       utility2.fsRmrAtomic(file, function (error) {
         utility2.assert(!error);
@@ -3587,7 +3585,7 @@ standalone, browser test and code coverage framework for nodejs",
         while auto-creating missing dirs
       */
       var cache;
-      cache = utility2.createFsCacheFilename();
+      cache = utility2.createFsTmpFilename();
       /* write data */
       required.fs.writeFile(cache, data, function (error) {
         if (!error) {
@@ -3746,7 +3744,7 @@ standalone, browser test and code coverage framework for nodejs",
       if (global.__coverage__ && file === utility2.__filename) {
         required.fs.readFile(file, 'utf8', function (error, content) {
           content = utility2.instrumentScript(file, content);
-          file = utility2.createFsCacheFilename() + '.js';
+          file = utility2.createFsTmpFilename() + '.js';
           utility2.fsWriteFileAtomic(file, content, function (error) {
             utility2.onEventErrorDefault(error);
             utility2.restartPhantomjsServer(file);
@@ -3777,7 +3775,7 @@ standalone, browser test and code coverage framework for nodejs",
       /* spawn phantomjs process */
       state.phantomjsPid = utility2.shell(required.phantomjs.path + ' '
         + file + ' --state-override-base64 ' + utility2.base64Encode(JSON.stringify({
-          fsDirCache: state.fsDirCache,
+          fsDirTmp: state.fsDirTmp,
           isNpmTestUtility2: state.isNpmTestUtility2,
           localhost: state.localhost,
           phantomjsPort: state.phantomjsPort,
@@ -4172,7 +4170,7 @@ standalone, browser test and code coverage framework for nodejs",
       /*
         this function tests _rollupFile's css rollup behavior
       */
-      var file = state.fsDirCache + '/test.rollup.css';
+      var file = state.fsDirTmp + '/test.rollup.css';
       utility2.fsWriteFileAtomic(file, '(function () {\n'
         + '    "use strict";\n'
         + '    return { urlList: ["/test/test.css", "' + state.localhost + '/test/test.css"] };\n'
@@ -4185,7 +4183,7 @@ standalone, browser test and code coverage framework for nodejs",
       /*
         this function tests _rollupFile's js rollup behavior
       */
-      var file = state.fsDirCache + '/test.rollup.js';
+      var file = state.fsDirTmp + '/test.rollup.js';
       utility2.fsWriteFileAtomic(file, '(function () {\n'
         + '    "use strict";\n'
         + '    return { urlList: ["/test/test.js", "' + state.localhost + '/test/test.js"] };\n'
@@ -4208,7 +4206,7 @@ standalone, browser test and code coverage framework for nodejs",
       });
       utility2.ajaxMultiUrls({
         cache: true,
-        cacheDir: state.fsDirTmp + '/rollup',
+        cacheDir: process.cwd() + '/tmp/rollup',
         dataType: 'binary',
         urlList: Object.keys(dataUriDict)
       }, function (error, data2, optionsPermute) {
@@ -4923,8 +4921,8 @@ standalone, browser test and code coverage framework for nodejs",
     _initOnce: function () {
       /*jslint stupid: true */
       /* create test dir */
-      state.fsDirTest = state.fsDirTmp + '/test';
-      utility2.fsMkdirpSync(state.fsDirTest + '/test');
+      state.fsDirTest = process.cwd() + '/tmp/test';
+      utility2.fsMkdirpSync(state.fsDirTest);
       /* create mock json test file */
       state.fsFileTestHelloJson = state.fsDirTest + '/mock.hello.json';
       required.fs.writeFileSync(state.fsFileTestHelloJson, '"hello world"');
@@ -4935,6 +4933,7 @@ standalone, browser test and code coverage framework for nodejs",
       /* gracefully handle signal interrupt */
       if (state.npmTestMode) {
         process.on('SIGINT', utility2.exit);
+        process.on('SIGTERM', utility2.exit);
       }
     },
 
