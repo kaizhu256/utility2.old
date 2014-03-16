@@ -13,16 +13,22 @@ npm test
 
 ## changelog
 #### todo
-* move npm uglify-js dependency to utility2-external
 * add option to auto-remove test functions from module
-* add post-rollup regular expression replacment handling
 * auto-skip tests
-* prevent phantomjs from crashing during test errors
-* fix redundant debugFlag in ajax
-* add timeout for deferCallback
 * emulate localStorage
 * add heroku dynamic config server
 * integrate forever-webui
+
+#### 2014.03.16
+* revamp moduleRollupNodejs
+* re-add server module
+
+#### 2014.03.01
+* revamped and decoupled main test subroutine from server
+
+#### 2014.02.02
+* add sqlite3 db api and full-text search
+* add utility2.onEventErrorOrData
 
 #### 2014.01.30
 * merge state.fsDirCache with state.fsDirTmp
