@@ -22,7 +22,7 @@
   },
   "scripts": {
     "start": "./utility2.js --load-module utility2.js --mode-extra --mode-repl --serverPort random",
-    "test": "./utility2.js --load-module utility2.js --mode-npm-test-utility2 && ./utility2.js --load-module utility2.js --mode-extra --mode-npm-test-utility2 && ($TRAVIS || cat tmp/lcov.info | node_modules/.bin/coveralls)"
+    "test": "./utility2.js --load-module utility2.js --mode-npm-test-utility2 && ./utility2.js --load-module utility2.js --mode-extra --mode-npm-test-utility2 && if [ $TRAVIS ]; then cat tmp/lcov.info | node_modules/.bin/coveralls; fi"
   },
   "stateDefault": {
     "coverallsUrl": "https://coveralls.io/r/kaizhu256/utility2"
