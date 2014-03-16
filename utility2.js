@@ -1113,7 +1113,7 @@ standalone, browser test and code coverage framework for nodejs",
       local._initCoverage();
       local._initTmpdir();
       local._initBootstrap();
-      /* re-init utility2 */
+      local._initDebugProcess();
     },
 
     __initOnce_default_test: function (onEventError) {
@@ -1241,11 +1241,38 @@ standalone, browser test and code coverage framework for nodejs",
       });
     },
 
+    _initDebugProcess: function () {
+      /*
+        this function prints debug info about the current process
+      */
+      if (state.modeDebugProcess && state.modeDebugProcess !== 'debugged') {
+        state.modeDebugProcess = 'debugged';
+        utility2.jsonLog(['_initDebugProcess - process.cwd()', process.cwd()]);
+        utility2.jsonLog(['_initDebugProcess - process.pid', process.pid]);
+        utility2.jsonLog(['_initDebugProcess - process.argv', process.argv]);
+        utility2.jsonLog(['_initDebugProcess - process.env', process.env]);
+      }
+    },
+
+    __initDebugProcess_default_test: function (onEventError) {
+      /*
+        this function tests _initDebugProcess's default handling behavior
+      */
+      utility2.testMock(onEventError, [
+        [state, { modeDebugProcess: true }],
+        [utility2, { jsonLog: utility2.nop }]
+      ], function (onEventError) {
+        local._initDebugProcess();
+        onEventError();
+      });
+    },
+
     _initNpmTest: function () {
       /* test utility2 */
       if (state.modeNpmTestUtility2) {
         utility2.stateDefault(state, {
           coverageRegexp: '\\butility2\\.js$',
+          modeDebugProcess: state.modeExtra ? true : false,
           modeRepl: true,
           modeNpmTest: true,
           serverPort: 'random',
