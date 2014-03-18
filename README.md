@@ -1,5 +1,5 @@
 [![Coverage Status](https://coveralls.io/repos/kaizhu256/utility2/badge.png?branch=master)](https://coveralls.io/r/kaizhu256/utility2?branch=master)
-[![Build Status](https://travis-ci.org/kaizhu256/utility2.png?branch=master)](https://travis-ci.org/kaizhu256/utility2)
+[![Build Status](https://travis-ci.org/kaizhu256/utility2.png?branch=master)](https://travis-ci.org/kaizhu256/utility2?branch=master)
 [![Selenium Test Status](https://saucelabs.com/browser-matrix/utility2.svg)](https://saucelabs.com/u/utility2)
 # utility2.js
 #### standalone, browser test and code coverage framework for nodejs
@@ -13,11 +13,17 @@ npm test
 
 ## changelog
 #### todo
+* add nodejs.url.parse to utility2-external
+* integrate saucelabs
 * add option to auto-remove test functions from module
 * auto-skip tests
 * emulate localStorage
 * add heroku dynamic config server
 * integrate forever-webui
+
+#### 2014.03.17
+* add caching middleware
+* merge utility2.coverageExtend into routerMainDict_/test/report.upload
 
 #### 2014.03.16
 * revamp moduleRollupNodejs

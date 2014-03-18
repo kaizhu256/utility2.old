@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*jslint browser: true, indent: 2, maxerr: 8, node: true, nomen: true, regexp: true, todo: true, unparam: true*/
-/*global global, required, state, utility2, $*/
+/*global global, required, state, underscore, utility2, $*/
 /*
 utility2.js
 standalone, browser test and code coverage framework for nodejs",
@@ -899,7 +899,7 @@ standalone, browser test and code coverage framework for nodejs",
 
     _testLocal_nullCase_test: function (onEventError) {
       /*
-        this function tests testLocal's null-case handling behavior
+        this function tests testLocal's null case handling behavior
       */
       utility2.testMock(onEventError, [
         [local, { _setTimeout: utility2.callArg0 }],
@@ -1078,6 +1078,7 @@ standalone, browser test and code coverage framework for nodejs",
     this nodejs module inits the cli api
   */
   'use strict';
+  /*jslint stupid: true*/
   var local;
   local = {
 
@@ -1146,7 +1147,6 @@ standalone, browser test and code coverage framework for nodejs",
       required.istanbul.hook.hookRequire(function (file) {
         return local._coverageRegexp.test(file);
       }, function (code, file) {
-        /*jslint stupid: true*/
         if (state.modeNpmTestUtility2 && !state.modeExtra) {
           code = code.replace((/\n\(function moduleExtraShared\(\) \{\n[\S\s]*/), '');
         }
@@ -1158,7 +1158,6 @@ standalone, browser test and code coverage framework for nodejs",
       });
       /* on exit, create coverage report */
       process.on('exit', function () {
-        /*jslint stupid: true*/
         local._collector.add(global.__coverage__);
         /* print text report */
         required.istanbul.Report.create('text').writeReport(local._collector);
@@ -1391,7 +1390,6 @@ standalone, browser test and code coverage framework for nodejs",
     },
 
     _initTmpdir: function () {
-      /*jslint stupid: true*/
       state.tmpdir = required.path.resolve(state.tmpdir
         || required.os.tmpdir() + '/utility2.' + encodeURIComponent(process.cwd()));
       /* create tmpdir */
@@ -1412,7 +1410,6 @@ standalone, browser test and code coverage framework for nodejs",
     },
 
     fsMkdirpSync: function (dir) {
-      /*jslint stupid: true*/
       try {
         required.fs.mkdirSync(dir);
       } catch (error) {
@@ -1435,7 +1432,6 @@ standalone, browser test and code coverage framework for nodejs",
       */
       var dir;
       dir = state.tmpdir + '/cache/' + utility2.uuid4() + '/foo';
-      /*jslint stupid: true*/
       utility2.fsMkdirpSync(dir);
       required.fs.exists(dir, function (exists) {
         utility2.assert(exists);
@@ -1448,7 +1444,6 @@ standalone, browser test and code coverage framework for nodejs",
         this function tests fsMkdirpSync's error handling behavior
       */
       utility2.tryCatch(function () {
-        /*jslint stupid: true*/
         utility2.fsMkdirpSync('/dev/null/foo');
       }, function (error) {
         utility2.assert(error instanceof Error);
@@ -1497,12 +1492,30 @@ standalone, browser test and code coverage framework for nodejs",
     },
 
     _initOnce: function () {
+      /*jslint stupid: true*/
       /* watch files */
       utility2.fsWatch({ action: ['lint'], name: utility2.__dirname + '/package.json' });
       utility2.fsWatch({
         action: ['lint'],
         name: utility2.__dirname + '/utility2_phantomjs.js'
       });
+      /* require utility2-external.shared.txt */
+      required.fs.readFileSync(required.utility2_external.__dirname
+        + '/public/utility2-external.shared.txt', 'utf8')
+        .replace((/\n\/\* module start - (.*) \*\/\n([\S\s]*?)\n\/\* module end \*\//g),
+          function (_, url, text) {
+            /* export mime.types */
+            if (url.slice(-11) === '/mime.types') {
+              state.mimeLookupDict = state.mimeLookupDict || {};
+              text.replace((/^(\w\S+)\s+(.*)$/gm), function (_, value, keys) {
+                keys.split(' ').forEach(function (key) {
+                  if (key) {
+                    state.mimeLookupDict[key] = value;
+                  }
+                });
+              });
+            }
+          });
     },
 
     fsWatch: function (file, exports) {
@@ -1733,19 +1746,20 @@ standalone, browser test and code coverage framework for nodejs",
       /*
         this function returns the file's mime-type
       */
-      switch (required.path.extname(file)) {
-      case '.css':
+      file = required.path.extname(file).slice(1);
+      switch (file) {
+      case 'css':
         return 'text/css';
-      case '.html':
+      case 'html':
         return 'text/html';
-      case '.js':
-        return 'application/javascript; charset=utf-8';
-      case '.json':
+      case 'js':
+        return 'application/javascript';
+      case 'json':
         return 'application/json';
-      case '.txt':
+      case 'txt':
         return 'text/plain';
       default:
-        return (state.mimeTypesDict && state.mimeTypesDict[file]) || 'application/octet-stream';
+        return (state.mimeLookupDict && state.mimeLookupDict[file]) || 'text/plain';
       }
     },
 
@@ -1755,10 +1769,10 @@ standalone, browser test and code coverage framework for nodejs",
       */
       utility2.assert(utility2.mimeLookup('foo.css') === 'text/css');
       utility2.assert(utility2.mimeLookup('foo.html') === 'text/html');
-      utility2.assert(utility2.mimeLookup('foo.js') === 'application/javascript; charset=utf-8');
+      utility2.assert(utility2.mimeLookup('foo.js') === 'application/javascript');
       utility2.assert(utility2.mimeLookup('foo.json') === 'application/json');
       utility2.assert(utility2.mimeLookup('foo.txt') === 'text/plain');
-      utility2.assert(utility2.mimeLookup('foo') === 'application/octet-stream');
+      utility2.assert(utility2.mimeLookup('foo') === 'text/plain');
       onEventError();
     },
 
@@ -2977,12 +2991,15 @@ standalone, browser test and code coverage framework for nodejs",
       var onEventFinish2, remainingList;
       /* validate options.urlList */
       onEventFinish2 = utility2.onEventMulti(onEventError, onEventFinish);
-      if (!(options && Array.isArray(options.urlList) && options.urlList.every(function (url) {
-          return typeof url === 'string';
-        }))) {
+      if (!(options
+        && Array.isArray(options.urlList)
+        && options.urlList.length
+        && options.urlList.every(function (url) {
+            return typeof url === 'string';
+          }))) {
         onEventFinish2.remaining = 1;
         onEventFinish2(new Error('ajaxMultiUrls - invalid options.urlList '
-          + (options && options.urlList)));
+          + utility2.jsonStringifyCircular(options && options.urlList)));
         return;
       }
       remainingList = utility2.jsonCopy(options.urlList);
@@ -2997,7 +3014,11 @@ standalone, browser test and code coverage framework for nodejs",
           utility2.jsonLog(['ajaxMultiUrls - fetched / remaining',
             optionsUrl.url0,
             JSON.stringify(remainingList.slice(0, 2)).replace(']', ',...]')]);
-          onEventFinish2(error, { data: data, options: optionsUrl });
+          onEventFinish2(error, {
+            data: data,
+            onEventFinish: onEventFinish2,
+            options: optionsUrl
+          });
         });
       });
     },
@@ -3220,7 +3241,7 @@ standalone, browser test and code coverage framework for nodejs",
       onEventFinish.remaining += 1;
       utility2.ajax({
         dataType: 'binary',
-        url: '/test/hello.json'
+        url: '/test/test.json'
       }, function (error, data) {
         utility2.assert(!error);
         utility2.assert(data.toString() === '"hello world"');
@@ -3230,7 +3251,7 @@ standalone, browser test and code coverage framework for nodejs",
       onEventFinish.remaining += 1;
       utility2.ajax({
         dataType: 'json',
-        url: '/test/hello.json'
+        url: '/test/test.json'
       }, function (error, data) {
         utility2.assert(!error);
         utility2.assert(data === 'hello world');
@@ -3309,30 +3330,28 @@ standalone, browser test and code coverage framework for nodejs",
     },
 
     _initOnce: function () {
-      /* init middleware */
-      /* 1. middleware logging */
-      state.middlewareLogging = state.middlewareLogging
-        || local._createMiddleware(state.routerLoggingDict);
-      state.middlewareLoggingDefault = state.middlewareLoggingDefault
-        || required.connect.logger('dev');
-      /* 2. middleware security */
-      state.middlewareSecurity = state.middlewareSecurity
-        || local._createMiddleware(state.routerSecurityDict);
-      /* security - basic auth */
+      /* init middlewares */
+      [
+        'Test',
+        'Logging',
+        'Security',
+        'Cache',
+        'Proxy',
+        'Main',
+        'File'
+      ].forEach(function (middleware, ii) {
+        middleware = ii + middleware;
+        /* init middleware router dict */
+        state['router' + middleware + 'Dict'] = state['router' + middleware + 'Dict'] || {};
+        /* init middleware */
+        state['middleware' + middleware] = state['middleware' + middleware]
+          || local._createMiddleware(state['router' + middleware + 'Dict']);
+      });
+      /* middleware0Security - basic auth */
       state.securityBasicAuthSecret = state.securityBasicAuthSecret || utility2.uuid4();
-      /* 3. middleware proxy */
-      state.middlewareProxy = state.middlewareProxy
-        || local._createMiddleware(state.routerProxyDict);
-      /* 4. middleware main */
-      state.middlewareMain = state.middlewareMain
-        || local._createMiddleware(state.routerMainDict);
-      /* 5. middleware file */
-      state.middlewareFile = state.middlewareFile
-        || local._createMiddleware(state.routerFileDict);
-      /* 6. middleware test */
-      state.routerTestDict = state.routerTestDict || {};
-      state.middlewareTest = state.middlewareTest
-        || local._createMiddleware(state.routerTestDict);
+      /* middleware1LoggingDefault */
+      state.middleware1LoggingDefault = state.middleware1LoggingDefault
+        || required.connect.logger('dev');
       /* init server */
       /* defer local tests until server is listening on state.serverPort */
       utility2.serverListen(state.serverPort, function () {
@@ -3342,46 +3361,73 @@ standalone, browser test and code coverage framework for nodejs",
       });
     },
 
-    'routerLoggingDict_/': function (request, response, next) {
+    'router1LoggingDict_/': function (request, response, next) {
       /*
         this function handles default logging
       */
-      state.middlewareLoggingDefault(request, response, next);
+      state.middleware1LoggingDefault(request, response, next);
     },
 
-    'routerLoggingDict_/favicon.ico': function (request, response, next) {
+    'router1LoggingDict_/favicon.ico': function (request, response, next) {
       /*
         this function ignores logging for /favicon.ico
       */
       next();
     },
 
-    'routerSecurityDict_/': function (request, response, next) {
+    'router2SecurityDict_/': function (request, response, next) {
       /*
         this function handles default server security
       */
       /* security - https redirect */
-      if (utility2.securityHttpsRedirect(request, response)) {
+      if (state.modeSecurityHttpsRedirect !== false
+          && utility2.securityHttpsRedirect(request, response)) {
         return;
       }
-      /* security - basic auth - passed */
+      /* security - basic auth passed */
       if (utility2.securityBasicAuthValidate(request)) {
         next();
         return;
       }
-      /* security - basic auth - failed */
-      utility2.serverRespondDefault(response, 303, null, '/signin?redirect='
+      /* security - basic auth failed */
+      utility2.serverRespondDefault(request, response, 303, '/signin?redirect='
         + encodeURIComponent(request.url));
     },
 
-    'routerSecurityDict_/public': function (request, response, next) {
+    'router2SecurityDict_/public': function (request, response, next) {
       /*
         this function grants public access to the /public path
       */
       next();
     },
 
-    'routerProxyDict_/proxy/proxy.ajax': function (request, response, next) {
+    'router2SecurityDict_/signin': function (request, response, next) {
+      var redirect;
+      /* security - https redirect */
+      if (utility2.securityHttpsRedirect(request, response)) {
+        return;
+      }
+      if (utility2.securityBasicAuthValidate(request)) {
+        redirect = utility2.urlDecodeOrError(request.urlParsed.params.redirect);
+        if (redirect && !(redirect instanceof Error)) {
+          utility2.serverRespondDefault(request, response, 303, redirect);
+          return;
+        }
+        next(redirect);
+        return;
+      }
+      utility2.serverRespondDefault(request, response, 401, '401 Unauthorized');
+    },
+
+    'router3CacheDict_/public/utility2-external': function (request, response, next) {
+      /*
+        this function grants public access to the /public path
+      */
+      response.setHeader('cache-control', 'public, max-age=31536000');
+      next();
+    },
+
+    'router4ProxyDict_/proxy/proxy.ajax': function (request, response, next) {
       /*
         this function proxies frontend request
       */
@@ -3401,12 +3447,12 @@ standalone, browser test and code coverage framework for nodejs",
       request.on('error', next).pipe(request2.on('error', next));
     },
 
-    '_routerProxyDict_/proxy.ajax_default_test': function (onEventError) {
+    '_router4ProxyDict_/proxy.ajax_default_test': function (onEventError) {
       /*
-        this function tests routerProxyDict_/proxy.ajax's default handling behavior
+        this function tests router4ProxyDict_/proxy.ajax's default handling behavior
       */
       utility2.ajax({
-        url: state.localhost + '/proxy/proxy.ajax/' + state.localhost + '/test/hello.json'
+        url: state.localhost + '/proxy/proxy.ajax/' + state.localhost + '/test/test.json'
       }, function (error, data) {
         utility2.assert(!error);
         utility2.assert(data === '"hello world"');
@@ -3414,12 +3460,12 @@ standalone, browser test and code coverage framework for nodejs",
       });
     },
 
-    'routerMainDict_/test/report.upload': function (request, response, next) {
+    'router5MainDict_/test/report.upload': function (request, response, next) {
       /*
         this function receives and parses uploaded test objects
       */
       utility2.streamReadOnEventError(request, function (error, data) {
-        var onEventError;
+        var coverage1, coverage2, file1, file2, onEventError;
         error = error || utility2.jsonParseOrError(data);
         if (error instanceof Error) {
           next(error);
@@ -3428,7 +3474,28 @@ standalone, browser test and code coverage framework for nodejs",
         response.end();
         state.testSuiteList = state.testSuiteList.concat(error.testSuiteList || []);
         /* extend global.__coverage with uploaded code coverage object */
-        utility2.coverageExtend(global.__coverage__, error.coverage);
+        coverage1 = global.__coverage__;
+        coverage2 = error.coverage || [];
+        Object.keys(coverage2).forEach(function (key) {
+          file1 = coverage1[key];
+          file2 = coverage2[key];
+          coverage1[key] = file1 || file2;
+          if (file1) {
+            /* remove derived info */
+            delete file1.l;
+            Object.keys(file2.s).forEach(function (key) {
+              file1.s[key] += file2.s[key];
+            });
+            Object.keys(file2.f).forEach(function (key) {
+              file1.f[key] += file2.f[key];
+            });
+            Object.keys(file2.b).forEach(function (key) {
+              file2.b[key].forEach(function (count, ii) {
+                file1.b[key][ii] += count;
+              });
+            });
+          }
+        });
         onEventError = state.phantomjsTestUrlDict[error.testId];
         if (onEventError) {
           delete state.phantomjsTestUrlDict[error.testId];
@@ -3437,26 +3504,26 @@ standalone, browser test and code coverage framework for nodejs",
       });
     },
 
-    '_routerMainDict_/test/report.upload_error_test': function (onEventError) {
+    '_router5MainDict_/test/report.upload_error_test': function (onEventError) {
       /*
-        this function tests routerMainDict_/test/report.upload's error handling behavior
+        this function tests router5MainDict_/test/report.upload's error handling behavior
       */
       utility2.testMock(onEventError, [
         [utility2, { streamReadOnEventError: function (_, onEventError) {
           onEventError(null, 'syntax error');
         } }],
-        [state.routerTestDict, {
-          '/test/report.upload': local['routerMainDict_/test/report.upload']
+        [state.router0TestDict, {
+          '/test/report.upload': local['router5MainDict_/test/report.upload']
         }]
       ], function (onEventError) {
-        state.middlewareTest({ url: '/test/report.upload' }, {}, function (error) {
+        state.middleware0Test({ url: '/test/report.upload' }, {}, function (error) {
           utility2.assert(error instanceof Error);
           onEventError();
         });
       });
     },
 
-    'routerMainDict_/test/test.echo': function (request, response) {
+    'router5MainDict_/test/test.echo': function (request, response) {
       /*
         this function echoes the request back to the response
       */
@@ -3473,21 +3540,14 @@ standalone, browser test and code coverage framework for nodejs",
       request.pipe(response);
     },
 
-    'routerMainDict_/test/test.error': function (request, response) {
+    'router5MainDict_/test/test.error': function (request, response) {
       /*
         this function responds with default 500
       */
-      utility2.serverRespondDefault(response, 500, null, 'testing server error');
+      utility2.serverRespondDefault(request, response, 500, 'testing server error');
     },
 
-    'routerMainDict_/test/hello.json': function (request, response) {
-      /*
-        this function responds with the application/json string '"hello world"'
-      */
-      utility2.serverRespondDefault(response, 200, 'application/json', '"hello world"');
-    },
-
-    'routerMainDict_/test/test.timeout': function (request, response) {
+    'router5MainDict_/test/test.timeout': function (request, response) {
       /*
         this function responds after state.timeoutDefault milliseconds
       */
@@ -3496,37 +3556,14 @@ standalone, browser test and code coverage framework for nodejs",
       }, state.timeoutDefault);
     },
 
-    'routerFileDict_/test/test.html': function (request, response) {
-      /*
-        this function serves the file test.html
-      */
-      utility2.serverRespondDefault(response, 200, 'text/html',
-        utility2.templateFormat(local._fileTestHtml, { globalOverride: JSON.stringify({ state: {
-          npmTestUtility2: state.npmTestUtility2,
-          localhost: state.localhost
-        } }) }));
-    },
-
-    'routerFileDict_/test/test.js': function (request, response) {
-      /*
-        this function serves the file test.css
-      */
-      utility2.serverRespondDefault(
-        response,
-        200,
-        'application/javascript; charset=utf-8',
-        'console.log("hello world");'
-      );
-    },
-
-    'routerFileDict_/public': function (request, response, next) {
+    'router6FileDict_/public': function (request, response, next) {
       /*
         this function serves public files
       */
       utility2.serverRespondFile(response, process.cwd() + request.urlPathNormalized, next);
     },
 
-    'routerFileDict_/public/utility2-external': function (request, response, next) {
+    'router6FileDict_/public/utility2-external': function (request, response, next) {
       /*
         this function serves public, utility2-external files
       */
@@ -3536,52 +3573,73 @@ standalone, browser test and code coverage framework for nodejs",
         next);
     },
 
-    'routerFileDict_/public/utility2.js': function (request, response) {
+    'router6FileDict_/public/utility2.js': function (request, response) {
       /*
         this function serves the file utility2.js
       */
-      utility2.serverRespondDefault(
-        response,
-        200,
-        'application/javascript; charset=utf-8',
-        utility2._fileContentBrowser
-      );
+      utility2.serverRespondDefault(request, response, 200, utility2._fileContentBrowser);
     },
 
-    coverageExtend: function (coverage1, coverage2) {
+    'router6FileDict_/test/test.png': function (request, response) {
       /*
-        this function extends code coverage object1 with code coverage object2
+        this function serves the file test.png
       */
-      coverage1 = coverage1 || {};
-      Object.keys(coverage2 || []).forEach(function (key) {
-        var file1, file2;
-        file1 = coverage1[key];
-        file2 = coverage2[key];
-        if (file1) {
-          /* remove derived info */
-          delete file1.l;
-          Object.keys(file2.s).forEach(function (key) {
-            file1.s[key] += file2.s[key];
-          });
-          Object.keys(file2.f).forEach(function (key) {
-            file1.f[key] += file2.f[key];
-          });
-          Object.keys(file2.b).forEach(function (key) {
-            var ii, list1, list2;
-            list1 = file1.b[key];
-            list2 = file2.b[key];
-            for (ii = 0; ii < list1.length; ii += 1) {
-              list1[ii] += list2[ii];
-            }
-          });
-        } else {
-          coverage1[key] = file2;
-        }
-      });
-      return coverage1;
+      utility2.serverRespondDefault(request, response, 200, new Buffer(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQMAAAAl21bKAAAAA1BMVEUAAACnej3aAAAAAXRSTlMAQObYZgAAAA'
+          + 'pJREFUCB1jYAAAAAIAAc/INeUAAAAASUVORK5CYII=',
+        'base64'
+      ));
     },
 
-    _createMiddleware: function (routerMainDict) {
+    'router6FileDict_/test/test.css': function (request, response) {
+      /*
+        this function serves the file test.css
+      */
+      utility2.serverRespondDefault(request, response, 200, 'body {\n'
+        + 'background-image:url("test.png");\n'
+        + '}\n');
+    },
+
+    'router6FileDict_/test/test.html': function (request, response) {
+      /*
+        this function serves the file test.html
+      */
+      utility2.serverRespondDefault(request, response, 200, utility2.templateFormat(
+        '<!DOCTYPE html><html><head>\n'
+          + '<link'
+            + ' href="/public/utility2-external/utility2-external.browser.lite.min.css"'
+            + ' rel="stylesheet"/>\n'
+          + '<style>\n'
+          + utility2.lintScript('test.css', '\n')
+          + '</style></head><body>\n'
+          + '<div id="divTest"></div>\n'
+          + '<script>window.globalOverride = {{globalOverride}};</script>\n'
+          + '<script src="/public/utility2-external/utility2-external.browser.lite.min.js"></script>\n'
+          + '<script src="/public/utility2.js"></script>\n'
+          + '</body></html>\n',
+        {
+            globalOverride: JSON.stringify({
+              state: { npmTestUtility2: state.npmTestUtility2, localhost: state.localhost }
+            })
+          }
+      ));
+    },
+
+    'router6FileDict_/test/test.js': function (request, response) {
+      /*
+        this function serves the file test.js
+      */
+      utility2.serverRespondDefault(request, response, 200, 'console.log("hello world");');
+    },
+
+    'router6FileDict_/test/test.json': function (request, response) {
+      /*
+        this function responds with the application/json string '"hello world"'
+      */
+      utility2.serverRespondDefault(request, response, 200, '"hello world"');
+    },
+
+    _createMiddleware: function (router5MainDict) {
       /*
         this function creates a middleware app using the specified router dict
       */
@@ -3607,6 +3665,8 @@ standalone, browser test and code coverage framework for nodejs",
               if (path && path.length <= 256 && !(/\.\/|\.$/).test(path)) {
                 /* dyanamic path handler */
                 request.urlPathNormalized = required.path.resolve(path);
+                /* urlParsed */
+                request.urlParsed = request.urlParsed || utility2.urlParamsParse(request.url);
                 onEventError2();
                 return;
               }
@@ -3615,13 +3675,13 @@ standalone, browser test and code coverage framework for nodejs",
             break;
           case 2:
             path = request.urlPathNormalized;
-            while (!(routerMainDict[path] || path === '/')) {
+            while (!(router5MainDict[path] || path === '/')) {
               path = required.path.dirname(path);
             }
             /* found a handler matching request path */
-            if (routerMainDict[path]) {
+            if (router5MainDict[path]) {
               /* debug request handler */
-              state.debugRequestHandler = routerMainDict[path];
+              state.debugRequestHandler = router5MainDict[path];
               /* process request with error handling */
               utility2.tryCatch(onEventError2, next);
             /* else move on to next middleware */
@@ -3630,7 +3690,7 @@ standalone, browser test and code coverage framework for nodejs",
             }
             break;
           case 3:
-            routerMainDict[path](request, response, next);
+            router5MainDict[path](request, response, next);
             break;
           }
         };
@@ -3653,18 +3713,6 @@ standalone, browser test and code coverage framework for nodejs",
       });
     },
 
-    _fileTestHtml: '<!DOCTYPE html><html><head>\n'
-      + '<link href="/public/utility2-external/utility2-external.browser.css" rel="stylesheet"/>\n'
-      + '<style>\n'
-      + utility2.lintScript('test.css', '\n')
-      + '</style></head><body>\n'
-      + '<div id="divTest"></div>\n'
-      + '<script>window.globalOverride = {{globalOverride}};</script>\n'
-      + '<script src="/public/utility2-external/utility2-external.shared.js"></script>\n'
-      + '<script src="/public/utility2-external/utility2-external.browser.js"></script>\n'
-      + '<script src="/public/utility2.js"></script>\n'
-      + '</body></html>\n',
-
     middlewareApplication: function (request, response, next) {
       /*
         this function exports the main middleware application
@@ -3676,27 +3724,31 @@ standalone, browser test and code coverage framework for nodejs",
         switch (mode) {
         /* call error handling middleware */
         case -1:
-          utility2.serverRespondDefault(response, 500, 'plain/text', error, next);
+          utility2.serverRespondDefault(request, response, 500, error, next);
           break;
         /* 1. middleware logging */
         case 1:
-          state.middlewareLogging(request, response, onEventError2);
+          state.middleware1Logging(request, response, onEventError2);
           break;
         /* 2. middleware security */
         case 2:
-          state.middlewareSecurity(request, response, onEventError2);
+          state.middleware2Security(request, response, onEventError2);
           break;
-        /* 3. middleware proxy */
+        /* 3. middleware cache */
         case 3:
-          state.middlewareProxy(request, response, onEventError2);
+          state.middleware3Cache(request, response, onEventError2);
           break;
-        /* 4. middleware main */
+        /* 4. middleware proxy */
         case 4:
-          state.middlewareMain(request, response, onEventError2);
+          state.middleware4Proxy(request, response, onEventError2);
           break;
-        /* 5. middleware file */
+        /* 5. middleware main */
         case 5:
-          state.middlewareFile(request, response, onEventError2);
+          state.middleware5Main(request, response, onEventError2);
+          break;
+        /* 6. middleware file */
+        case 6:
+          state.middleware6File(request, response, onEventError2);
           break;
         /* fallback to next middleware */
         default:
@@ -3727,13 +3779,14 @@ standalone, browser test and code coverage framework for nodejs",
       var headers;
       headers = request.headers;
       /* assume state.modeSecurityHttpsRedirect is true unless explicitly false */
-      if (state.modeSecurityHttpsRedirect !== false
-          && headers.host.slice(0, 9) !== 'localhost'
+      if (headers.host.slice(0, 9) !== 'localhost'
           && headers['x-forwarded-proto'] !== 'https') {
-        utility2.serverRespondDefault(response,
+        utility2.serverRespondDefault(
+          request,
+          response,
           301,
-          null,
-          'https://' + headers.host + request.url);
+          'https://' + headers.host + request.url
+        );
         return true;
       }
     },
@@ -3746,11 +3799,10 @@ standalone, browser test and code coverage framework for nodejs",
       return (Math.random() * 0xffff) | 0x8000;
     },
 
-    serverRespondDefault: function (response, statusCode, contentType, data) {
+    serverRespondDefault: function (request, response, statusCode, data) {
       /*
         this function handles an appropriate response for a given status code
       */
-      contentType = contentType || 'text/plain';
       statusCode = Number(statusCode);
       data = data || statusCode + ' '
         + (required.http.STATUS_CODES[statusCode] || 'Unknown Status Code');
@@ -3781,9 +3833,7 @@ standalone, browser test and code coverage framework for nodejs",
       }
       if (!response.headersSent) {
         response.statusCode = statusCode;
-        if (contentType) {
-          response.setHeader('content-type', contentType);
-        }
+        response.setHeader('content-type', utility2.mimeLookup(request.urlPathNormalized));
       }
       response.end(typeof data === 'string' || Buffer.isBuffer(data) ? data : String(data));
     },
@@ -4001,14 +4051,22 @@ standalone, browser test and code coverage framework for nodejs",
         mode = error instanceof Error ? -1 : mode + 1;
         switch (mode) {
         case 1:
-          utility2.jsonLog(['_minifyFile', file]);
           required.fs.readFile(file, 'utf8', onEventError2);
           break;
         case 2:
+          utility2.jsonLog(['_minifyFile', file]);
           data = utility2.commentShebang(data);
-          onEventError2(null, required.path.extname(file) === '.css'
-            ? required.cssmin(data)
-            : required.uglify_js.minify(file, data));
+          switch (required.path.extname(file)) {
+          case '.css':
+            onEventError2(null, required.cssmin(data));
+            break;
+          case '.js':
+            onEventError2(null, required.uglify_js.minify(file, data));
+            break;
+          default:
+            mode += 1;
+            onEventError2();
+          }
           break;
         case 3:
           utility2.fsWriteFileAtomic(file.replace((/([^.]*$)/), 'min.$1'), data, onEventError2);
@@ -4051,6 +4109,16 @@ standalone, browser test and code coverage framework for nodejs",
           }, onEventError2);
           break;
         case 4:
+          /* additional css parsing */
+          if (required.path.extname(file) === '.css' && !data.modeCss) {
+            data.modeCss = true;
+            data.onEventFinish.remaining += 1;
+            local._rollupFileCss(data, function (error) {
+              mode = 3;
+              data.onEventFinish(error, data);
+            });
+            return;
+          }
           dataList[dataList.indexOf(data.options.url0)] = data;
           break;
         case 5:
@@ -4073,6 +4141,46 @@ standalone, browser test and code coverage framework for nodejs",
           break;
         default:
           onEventError(error);
+        }
+      };
+      onEventError2();
+    },
+
+    __rollupFile_cssRollup_test: function (onEventError) {
+      /*
+        this function tests _rollupFile's css rollup handling behavior
+      */
+      var file, mode, onEventError2;
+      mode = 0;
+      onEventError2 = function (error, data) {
+        mode += 1;
+        mode = error instanceof Error ? -1 : mode;
+        switch (mode) {
+        case 1:
+          file = state.tmpdir + '/cache/' + utility2.uuid4() + '.css';
+          utility2.fsWriteFileAtomic(file, '/*jslint indent: 2, regexp: true*/\n'
+            + '(function () {\n'
+            + '  "use strict";\n'
+            + '  return { urlList: ['
+            + '    "/test/test.css",\n'
+            + '    "' + state.localhost + '/test/test.css"\n'
+            + '    ] };\n'
+            + '}());\n', onEventError2);
+          break;
+        case 2:
+          local._rollupFile(file, onEventError2);
+          break;
+        case 3:
+          required.fs.readFile(file, 'utf8', onEventError2);
+          break;
+        case 4:
+          utility2.assert(!error);
+          // utility2.assert((/\nconsole\.log\("hello world!"\);\n/).test(data));
+          onEventError2();
+          break;
+        default:
+          onEventError(error);
+          return;
         }
       };
       onEventError2();
@@ -4115,6 +4223,66 @@ standalone, browser test and code coverage framework for nodejs",
         default:
           onEventError(error);
           return;
+        }
+      };
+      onEventError2();
+    },
+
+    _rollupFileCss: function (options, onEventError) {
+      /*
+        this function runs additional rollup steps for css scripts
+      */
+      var datauriDict, mode, onEventError2;
+      mode = 0;
+      onEventError2 = function (error, data) {
+        if (mode === -1) {
+          utility2.onEventErrorDefault(error, data);
+          return;
+        }
+        mode = error instanceof Error ? -1 : mode + 1;
+        switch (mode) {
+        case 1:
+          utility2.jsonLog(['_rollupFileCss', options.options.url0]);
+          datauriDict = {};
+          options.data.replace((/\burl\(([^)]+)\)/g), onEventError2);
+          mode += 1;
+          onEventError2();
+          break;
+        case 2:
+          mode -= 1;
+          data = required.path.resolve('/' + required.path.dirname(options.options.url0) + '/'
+            + data.replace((/["']/g), '')).replace((/^\/(https*:\/)/), '$1/');
+          datauriDict[data] = datauriDict[data] || {};
+          datauriDict[data][error] = null;
+          break;
+        case 3:
+          /* handle null case where there are no external resources to retrieve */
+          if (underscore.isEmpty(datauriDict)) {
+            mode += 1;
+            onEventError2();
+            return;
+          }
+          utility2.ajaxMultiUrls({
+            cache: options.options.cache,
+            cachePrefix: options.options.cachePrefix,
+            dataType: 'binary',
+            urlList: Object.keys(datauriDict)
+          }, function (error, data) {
+            mode = 3;
+            onEventError2(error, data);
+          }, onEventError2);
+          break;
+        case 4:
+          Object.keys(datauriDict[data.options.url0]).forEach(function (match) {
+            options.data = options.data.replace(
+              new RegExp(match.replace((/(\W)/g), '\\$1'), 'g'),
+              'url(\n"data:' + utility2.mimeLookup(data.options.url0) + ';base64,'
+                + data.data.toString('base64') + '"\n)'
+            );
+          });
+          break;
+        default:
+          onEventError(error);
         }
       };
       onEventError2();
