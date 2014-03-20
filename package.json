@@ -8,7 +8,7 @@
     "istanbul": "0.2.x",
     "phantomjs": "1.9.x",
     "sqlite3": "2.2.x",
-    "utility2-external": "~2014.03.17"
+    "utility2-external": "~2014.03.19"
   },
   "devDependencies": {
     "coveralls": "2.8.x"
