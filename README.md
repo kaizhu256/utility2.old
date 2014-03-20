@@ -13,13 +13,16 @@ npm test
 
 ## changelog
 #### todo
-* add nodejs.url.parse to utility2-external
+* add testWatch browser feature
 * integrate saucelabs
 * add option to auto-remove test functions from module
 * auto-skip tests
 * emulate localStorage
 * add heroku dynamic config server
 * integrate forever-webui
+
+#### 2014.03.xx
+* add nodejs.url to utility2-external
 
 #### 2014.03.17
 * add caching middleware
