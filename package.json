@@ -1,14 +1,17 @@
 {
-  "contributors": [{
-    "name": "kai zhu",
-    "email": "kaizhu256@gmail.com"
-  }],
+  "contributors": [
+    {
+      "name": "kai zhu",
+      "email": "kaizhu256@gmail.com"
+    }
+  ],
   "dependencies": {
-    "connect": "2.13.x",
+    "connect": "2.14.0",
     "istanbul": "0.2.x",
     "phantomjs": "1.9.x",
     "sqlite3": "2.2.x",
-    "utility2-external": "~2014.03.19"
+    "utility2-external": "~2014.03.19",
+    "snyk": "^1.88.0"
   },
   "devDependencies": {
     "coveralls": "2.8.x"
@@ -16,17 +19,20 @@
   "description": "utility2.js - standalone, browser test and code coverage framework for nodejs",
   "main": "utility2.js",
   "name": "utility2",
-  "repository" : {
-    "type" : "git",
-    "url" : "https://github.com/kaizhu256/utility2.git"
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kaizhu256/utility2.git"
   },
   "scripts": {
     "postinstall": "prefix=node_modules/utility2-external/public/utility2-external; ./utility2.js --minify-file-list $prefix.browser.css,$prefix.browser.js,$prefix.browser.lite.css,$prefix.browser.lite.js,$prefix.shared.js",
     "start": "./utility2.js --load-module utility2.js --mode-extra --mode-repl --serverPort random",
-    "test": "./utility2.js --load-module utility2.js --mode-npm-test-utility2 && ./utility2.js --load-module utility2.js --mode-extra --mode-npm-test-utility2 && if [ $TRAVIS ]; then cat tmp/lcov.info | node_modules/.bin/coveralls; fi"
+    "test": "./utility2.js --load-module utility2.js --mode-npm-test-utility2 && ./utility2.js --load-module utility2.js --mode-extra --mode-npm-test-utility2 && if [ $TRAVIS ]; then cat tmp/lcov.info | node_modules/.bin/coveralls; fi",
+    "snyk-protect": "snyk protect",
+    "prepare": "npm run snyk-protect"
   },
   "stateDefault": {
     "coverallsUrl": "https://coveralls.io/r/kaizhu256/utility2"
   },
-  "version": "2014.03.17-1"
+  "version": "2014.03.17-1",
+  "snyk": true
 }
